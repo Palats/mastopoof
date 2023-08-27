@@ -17,8 +17,9 @@ import (
 )
 
 var (
-	clearApp  = flag.Bool("clear_app", false, "Force re-registration of the app against the Mastodon server")
-	clearAuth = flag.Bool("clear_auth", false, "Force re-approval of auth; does not touch app registration")
+	serverAddr = flag.String("server", "", "Mastodon server to track. Only needed when authenticating.")
+	clearApp   = flag.Bool("clear_app", false, "Force re-registration of the app against the Mastodon server")
+	clearAuth  = flag.Bool("clear_auth", false, "Force re-approval of auth; does not touch app registration")
 )
 
 type AuthInfo struct {
@@ -137,7 +138,10 @@ func main() {
 
 	if ai.ServerAddr == "" || *clearApp {
 		glog.Infof("setting server address")
-		ai.ServerAddr = "https://octodon.social"
+		if *serverAddr == "" {
+			glog.Exit("please specify server name with --server")
+		}
+		ai.ServerAddr = *serverAddr
 
 		if err := st.SetAuthInfo(ctx, ai); err != nil {
 			glog.Exit(err)
