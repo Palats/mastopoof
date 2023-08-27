@@ -184,7 +184,7 @@ func main() {
 			ClientID:     ai.ClientID,
 			ClientSecret: ai.ClientSecret,
 		})
-		err = client.AuthenticateToken(ctx, ai.AccessToken, ai.RedirectURI)
+		err = client.AuthenticateToken(ctx, authCode, ai.RedirectURI)
 		if err != nil {
 			glog.Exitf("unable to authenticate on server %s: %v", ai.ServerAddr, err)
 		}
