@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -105,49 +106,49 @@ func registerApp(ctx context.Context, ai *AuthInfo) (*mastodon.Application, erro
 	return app, nil
 }
 
-func testClient(ctx context.Context, client *mastodon.Client) {
-	timeline, err := client.GetTimelineHome(context.Background(), nil)
+func getStorage(ctx context.Context) (*Storage, *sql.DB, error) {
+	filename := "./mastopoof.db"
+	db, err := sql.Open("sqlite3", filename)
 	if err != nil {
-		glog.Fatal(err)
+		return nil, nil, fmt.Errorf("unable to open storage %s: %w", filename, err)
 	}
-	for i := len(timeline) - 1; i >= 0; i-- {
-		fmt.Println(timeline[i])
-	}
-}
-
-func main() {
-	ctx := context.Background()
-	flag.Parse()
-	fmt.Println("Mastopoof")
-
-	db, err := sql.Open("sqlite3", "./mastopoof.db")
-	if err != nil {
-		glog.Fatal(err)
-	}
-	defer db.Close()
 
 	st := NewStorage(db)
 	if err := st.Init(ctx); err != nil {
-		glog.Exitf("unable to init storage: %v", err)
+		return nil, nil, fmt.Errorf("unable to init storage: %w", err)
 	}
+	return st, db, nil
+}
 
+func cmdAuth(ctx context.Context, st *Storage) error {
 	ai, err := st.AuthInfo(ctx)
 	if err != nil {
-		glog.Exit(err)
+		return err
+	}
+
+	addr := *serverAddr
+	if addr == "" {
+		return errors.New("missing --server")
+	}
+	if !strings.HasPrefix(addr, "https://") {
+		return fmt.Errorf("server address %q must start with https://", addr)
 	}
 
 	if ai.ServerAddr == "" || *clearApp {
 		glog.Infof("setting server address")
 		if *serverAddr == "" {
-			glog.Exit("please specify server name with --server")
+			return errors.New("please specify server name with --server")
 		}
 		ai.ServerAddr = *serverAddr
 
 		if err := st.SetAuthInfo(ctx, ai); err != nil {
-			glog.Exit(err)
+			return err
 		}
 	} else {
 		glog.Infof("server address: %v", ai.ServerAddr)
+		if addr != ai.ServerAddr {
+			return fmt.Errorf("server mismatch: %s vs %s; use --clear_app", ai.ServerAddr, addr)
+		}
 	}
 
 	if ai.ClientID == "" || *clearApp {
@@ -168,7 +169,7 @@ func main() {
 		glog.Infof("app already registered")
 	}
 
-	if ai.AccessToken == "" || *clearAuth {
+	if ai.AccessToken == "" || *clearAuth || *clearApp {
 		glog.Infof("need user code")
 		fmt.Printf("Auth URL: %s\n", ai.AuthURI)
 
@@ -198,19 +199,61 @@ func main() {
 			glog.Exit(err)
 		}
 	} else {
-		glog.Infof("access token available")
+		fmt.Println("Already authentified.")
 	}
 
-	client := mastodon.NewClient(&mastodon.Config{
-		Server:       ai.ServerAddr,
-		ClientID:     ai.ClientID,
-		ClientSecret: ai.ClientSecret,
-		AccessToken:  ai.AccessToken,
-	})
-	/*err = client.AuthenticateToken(ctx, ai.AuthCode, ai.RedirectURI)
-	if err != nil {
-		glog.Exitf("unable to authenticate on server %s: %v", ai.ServerAddr, err)
-	}*/
+	return nil
+}
 
-	testClient(ctx, client)
+func cmdList(ctx context.Context, client *mastodon.Client) error {
+	timeline, err := client.GetTimelineHome(context.Background(), nil)
+	if err != nil {
+		return err
+	}
+	for i := len(timeline) - 1; i >= 0; i-- {
+		fmt.Println(timeline[i])
+	}
+	return nil
+}
+
+func run(ctx context.Context, args []string) error {
+	if len(args) < 1 {
+		glog.Exit("missing subcommand")
+	}
+
+	st, db, err := getStorage(ctx)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	switch cmd := args[0]; cmd {
+	case "auth":
+		return cmdAuth(ctx, st)
+	case "list":
+		ai, err := st.AuthInfo(ctx)
+		if err != nil {
+			return err
+		}
+		client := mastodon.NewClient(&mastodon.Config{
+			Server:       ai.ServerAddr,
+			ClientID:     ai.ClientID,
+			ClientSecret: ai.ClientSecret,
+			AccessToken:  ai.AccessToken,
+		})
+		return cmdList(ctx, client)
+	default:
+		return fmt.Errorf("unknown command %s", cmd)
+	}
+}
+
+func main() {
+	ctx := context.Background()
+	flag.Parse()
+	fmt.Println("Mastopoof")
+
+	err := run(ctx, flag.Args())
+	if err != nil {
+		glog.Exit(err)
+	}
 }
