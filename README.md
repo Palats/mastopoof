@@ -1,0 +1,2 @@
+# mastopoof
+A Mastodon client
