@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/golang/glog"
 	"github.com/mattn/go-mastodon"
 
@@ -44,16 +45,55 @@ func NewStorage(db *sql.DB) *Storage {
 	return &Storage{db: db}
 }
 
+const schemaVersion = 1
+
 func (st *Storage) Init(ctx context.Context) error {
-	sqlStmt := `
-		CREATE TABLE IF NOT EXISTS authinfo (
-			id integer not null primary key,
-			content text
-		);
-	`
-	_, err := st.db.Exec(sqlStmt)
+	// Get version of the storage.
+	row := st.db.QueryRow("PRAGMA user_version")
+	if row == nil {
+		return fmt.Errorf("unable to find user_version")
+
+	}
+	var version int
+	if err := row.Scan(&version); err != nil {
+		return fmt.Errorf("error parsing user_version: %w", err)
+	}
+	glog.Infof("PRAGMA user_version is %d (target=%v)", version, schemaVersion)
+	if version > schemaVersion {
+		return fmt.Errorf("user_version of DB (%v) is higher than supported schema version (%v)", version, schemaVersion)
+	}
+	if version == schemaVersion {
+		return nil
+	}
+
+	glog.Infof("updating database schema")
+
+	// Prepare update of the database schema.
+	txn, err := st.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+		return fmt.Errorf("unable to update DB schema: %w", err)
+	}
+	defer txn.Rollback()
+
+	if version < 1 {
+		sqlStmt := `
+			CREATE TABLE IF NOT EXISTS authinfo (
+				id integer not null primary key,
+				content text
+			);
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+		}
+	}
+
+	if _, err := txn.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion)); err != nil {
+		return fmt.Errorf("unable to set user_version: %w", err)
+	}
+
+	// And commit the change.
+	if err := txn.Commit(); err != nil {
+		return fmt.Errorf("unable to update DB schema: %w", err)
 	}
 	return nil
 
@@ -97,7 +137,7 @@ func registerApp(ctx context.Context, ai *AuthInfo) (*mastodon.Application, erro
 	app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
 		Server:     ai.ServerAddr,
 		ClientName: "mastopoof",
-		Scopes:     "read write follow",
+		Scopes:     "read",
 		Website:    "https://github.com/Palats/mastopoof",
 	})
 	if err != nil {
@@ -211,7 +251,8 @@ func cmdList(ctx context.Context, client *mastodon.Client) error {
 		return err
 	}
 	for i := len(timeline) - 1; i >= 0; i-- {
-		fmt.Println(timeline[i])
+		fmt.Println("-------------------------------")
+		spew.Dump(timeline[i].ID, timeline[i].URL)
 	}
 	return nil
 }
