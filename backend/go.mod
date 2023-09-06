@@ -3,7 +3,7 @@ module github.com/Palats/mastopoof/backend
 go 1.21.0
 
 require (
-	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/davecgh/go-spew v1.1.1
 	github.com/golang/glog v1.1.2
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/mattn/go-mastodon v0.0.6
