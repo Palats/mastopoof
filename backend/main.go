@@ -374,29 +374,60 @@ func cmdFetch(ctx context.Context, st *Storage, authInfo *AuthInfo, client *mast
 		return fmt.Errorf("unable to fetch user state: %w", err)
 	}
 
-	pg := &mastodon.Pagination{
-		Limit: 10,
-		MinID: userState.LastHomeStatusID,
-	}
-	timeline, err := client.GetTimelineHome(ctx, pg)
-	if err != nil {
-		return err
-	}
-	glog.Infof("Found %d new status on home timeline", len(timeline))
-
-	for _, status := range timeline {
-		if IDNewer(status.ID, userState.LastHomeStatusID) {
-			userState.LastHomeStatusID = status.ID
+	fetchCount := 0
+	// Do multiple fetching, until either up to date, or up to a boundary to avoid infinite loops by mistake.
+	for fetchCount < 10 {
+		// Pagination object is updated by GetTimelimeHome, based on the `Link` header
+		// returned by the API - see https://docs.joinmastodon.org/api/guidelines/#pagination .
+		// In practice, it seems:
+		//  - MinID is set to the most recent ID returned (from the "prev" Link, which is for future statuses)
+		//  - MaxID is set to an older ID (from the "next" Link, which is for older status)
+		//  - SinceID, Limit are empty/0.
+		// See https://github.com/mattn/go-mastodon/blob/9faaa4f0dc23d9001ccd1010a9a51f56ba8d2f9f/mastodon.go#L317
+		// It seems that if MaxID and MinID are identical, it means the end has been reached and some result were given.
+		// And if there is no MaxID, the end has been reached.
+		pg := &mastodon.Pagination{
+			MinID: userState.LastHomeStatusID,
 		}
-
-		jsonString, err := json.Marshal(status)
+		glog.Infof("Fetching from %s", pg.MinID)
+		timeline, err := client.GetTimelineHome(ctx, pg)
 		if err != nil {
 			return err
 		}
-		stmt := `INSERT INTO statuses(uid, status) VALUES(?, ?)`
-		_, err = txn.ExecContext(ctx, stmt, authInfo.UID, jsonString)
-		if err != nil {
-			return err
+		glog.Infof("Found %d new status on home timeline", len(timeline))
+
+		for _, status := range timeline {
+			if IDNewer(status.ID, userState.LastHomeStatusID) {
+				userState.LastHomeStatusID = status.ID
+			}
+
+			jsonString, err := json.Marshal(status)
+			if err != nil {
+				return err
+			}
+			stmt := `INSERT INTO statuses(uid, status) VALUES(?, ?)`
+			_, err = txn.ExecContext(ctx, stmt, authInfo.UID, jsonString)
+			if err != nil {
+				return err
+			}
+		}
+
+		fetchCount++
+		// Pagination got updated.
+		if pg.MinID != userState.LastHomeStatusID {
+			// Either there is a mismatch in the data or no `Link` was returned
+			// - in either case, we don't know enough to safely continue.
+			glog.Infof("no returned MinID / ID mismatch, stopping fetch")
+			break
+		}
+		if pg.MaxID == "" || pg.MaxID == pg.MinID {
+			// We've reached the end - either nothing was fetched, or just the
+			// latest ones.
+			break
+		}
+		if len(timeline) == 0 {
+			// Nothing was returned, assume it is because we've reached the end.
+			break
 		}
 	}
 
@@ -408,15 +439,6 @@ func cmdFetch(ctx context.Context, st *Storage, authInfo *AuthInfo, client *mast
 }
 
 func cmdList(ctx context.Context, st *Storage, authInfo *AuthInfo, client *mastodon.Client) error {
-	/*timeline, err := client.GetTimelineHome(ctx, nil)
-	if err != nil {
-		return err
-	}
-	for i := len(timeline) - 1; i >= 0; i-- {
-		fmt.Println("-------------------------------")
-		spew.Dump(timeline[i].ID, timeline[i].URL)
-	}
-	return nil*/
 	rows, err := st.db.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
 	if err != nil {
 		return err
