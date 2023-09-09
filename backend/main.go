@@ -460,6 +460,31 @@ func cmdList(ctx context.Context, st *Storage, authInfo *AuthInfo, client *masto
 	return nil
 }
 
+func cmdDumpStatus(ctx context.Context, st *Storage, authInfo *AuthInfo, client *mastodon.Client, args []string) error {
+	rows, err := st.db.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var jsonString string
+		if err := rows.Scan(&jsonString); err != nil {
+			return err
+		}
+		var status mastodon.Status
+		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
+			return err
+		}
+
+		for _, a := range args {
+			if a != string(status.ID) {
+				continue
+			}
+			spew.Dump(status)
+		}
+	}
+	return nil
+}
+
 func run(ctx context.Context, args []string) error {
 	if len(args) < 1 {
 		glog.Exit("missing subcommand")
@@ -502,6 +527,18 @@ func run(ctx context.Context, args []string) error {
 			AccessToken:  ai.AccessToken,
 		})
 		return cmdList(ctx, st, ai, client)
+	case "dumpstatus":
+		ai, err := st.AuthInfo(ctx, st.db)
+		if err != nil {
+			return err
+		}
+		client := mastodon.NewClient(&mastodon.Config{
+			Server:       ai.ServerAddr,
+			ClientID:     ai.ClientID,
+			ClientSecret: ai.ClientSecret,
+			AccessToken:  ai.AccessToken,
+		})
+		return cmdDumpStatus(ctx, st, ai, client, args[1:])
 	default:
 		return fmt.Errorf("unknown command %s", cmd)
 	}
