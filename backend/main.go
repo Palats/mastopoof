@@ -81,7 +81,7 @@ func NewStorage(db *sql.DB) *Storage {
 	return &Storage{db: db}
 }
 
-const schemaVersion = 2
+const schemaVersion = 3
 
 func (st *Storage) Init(ctx context.Context) error {
 	// Get version of the storage.
@@ -145,6 +145,40 @@ func (st *Storage) Init(ctx context.Context) error {
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 		}
+	}
+
+	if version < 3 {
+		// Do backfill of status key
+		sqlStmt := `
+			ALTER TABLE statuses ADD COLUMN uri TEXT
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+		}
+
+		rows, err := st.db.QueryContext(ctx, `SELECT sid, status FROM statuses`)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var jsonString string
+			var sid int64
+			if err := rows.Scan(&sid, &jsonString); err != nil {
+				return err
+			}
+			var status mastodon.Status
+			if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
+				return err
+			}
+
+			stmt := `
+				UPDATE statuses SET uri = ? WHERE sid = ?;
+			`
+			if _, err := txn.ExecContext(ctx, stmt, status.URI, sid); err != nil {
+				return fmt.Errorf("unable to backfil URI for sid %v: %v", sid, err)
+			}
+		}
+
 	}
 
 	if _, err := txn.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion)); err != nil {
@@ -405,8 +439,8 @@ func cmdFetch(ctx context.Context, st *Storage, authInfo *AuthInfo, client *mast
 			if err != nil {
 				return err
 			}
-			stmt := `INSERT INTO statuses(uid, status) VALUES(?, ?)`
-			_, err = txn.ExecContext(ctx, stmt, authInfo.UID, jsonString)
+			stmt := `INSERT INTO statuses(uid, uri, status) VALUES(?, ?, ?)`
+			_, err = txn.ExecContext(ctx, stmt, authInfo.UID, status.URI, jsonString)
 			if err != nil {
 				return err
 			}
