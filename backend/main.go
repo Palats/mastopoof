@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
@@ -24,6 +25,7 @@ var (
 	serverAddr = flag.String("server", "", "Mastodon server to track. Only needed when authenticating.")
 	clearApp   = flag.Bool("clear_app", false, "Force re-registration of the app against the Mastodon server")
 	clearAuth  = flag.Bool("clear_auth", false, "Force re-approval of auth; does not touch app registration")
+	port       = flag.Int("port", 8079, "Port to listen on for the 'serve' command")
 )
 
 // AuthInfo represents information about a user authentification in the DB.
@@ -472,6 +474,57 @@ func cmdFetch(ctx context.Context, st *Storage, authInfo *AuthInfo, client *mast
 	return txn.Commit()
 }
 
+type httpErr int
+
+func (herr httpErr) Error() string {
+	return fmt.Sprintf("%d: %s", int(herr), http.StatusText(int(herr)))
+}
+
+func httpFunc(f func(w http.ResponseWriter, r *http.Request) error) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := f(w, r)
+		if err != nil {
+			var herr httpErr
+			if errors.As(err, &herr) {
+				http.Error(w, err.Error(), int(herr))
+			} else {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		}
+	}
+}
+
+func cmdServe(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
+	http.HandleFunc("/list", httpFunc(func(w http.ResponseWriter, r *http.Request) error {
+		rows, err := st.db.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
+		if err != nil {
+			return err
+		}
+
+		data := []map[string]any{}
+		for rows.Next() {
+			var jsonString string
+			if err := rows.Scan(&jsonString); err != nil {
+				return err
+			}
+			var status mastodon.Status
+			if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
+				return err
+			}
+
+			data = append(data, map[string]any{
+				"URI": status.URI,
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		return json.NewEncoder(w).Encode(data)
+	}))
+
+	addr := fmt.Sprintf(":%d", *port)
+	fmt.Printf("Listening on %s...\n", addr)
+	return http.ListenAndServe(addr, nil)
+}
+
 func cmdList(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 	rows, err := st.db.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
 	if err != nil {
@@ -549,6 +602,12 @@ func run(ctx context.Context, args []string) error {
 			AccessToken:  ai.AccessToken,
 		})
 		return cmdFetch(ctx, st, ai, client)
+	case "serve":
+		ai, err := st.AuthInfo(ctx, st.db)
+		if err != nil {
+			return err
+		}
+		return cmdServe(ctx, st, ai)
 	case "list":
 		ai, err := st.AuthInfo(ctx, st.db)
 		if err != nil {
