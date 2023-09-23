@@ -438,7 +438,7 @@ func cmdFetch(ctx context.Context, st *Storage, authInfo *AuthInfo, client *mast
 	return txn.Commit()
 }
 
-func cmdList(ctx context.Context, st *Storage, authInfo *AuthInfo, client *mastodon.Client) error {
+func cmdList(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 	rows, err := st.db.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
 	if err != nil {
 		return err
@@ -460,7 +460,7 @@ func cmdList(ctx context.Context, st *Storage, authInfo *AuthInfo, client *masto
 	return nil
 }
 
-func cmdDumpStatus(ctx context.Context, st *Storage, authInfo *AuthInfo, client *mastodon.Client, args []string) error {
+func cmdDumpStatus(ctx context.Context, st *Storage, authInfo *AuthInfo, args []string) error {
 	rows, err := st.db.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
 	if err != nil {
 		return err
@@ -520,25 +520,13 @@ func run(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		client := mastodon.NewClient(&mastodon.Config{
-			Server:       ai.ServerAddr,
-			ClientID:     ai.ClientID,
-			ClientSecret: ai.ClientSecret,
-			AccessToken:  ai.AccessToken,
-		})
-		return cmdList(ctx, st, ai, client)
+		return cmdList(ctx, st, ai)
 	case "dumpstatus":
 		ai, err := st.AuthInfo(ctx, st.db)
 		if err != nil {
 			return err
 		}
-		client := mastodon.NewClient(&mastodon.Config{
-			Server:       ai.ServerAddr,
-			ClientID:     ai.ClientID,
-			ClientSecret: ai.ClientSecret,
-			AccessToken:  ai.AccessToken,
-		})
-		return cmdDumpStatus(ctx, st, ai, client, args[1:])
+		return cmdDumpStatus(ctx, st, ai, args[1:])
 	default:
 		return fmt.Errorf("unknown command %s", cmd)
 	}

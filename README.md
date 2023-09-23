@@ -17,3 +17,17 @@ Reauth:
 go run main.go --server https://mastodon.social --clear_app --clear_auth auth
 ```
 
+## Frontend
+
+Initial setup:
+
+```
+npm install
+```
+
+Run:
+
+```
+npm run dev
+```
+
