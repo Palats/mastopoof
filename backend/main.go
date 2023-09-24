@@ -501,7 +501,7 @@ func cmdServe(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 			return err
 		}
 
-		data := []map[string]any{}
+		data := []any{}
 		for rows.Next() {
 			var jsonString string
 			if err := rows.Scan(&jsonString); err != nil {
@@ -512,9 +512,7 @@ func cmdServe(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 				return err
 			}
 
-			data = append(data, map[string]any{
-				"URI": status.URI,
-			})
+			data = append(data, status)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		return json.NewEncoder(w).Encode(data)

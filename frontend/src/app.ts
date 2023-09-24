@@ -4,9 +4,9 @@ import { of, catchError } from 'rxjs';
 import { fromFetch } from 'rxjs/fetch';
 import { switchMap } from 'rxjs/operators';
 
-type JSONListEntry = {
-  URI: string;
-}
+// import { createRestAPIClient } from "masto.";
+import { mastodon } from "masto";
+
 
 @customElement('app-root')
 export class AppRoot extends LitElement {
@@ -29,7 +29,7 @@ export class AppRoot extends LitElement {
   );;
 
   @state()
-  private data: JSONListEntry[] = [];
+  private data: mastodon.v1.Status[] = [];
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -41,11 +41,12 @@ export class AppRoot extends LitElement {
 
   render() {
     return html`
-      <table>
       ${this.data.map(e => html`
-      <tr><td>${e.URI}</td></tr>
+      <div>
+        <h2>${e.uri}</h2>
+        ${e.content}
+      </div>
       `)}
-      </table>
     `
   }
 
