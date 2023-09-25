@@ -1,16 +1,16 @@
 import { LitElement, css, html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
-import { of, catchError } from 'rxjs';
+import { of, catchError, Subject } from 'rxjs';
 import { fromFetch } from 'rxjs/fetch';
-import { switchMap } from 'rxjs/operators';
+import { switchMap, takeUntil } from 'rxjs/operators';
 
-// import { createRestAPIClient } from "masto.";
 import { mastodon } from "masto";
 
+// https://adrianfaciu.dev/posts/observables-litelement/
 
 @customElement('app-root')
 export class AppRoot extends LitElement {
-  // values$ = interval(1000).pipe(take(10));
+  unsubscribe$ = new Subject<null>();
   values$ = fromFetch('/list').pipe(
     switchMap(response => {
       if (response.ok) {
@@ -26,17 +26,23 @@ export class AppRoot extends LitElement {
       console.error(err);
       return of({ error: true, message: err.message })
     })
-  );;
+  );
 
   @state()
   private data: mastodon.v1.Status[] = [];
 
   connectedCallback(): void {
     super.connectedCallback();
-    this.values$.subscribe(v => {
+    this.values$.pipe(takeUntil(this.unsubscribe$)).subscribe(v => {
       this.data = v;
       this.requestUpdate();
     });
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.unsubscribe$.next(null);
+    this.unsubscribe$.complete();
   }
 
   render() {
