@@ -1,5 +1,6 @@
 import { LitElement, css, html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
+import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { of, catchError, Subject } from 'rxjs';
 import { fromFetch } from 'rxjs/fetch';
 import { switchMap, takeUntil } from 'rxjs/operators';
@@ -31,6 +32,9 @@ export class AppRoot extends LitElement {
   @state()
   private data: mastodon.v1.Status[] = [];
 
+  @state()
+  private showRaw = false;
+
   connectedCallback(): void {
     super.connectedCallback();
     this.values$.pipe(takeUntil(this.unsubscribe$)).subscribe(v => {
@@ -48,15 +52,31 @@ export class AppRoot extends LitElement {
   render() {
     return html`
       ${this.data.map(e => html`
-      <div>
-        <h2>${e.uri}</h2>
-        ${e.content}
+      <div class="status">
+        ${e.account.display_name}
+        ${unsafeHTML(e.content)}
+        <div class="tools">
+          <button @click="${() => { this.showRaw = !this.showRaw }}">Show raw</button>
+        </div>
+        ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(e, null, "  ")}</pre>` : ''}
       </div>
       `)}
     `
   }
 
-  static styles = css``
+  static styles = css`
+    .status {
+      border: solid;
+      border-radius: .5rem;
+      border-width: .2rem;
+      margin: .5rem;
+      padding: 0.4rem;
+    }
+
+    .rawcontent {
+      white-space: pre-wrap;
+    }
+  `
 }
 
 declare global {
