@@ -1,5 +1,5 @@
 import { LitElement, css, html } from 'lit'
-import { customElement, state } from 'lit/decorators.js'
+import { customElement, state, property } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { of, catchError, Subject } from 'rxjs';
 import { fromFetch } from 'rxjs/fetch';
@@ -32,9 +32,6 @@ export class AppRoot extends LitElement {
   @state()
   private data: mastodon.Status[] = [];
 
-  @state()
-  private showRaw = false;
-
   connectedCallback(): void {
     super.connectedCallback();
     this.values$.pipe(takeUntil(this.unsubscribe$)).subscribe(v => {
@@ -52,15 +49,42 @@ export class AppRoot extends LitElement {
   render() {
     return html`
       ${this.data.map(e => html`
+        <mast-status .status=${e}></mast-status>
+      `)}
+    `
+  }
+
+  static styles = css`
+  `
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'app-root': AppRoot
+  }
+}
+
+@customElement('mast-status')
+export class MastStatus extends LitElement {
+  @property({ attribute: false })
+  status?: mastodon.Status;
+
+  @state()
+  private showRaw = false;
+
+  render() {
+    if (!this.status) {
+      return html`<div class="status"></div>`
+    }
+    return html`
       <div class="status">
-        ${e.account.display_name}
-        ${unsafeHTML(e.content)}
+        ${this.status.account.display_name}
+        ${unsafeHTML(this.status.content)}
         <div class="tools">
           <button @click="${() => { this.showRaw = !this.showRaw }}">Show raw</button>
         </div>
-        ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(e, null, "  ")}</pre>` : ''}
+        ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(this.status, null, "  ")}</pre>` : ''}
       </div>
-      `)}
     `
   }
 
@@ -77,10 +101,11 @@ export class AppRoot extends LitElement {
       white-space: pre-wrap;
     }
   `
+
 }
 
 declare global {
   interface HTMLElementTagNameMap {
-    'app-root': AppRoot
+    'mast-status': MastStatus
   }
 }
