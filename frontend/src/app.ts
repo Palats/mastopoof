@@ -1,4 +1,4 @@
-import { LitElement, css, html } from 'lit'
+import { LitElement, css, html, nothing, TemplateResult } from 'lit'
 import { customElement, state, property } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { of, catchError, Subject } from 'rxjs';
@@ -73,17 +73,34 @@ export class MastStatus extends LitElement {
   private showRaw = false;
 
   render() {
-    if (!this.status) {
+    const s = this.status;
+    if (!s) {
       return html`<div class="status"></div>`
     }
+
+    const attachments: TemplateResult[] = [];
+    for (const ma of s.media_attachments) {
+      if (ma.type === "image") {
+        attachments.push(html`
+          <img src=${ma.preview_url} alt=${ma.description}></img>
+        `);
+      }
+    }
+
     return html`
       <div class="status">
-        ${this.status.account.display_name}
-        ${unsafeHTML(this.status.content)}
+        <div class="account">
+          <img class="avatar" src=${s.account.avatar} alt="avatar of ${s.account.display_name}"></img>
+          ${s.account.display_name}
+        </div>
+        <div class="content">
+          ${unsafeHTML(s.content)}
+          ${attachments}
+        </div>
         <div class="tools">
           <button @click="${() => { this.showRaw = !this.showRaw }}">Show raw</button>
         </div>
-        ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(this.status, null, "  ")}</pre>` : ''}
+        ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(s, null, "  ")}</pre>` : nothing}
       </div>
     `
   }
@@ -93,12 +110,38 @@ export class MastStatus extends LitElement {
       border: solid;
       border-radius: .5rem;
       border-width: .2rem;
-      margin: .5rem;
-      padding: 0.4rem;
+      margin: 0.1rem;
+      padding: 0;
+
+      overflow: hidden;
+      display: grid;
     }
 
     .rawcontent {
       white-space: pre-wrap;
+    }
+
+    .account {
+      display: flex;
+      background-color: #baffff;
+      align-items: center;
+      padding: 0.2rem;
+    }
+
+    .avatar {
+      width: auto;
+      max-height: 32px;
+    }
+
+    .content {
+      padding: 0.2rem;
+    }
+
+    .tools {
+      display: flex;
+      background-color: #e6e6e6;
+      align-items: center;
+      padding: 0.2rem;
     }
   `
 
