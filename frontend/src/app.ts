@@ -5,7 +5,7 @@ import { of, catchError, Subject } from 'rxjs';
 import { fromFetch } from 'rxjs/fetch';
 import { switchMap, takeUntil } from 'rxjs/operators';
 
-import { mastodon } from "masto";
+import * as mastodon from "./mastodon";
 
 // https://adrianfaciu.dev/posts/observables-litelement/
 
@@ -30,7 +30,7 @@ export class AppRoot extends LitElement {
   );
 
   @state()
-  private data: mastodon.v1.Status[] = [];
+  private data: mastodon.Status[] = [];
 
   @state()
   private showRaw = false;
