@@ -73,10 +73,14 @@ export class MastStatus extends LitElement {
   private showRaw = false;
 
   render() {
-    const s = this.status;
-    if (!s) {
+    if (!this.status) {
       return html`<div class="status"></div>`
     }
+
+    // This actual status - i.e., the reblogged one when it is a reblogged, or
+    // the basic one.
+    const s = this.status.reblog ?? this.status;
+    const isReblog = !!this.status.reblog;
 
     const attachments: TemplateResult[] = [];
     for (const ma of s.media_attachments) {
@@ -89,9 +93,15 @@ export class MastStatus extends LitElement {
 
     return html`
       <div class="status">
+        ${isReblog ? html`
+          <div class="reblog">
+            <img class="avatar" src=${this.status.account.avatar} alt="avatar of ${this.status.account.display_name}"></img>
+            reblog by ${this.status.account.display_name}
+          </div>
+        `: nothing}
         <div class="account">
           <img class="avatar" src=${s.account.avatar} alt="avatar of ${s.account.display_name}"></img>
-          ${s.account.display_name}
+          ${s.account.display_name} &lt;${s.account.acct}&gt;
         </div>
         <div class="content">
           ${unsafeHTML(s.content)}
@@ -100,7 +110,7 @@ export class MastStatus extends LitElement {
         <div class="tools">
           <button @click="${() => { this.showRaw = !this.showRaw }}">Show raw</button>
         </div>
-        ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(s, null, "  ")}</pre>` : nothing}
+        ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(this.status, null, "  ")}</pre>` : nothing}
       </div>
     `
   }
