@@ -48,13 +48,41 @@ export class AppRoot extends LitElement {
 
   render() {
     return html`
-      ${this.data.map(e => html`
-        <mast-status .status=${e}></mast-status>
-      `)}
+      <div class="header">
+      </div>
+      <div class="page">
+        <div class="statuses">
+          ${this.data.map(e => html`
+            <mast-status .status=${e}></mast-status>
+          `)}
+        </div>
+      </div>
     `
   }
 
   static styles = css`
+    :host {
+      display: grid;
+      grid-template-rows: 40px 1fr;
+      grid-template-columns: 1fr;
+    }
+
+    .header {
+      grid-row: 1;
+      background-color: #efefef;
+      position: sticky;
+      top: 0;
+    }
+
+    .page {
+      grid-row: 2;
+      display: grid;
+      grid-template-columns: 1fr minmax(100px, 600px) 1fr;
+    }
+
+    .statuses {
+      grid-column: 2;
+    }
   `
 }
 
@@ -105,6 +133,8 @@ export class MastStatus extends LitElement {
         </div>
         <div class="content">
           ${unsafeHTML(s.content)}
+        </div>
+        <div class="attachments">
           ${attachments}
         </div>
         <div class="tools">
@@ -129,6 +159,7 @@ export class MastStatus extends LitElement {
 
     .rawcontent {
       white-space: pre-wrap;
+      word-break: break-all;
     }
 
     .account {
@@ -145,6 +176,19 @@ export class MastStatus extends LitElement {
 
     .content {
       padding: 0.2rem;
+    }
+
+    .attachments {
+      width: 100%;
+      display: grid;
+      align-items: center;
+      justify-items: center;
+      grid-template-columns: 1fr;
+    }
+
+    .attachments img {
+      max-width: 500px;
+      max-height: 400px;
     }
 
     .tools {
