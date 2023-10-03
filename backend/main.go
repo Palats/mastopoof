@@ -614,6 +614,24 @@ func run(ctx context.Context, args []string) error {
 	case "clearstate":
 		// Nuke all state in the DB, except for auth against Mastodon server.
 		return cmdClearState(ctx, st)
+	case "me":
+		// Get information about one's own account.
+		ai, err := st.AuthInfo(ctx, st.db)
+		if err != nil {
+			return err
+		}
+		client := mastodon.NewClient(&mastodon.Config{
+			Server:       ai.ServerAddr,
+			ClientID:     ai.ClientID,
+			ClientSecret: ai.ClientSecret,
+			AccessToken:  ai.AccessToken,
+		})
+		account, err := client.GetAccountCurrentUser(ctx)
+		if err != nil {
+			return err
+		}
+		spew.Dump(account)
+		return nil
 	case "fetch":
 		// Fetch recent home content and add it to the DB.
 		ai, err := st.AuthInfo(ctx, st.db)
