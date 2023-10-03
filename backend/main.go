@@ -304,6 +304,31 @@ func getStorage(ctx context.Context) (*Storage, *sql.DB, error) {
 	return st, db, nil
 }
 
+func cmdInfo(ctx context.Context, st *Storage) error {
+	txn, err := st.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer txn.Rollback()
+	ai, err := st.AuthInfo(ctx, txn)
+	if err != nil {
+		return err
+	}
+
+	us, err := st.UserState(ctx, txn, ai.UID)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Local account UID:", ai.UID)
+	fmt.Println("Server address:", ai.ServerAddr)
+	fmt.Println("Client ID:", ai.ClientID)
+	fmt.Println("AuthURI:", ai.AuthURI)
+	fmt.Println("Last home status ID:", us.LastHomeStatusID)
+
+	// Should be readonly.
+	return txn.Commit()
+}
+
 func cmdAuth(ctx context.Context, st *Storage) error {
 	txn, err := st.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -582,6 +607,8 @@ func run(ctx context.Context, args []string) error {
 	defer db.Close()
 
 	switch cmd := args[0]; cmd {
+	case "info":
+		return cmdInfo(ctx, st)
 	case "auth":
 		return cmdAuth(ctx, st)
 	case "clearstate":
