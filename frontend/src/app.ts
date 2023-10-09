@@ -7,6 +7,17 @@ import { switchMap, takeUntil } from 'rxjs/operators';
 
 import * as mastodon from "./mastodon";
 
+const color1bg = css`#08415C`;
+const color1fg = css`#ffffff`;
+const color2bg = css`#CC2936`;
+const color2fg = css`#ffffff`;
+const color3bg = css`#EBBAB9`;
+const color3fg = css`#000000`;
+const color4bg = css`#388697`;
+const color4fg = css`#000000`;
+const color5bg = css`#B5FFE1`;
+const color5fg = css`#000000`;
+
 // https://adrianfaciu.dev/posts/observables-litelement/
 
 @customElement('app-root')
@@ -147,7 +158,8 @@ export class MastStatus extends LitElement {
 
   static styles = css`
     .status {
-      border: solid;
+      border-style: solid;
+      border-color: ${color1bg};
       border-radius: .5rem;
       border-width: .2rem;
       margin: 0.1rem;
@@ -164,14 +176,30 @@ export class MastStatus extends LitElement {
 
     .account {
       display: flex;
-      background-color: #baffff;
+      background-color: ${color5bg};
       align-items: center;
       padding: 0.2rem;
     }
 
+    .reblog {
+      display: flex;
+      background-color: ${color2bg};
+      align-items: center;
+      padding: 0.2rem;
+      color: ${color2fg};
+    }
+
     .avatar {
       width: auto;
+      padding-right: 0.2rem;
+    }
+
+    .account .avatar {
       max-height: 32px;
+    }
+
+    .reblog .avatar {
+      max-height: 20px;
     }
 
     .content {
@@ -193,9 +221,10 @@ export class MastStatus extends LitElement {
 
     .tools {
       display: flex;
-      background-color: #e6e6e6;
+      background-color: ${color4bg};
       align-items: center;
       padding: 0.2rem;
+      margin-top: 0.2rem;
     }
   `
 
