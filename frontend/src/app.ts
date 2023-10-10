@@ -164,6 +164,7 @@ export class MastStatus extends LitElement {
       border-width: .2rem;
       margin: 0.1rem;
       padding: 0;
+      background-color: #ffffff;
 
       overflow: hidden;
       display: grid;

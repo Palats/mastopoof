@@ -595,6 +595,12 @@ func cmdDumpStatus(ctx context.Context, st *Storage, authInfo *AuthInfo, args []
 	return nil
 }
 
+type Subcommand struct {
+	Name     string
+	Synopsis string
+	Run      func() error
+}
+
 func run(ctx context.Context, args []string) error {
 	if len(args) < 1 {
 		glog.Exit("missing subcommand")
@@ -606,66 +612,104 @@ func run(ctx context.Context, args []string) error {
 	}
 	defer db.Close()
 
-	switch cmd := args[0]; cmd {
-	case "info":
-		return cmdInfo(ctx, st)
-	case "auth":
-		return cmdAuth(ctx, st)
-	case "clearstate":
-		// Nuke all state in the DB, except for auth against Mastodon server.
-		return cmdClearState(ctx, st)
-	case "me":
-		// Get information about one's own account.
-		ai, err := st.AuthInfo(ctx, st.db)
-		if err != nil {
-			return err
-		}
-		client := mastodon.NewClient(&mastodon.Config{
-			Server:       ai.ServerAddr,
-			ClientID:     ai.ClientID,
-			ClientSecret: ai.ClientSecret,
-			AccessToken:  ai.AccessToken,
-		})
-		account, err := client.GetAccountCurrentUser(ctx)
-		if err != nil {
-			return err
-		}
-		spew.Dump(account)
-		return nil
-	case "fetch":
-		// Fetch recent home content and add it to the DB.
-		ai, err := st.AuthInfo(ctx, st.db)
-		if err != nil {
-			return err
-		}
-		client := mastodon.NewClient(&mastodon.Config{
-			Server:       ai.ServerAddr,
-			ClientID:     ai.ClientID,
-			ClientSecret: ai.ClientSecret,
-			AccessToken:  ai.AccessToken,
-		})
-		return cmdFetch(ctx, st, ai, client)
-	case "serve":
-		ai, err := st.AuthInfo(ctx, st.db)
-		if err != nil {
-			return err
-		}
-		return cmdServe(ctx, st, ai)
-	case "list":
-		ai, err := st.AuthInfo(ctx, st.db)
-		if err != nil {
-			return err
-		}
-		return cmdList(ctx, st, ai)
-	case "dumpstatus":
-		ai, err := st.AuthInfo(ctx, st.db)
-		if err != nil {
-			return err
-		}
-		return cmdDumpStatus(ctx, st, ai, args[1:])
-	default:
-		return fmt.Errorf("unknown command %s", cmd)
+	cmds := []Subcommand{
+		{
+			Name:     "info",
+			Synopsis: "Info about something",
+			Run: func() error {
+				return cmdInfo(ctx, st)
+			},
+		}, {
+			Name:     "auth",
+			Synopsis: "Authenticate against server",
+			Run: func() error {
+				return cmdAuth(ctx, st)
+			},
+		}, {
+			Name:     "clearstate",
+			Synopsis: "Nuke all state in the DB, except for auth against Mastodon server.",
+			Run: func() error {
+				return cmdClearState(ctx, st)
+			},
+		}, {
+			Name:     "me",
+			Synopsis: "Get information about one's own account.",
+			Run: func() error {
+				ai, err := st.AuthInfo(ctx, st.db)
+				if err != nil {
+					return err
+				}
+				client := mastodon.NewClient(&mastodon.Config{
+					Server:       ai.ServerAddr,
+					ClientID:     ai.ClientID,
+					ClientSecret: ai.ClientSecret,
+					AccessToken:  ai.AccessToken,
+				})
+				account, err := client.GetAccountCurrentUser(ctx)
+				if err != nil {
+					return err
+				}
+				spew.Dump(account)
+				return nil
+			},
+		}, {
+			Name:     "fetch",
+			Synopsis: "Fetch recent home content and add it to the DB.",
+			Run: func() error {
+				ai, err := st.AuthInfo(ctx, st.db)
+				if err != nil {
+					return err
+				}
+				client := mastodon.NewClient(&mastodon.Config{
+					Server:       ai.ServerAddr,
+					ClientID:     ai.ClientID,
+					ClientSecret: ai.ClientSecret,
+					AccessToken:  ai.AccessToken,
+				})
+				return cmdFetch(ctx, st, ai, client)
+			},
+		}, {
+			Name:     "serve",
+			Synopsis: "",
+			Run: func() error {
+				ai, err := st.AuthInfo(ctx, st.db)
+				if err != nil {
+					return err
+				}
+				return cmdServe(ctx, st, ai)
+
+			},
+		}, {
+			Name:     "list",
+			Synopsis: "",
+			Run: func() error {
+				ai, err := st.AuthInfo(ctx, st.db)
+				if err != nil {
+					return err
+				}
+				return cmdList(ctx, st, ai)
+			},
+		}, {
+			Name:     "dumpstatus",
+			Synopsis: "",
+			Run: func() error {
+				ai, err := st.AuthInfo(ctx, st.db)
+				if err != nil {
+					return err
+				}
+				return cmdDumpStatus(ctx, st, ai, args[1:])
+			},
+		},
 	}
+
+	cmd := args[0]
+	for _, cmdInfo := range cmds {
+		if cmdInfo.Name == args[0] {
+			return cmdInfo.Run()
+		}
+	}
+
+	return fmt.Errorf("unknown command %s", cmd)
 }
 
 func main() {
