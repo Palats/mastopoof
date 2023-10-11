@@ -15,6 +15,8 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/golang/glog"
 	"github.com/mattn/go-mastodon"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -595,129 +597,131 @@ func cmdDumpStatus(ctx context.Context, st *Storage, authInfo *AuthInfo, args []
 	return nil
 }
 
-type Subcommand struct {
-	Name     string
-	Synopsis string
-	Run      func() error
-}
-
-func run(ctx context.Context, args []string) error {
-	if len(args) < 1 {
-		glog.Exit("missing subcommand")
-	}
-
+func run(ctx context.Context) error {
 	st, db, err := getStorage(ctx)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
-	cmds := []Subcommand{
-		{
-			Name:     "info",
-			Synopsis: "Info about something",
-			Run: func() error {
-				return cmdInfo(ctx, st)
-			},
-		}, {
-			Name:     "auth",
-			Synopsis: "Authenticate against server",
-			Run: func() error {
-				return cmdAuth(ctx, st)
-			},
-		}, {
-			Name:     "clearstate",
-			Synopsis: "Nuke all state in the DB, except for auth against Mastodon server.",
-			Run: func() error {
-				return cmdClearState(ctx, st)
-			},
-		}, {
-			Name:     "me",
-			Synopsis: "Get information about one's own account.",
-			Run: func() error {
-				ai, err := st.AuthInfo(ctx, st.db)
-				if err != nil {
-					return err
-				}
-				client := mastodon.NewClient(&mastodon.Config{
-					Server:       ai.ServerAddr,
-					ClientID:     ai.ClientID,
-					ClientSecret: ai.ClientSecret,
-					AccessToken:  ai.AccessToken,
-				})
-				account, err := client.GetAccountCurrentUser(ctx)
-				if err != nil {
-					return err
-				}
-				spew.Dump(account)
-				return nil
-			},
-		}, {
-			Name:     "fetch",
-			Synopsis: "Fetch recent home content and add it to the DB.",
-			Run: func() error {
-				ai, err := st.AuthInfo(ctx, st.db)
-				if err != nil {
-					return err
-				}
-				client := mastodon.NewClient(&mastodon.Config{
-					Server:       ai.ServerAddr,
-					ClientID:     ai.ClientID,
-					ClientSecret: ai.ClientSecret,
-					AccessToken:  ai.AccessToken,
-				})
-				return cmdFetch(ctx, st, ai, client)
-			},
-		}, {
-			Name:     "serve",
-			Synopsis: "",
-			Run: func() error {
-				ai, err := st.AuthInfo(ctx, st.db)
-				if err != nil {
-					return err
-				}
-				return cmdServe(ctx, st, ai)
+	var rootCmd = &cobra.Command{
+		Use:   "mastopoof",
+		Short: "Mastopoof is a Mastodon client",
+		Long:  `More about Mastopoof`,
+	}
 
-			},
-		}, {
-			Name:     "list",
-			Synopsis: "",
-			Run: func() error {
-				ai, err := st.AuthInfo(ctx, st.db)
-				if err != nil {
-					return err
-				}
-				return cmdList(ctx, st, ai)
-			},
-		}, {
-			Name:     "dumpstatus",
-			Synopsis: "",
-			Run: func() error {
-				ai, err := st.AuthInfo(ctx, st.db)
-				if err != nil {
-					return err
-				}
-				return cmdDumpStatus(ctx, st, ai, args[1:])
-			},
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "info",
+		Short: "Current account config info",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmdInfo(ctx, st)
 		},
-	}
+	})
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "auth",
+		Short: "Authenticate against server",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmdAuth(ctx, st)
+		},
+	})
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "clearstate",
+		Short: "Nuke all state in the DB, except for auth against Mastodon server.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmdClearState(ctx, st)
+		},
+	})
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "me",
+		Short: "Get information about one's own account.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ai, err := st.AuthInfo(ctx, st.db)
+			if err != nil {
+				return err
+			}
+			client := mastodon.NewClient(&mastodon.Config{
+				Server:       ai.ServerAddr,
+				ClientID:     ai.ClientID,
+				ClientSecret: ai.ClientSecret,
+				AccessToken:  ai.AccessToken,
+			})
+			account, err := client.GetAccountCurrentUser(ctx)
+			if err != nil {
+				return err
+			}
+			spew.Dump(account)
+			return nil
+		},
+	})
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "fetch",
+		Short: "Fetch recent home content and add it to the DB.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ai, err := st.AuthInfo(ctx, st.db)
+			if err != nil {
+				return err
+			}
+			client := mastodon.NewClient(&mastodon.Config{
+				Server:       ai.ServerAddr,
+				ClientID:     ai.ClientID,
+				ClientSecret: ai.ClientSecret,
+				AccessToken:  ai.AccessToken,
+			})
+			return cmdFetch(ctx, st, ai, client)
+		},
+	})
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "serve",
+		Short: "Run mastopoof backend server",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ai, err := st.AuthInfo(ctx, st.db)
+			if err != nil {
+				return err
+			}
+			return cmdServe(ctx, st, ai)
 
-	cmd := args[0]
-	for _, cmdInfo := range cmds {
-		if cmdInfo.Name == args[0] {
-			return cmdInfo.Run()
-		}
-	}
+		},
+	})
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "Get list of known statuses",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ai, err := st.AuthInfo(ctx, st.db)
+			if err != nil {
+				return err
+			}
+			return cmdList(ctx, st, ai)
+		},
+	})
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "dumpstatus",
+		Short: "Display one status, identified by ID",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ai, err := st.AuthInfo(ctx, st.db)
+			if err != nil {
+				return err
+			}
+			return cmdDumpStatus(ctx, st, ai, args)
+		},
+	})
 
-	return fmt.Errorf("unknown command %s", cmd)
+	return rootCmd.ExecuteContext(ctx)
 }
 
 func main() {
 	ctx := context.Background()
-	flag.Parse()
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	pflag.Parse()
 	fmt.Println("Mastopoof")
 
-	err := run(ctx, flag.Args())
+	err := run(ctx)
 	if err != nil {
 		glog.Exit(err)
 	}
