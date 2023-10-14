@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/davecgh/go-spew/spew"
@@ -194,7 +195,6 @@ func (st *Storage) Init(ctx context.Context) error {
 		return fmt.Errorf("unable to update DB schema: %w", err)
 	}
 	return nil
-
 }
 
 // ClearState clears the database beside authentication.
@@ -214,8 +214,6 @@ func (st *Storage) ClearState(ctx context.Context) error {
 
 	return txn.Commit()
 }
-
-func (st *Storage) Close() {}
 
 func (st *Storage) AuthInfo(ctx context.Context, db SQLQueryable) (*AuthInfo, error) {
 	var content string
@@ -597,6 +595,50 @@ func cmdDumpStatus(ctx context.Context, st *Storage, authInfo *AuthInfo, args []
 	return nil
 }
 
+func cmdShowNext(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
+	rows, err := st.db.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
+	if err != nil {
+		return err
+	}
+
+	selected := []*mastodon.Status{}
+	maxItems := 10
+
+	for rows.Next() {
+		var jsonString string
+		if err := rows.Scan(&jsonString); err != nil {
+			return err
+		}
+		var status mastodon.Status
+		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
+			return err
+		}
+
+		ts := status.CreatedAt
+
+		// Insert in sorted list.
+		i := sort.Search(len(selected), func(i int) bool {
+			return selected[i].CreatedAt.Before(ts) || selected[i].CreatedAt.Equal(ts)
+		})
+		if len(selected) < maxItems {
+			selected = append(selected, nil)
+		}
+		if i < len(selected) {
+			copy(selected[i+1:], selected[i:])
+			selected[i] = &status
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, s := range selected {
+		fmt.Printf("%s %v\n", s.ID, s.CreatedAt)
+	}
+
+	return nil
+}
+
 func run(ctx context.Context) error {
 	st, db, err := getStorage(ctx)
 	if err != nil {
@@ -709,6 +751,18 @@ func run(ctx context.Context) error {
 				return err
 			}
 			return cmdDumpStatus(ctx, st, ai, args)
+		},
+	})
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "shownext",
+		Short: "Show the next statuses based on priorities",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ai, err := st.AuthInfo(ctx, st.db)
+			if err != nil {
+				return err
+			}
+			return cmdShowNext(ctx, st, ai)
 		},
 	})
 
