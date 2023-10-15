@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"sort"
 	"strings"
 
 	"github.com/davecgh/go-spew/spew"
@@ -29,6 +28,7 @@ var (
 	clearApp   = flag.Bool("clear_app", false, "Force re-registration of the app against the Mastodon server")
 	clearAuth  = flag.Bool("clear_auth", false, "Force re-approval of auth; does not touch app registration")
 	port       = flag.Int("port", 8079, "Port to listen on for the 'serve' command")
+	listingID  = flag.Int("listing_id", 1, "Listing to use")
 )
 
 // AuthInfo represents information about a user authentification in the DB.
@@ -693,18 +693,32 @@ func cmdNewListing(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 	return nil
 }
 
-func cmdShowNext(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
-	rows, err := st.db.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
+func cmdPickNext(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
+	lid := *listingID
+
+	// List all statuses which are not listed yet in "listingcontent" for that listing ID.
+	rows, err := st.db.QueryContext(ctx, `
+		SELECT
+			statuses.sid,
+			statuses.status
+		FROM
+			statuses
+			LEFT OUTER JOIN listingcontent
+			USING (sid)
+		WHERE
+			(listingcontent.lid IS NULL OR listingcontent.lid != ?)
+		;
+	`, lid)
 	if err != nil {
 		return err
 	}
 
-	selected := []*mastodon.Status{}
-	maxItems := 10
-
+	var selectedID int64
+	var selected *mastodon.Status
 	for rows.Next() {
+		var sid int64
 		var jsonString string
-		if err := rows.Scan(&jsonString); err != nil {
+		if err := rows.Scan(&sid, &jsonString); err != nil {
 			return err
 		}
 		var status mastodon.Status
@@ -712,29 +726,66 @@ func cmdShowNext(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 			return err
 		}
 
-		ts := status.CreatedAt
+		// Apply the rules here - is this status better than the currently selected one?
+		match := false
+		if selected == nil {
+			match = true
+			selected = &status
+		} else {
+			// For now, just pick the oldest one.
+			if status.CreatedAt.Before(selected.CreatedAt) {
+				match = true
 
-		// Insert in sorted list.
-		i := sort.Search(len(selected), func(i int) bool {
-			return selected[i].CreatedAt.Before(ts) || selected[i].CreatedAt.Equal(ts)
-		})
-		if len(selected) < maxItems {
-			selected = append(selected, nil)
+			}
 		}
-		if i < len(selected) {
-			copy(selected[i+1:], selected[i:])
-			selected[i] = &status
+
+		if match {
+			selectedID = sid
+			selected = &status
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
 
-	for _, s := range selected {
-		fmt.Printf("%s %v\n", s.ID, s.CreatedAt)
+	if selected == nil {
+		fmt.Println("No next status available")
+		return nil
 	}
 
-	return nil
+	// Now, add that status to the listing.
+	txn, err := st.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer txn.Rollback()
+
+	var position int64
+	err = txn.QueryRowContext(ctx, `
+		SELECT
+			position
+		FROM
+			listingcontent
+		WHERE
+			lid = ?
+		ORDER BY position DESC
+		LIMIT 1
+	`, lid).Scan(&position)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	// Pick the largest existing (or 0) position and just add one to create a new one.
+	position += 1
+
+	stmt := `INSERT INTO listingcontent(lid, sid, position) VALUES(?, ?, ?);`
+	_, err = txn.ExecContext(ctx, stmt, lid, selectedID, position)
+	if err != nil {
+		return err
+	}
+
+	spew.Dump(selected)
+
+	return txn.Commit()
 }
 
 func run(ctx context.Context) error {
@@ -864,15 +915,15 @@ func run(ctx context.Context) error {
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
-		Use:   "shownext",
-		Short: "Show the next statuses based on priorities",
+		Use:   "pick-next",
+		Short: "Add a status to the listing",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ai, err := st.AuthInfo(ctx, st.db)
 			if err != nil {
 				return err
 			}
-			return cmdShowNext(ctx, st, ai)
+			return cmdPickNext(ctx, st, ai)
 		},
 	})
 
