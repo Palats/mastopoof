@@ -34,7 +34,7 @@ var (
 // AuthInfo represents information about a user authentification in the DB.
 type AuthInfo struct {
 	// Auth UID within storage.
-	UID int `json:"uid"`
+	UID int64 `json:"uid"`
 
 	ServerAddr   string `json:"server_addr"`
 	ClientID     string `json:"client_id"`
@@ -47,10 +47,18 @@ type AuthInfo struct {
 
 // UserState is the state of a user, stored as JSON in the DB.
 type UserState struct {
-	UID int `json:"uid"`
-
+	// User ID.
+	UID int64 `json:"uid"`
 	// Last home status ID fetched.
 	LastHomeStatusID mastodon.ID `json:"last_home_status_id"`
+}
+
+// ListingState is the state of a single listing, stored as JSON.
+type ListingState struct {
+	// Listing ID.
+	LID int64 `json:"lid"`
+	// User ID this listing belongs to.
+	UID int64 `json:"uid"`
 }
 
 type SQLQueryable interface {
@@ -86,7 +94,7 @@ func NewStorage(db *sql.DB) *Storage {
 	return &Storage{db: db}
 }
 
-const schemaVersion = 3
+const schemaVersion = 4
 
 func (st *Storage) Init(ctx context.Context) error {
 	// Get version of the storage.
@@ -183,7 +191,29 @@ func (st *Storage) Init(ctx context.Context) error {
 				return fmt.Errorf("unable to backfil URI for sid %v: %v", sid, err)
 			}
 		}
+	}
 
+	if version < 4 {
+		sqlStmt := `
+			CREATE TABLE listingstate (
+				-- Listing ID. Starts at 1.
+				lid INTEGER PRIMARY KEY,
+				-- JSON marshalled ListingState
+				state TEXT NOT NULL
+			);
+
+			CREATE TABLE listingcontent (
+				-- Listing ID
+				lid INTEGER NOT NULL,
+				-- Status ID
+				sid INTEGER NOT NULL,
+				-- Position of the status in the listing.
+				position INTEGER NOT NULL
+			);
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+		}
 	}
 
 	if _, err := txn.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion)); err != nil {
@@ -247,7 +277,7 @@ func (st *Storage) SetAuthInfo(ctx context.Context, db SQLQueryable, ai *AuthInf
 	return nil
 }
 
-func (st *Storage) UserState(ctx context.Context, db SQLQueryable, uid int) (*UserState, error) {
+func (st *Storage) UserState(ctx context.Context, db SQLQueryable, uid int64) (*UserState, error) {
 	var jsonString string
 	err := db.QueryRowContext(ctx, "SELECT state FROM userstate WHERE uid = ?", uid).Scan(&jsonString)
 	if err == sql.ErrNoRows {
@@ -271,6 +301,36 @@ func (st *Storage) SetUserState(ctx context.Context, db SQLQueryable, userState 
 	}
 	stmt := `INSERT INTO userstate(uid, state) VALUES(?, ?) ON CONFLICT(uid) DO UPDATE SET state = ?`
 	_, err = db.ExecContext(ctx, stmt, userState.UID, jsonString, jsonString)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (st *Storage) ListingState(ctx context.Context, db SQLQueryable, lid int) (*ListingState, error) {
+	var jsonString string
+	err := db.QueryRowContext(ctx, "SELECT state FROM listingstate WHERE lid = ?", lid).Scan(&jsonString)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("listing with lid=%d not found", lid)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	listingState := &ListingState{}
+	if err := json.Unmarshal([]byte(jsonString), listingState); err != nil {
+		return nil, fmt.Errorf("unable to decode listingstate content: %v", err)
+	}
+	return listingState, nil
+}
+
+func (st *Storage) SetListingState(ctx context.Context, db SQLQueryable, listingState *ListingState) error {
+	jsonString, err := json.Marshal(listingState)
+	if err != nil {
+		return err
+	}
+	stmt := `INSERT INTO listingstate(lid, state) VALUES(?, ?) ON CONFLICT(lid) DO UPDATE SET state = ?`
+	_, err = db.ExecContext(ctx, stmt, listingState.LID, jsonString, jsonString)
 	if err != nil {
 		return err
 	}
@@ -595,6 +655,44 @@ func cmdDumpStatus(ctx context.Context, st *Storage, authInfo *AuthInfo, args []
 	return nil
 }
 
+func cmdNewListing(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
+	txn, err := st.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer txn.Rollback()
+
+	var lid int64
+	err = txn.QueryRowContext(ctx, "SELECT lid FROM listingstate ORDER BY lid LIMIT 1").Scan(&lid)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+
+	// Pick the largest existing (or 0) listing ID and just add one to create a new one.
+	lid += 1
+
+	listing := &ListingState{
+		LID: lid,
+		UID: authInfo.UID,
+	}
+
+	if err := st.SetListingState(ctx, txn, listing); err != nil {
+		return err
+	}
+
+	if err := txn.Commit(); err != nil {
+		return err
+	}
+
+	// And now, re-read it to output it.
+	listing, err = st.ListingState(ctx, st.db, int(lid))
+	if err != nil {
+		return err
+	}
+	spew.Dump(listing)
+	return nil
+}
+
 func cmdShowNext(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 	rows, err := st.db.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
 	if err != nil {
@@ -751,6 +849,18 @@ func run(ctx context.Context) error {
 				return err
 			}
 			return cmdDumpStatus(ctx, st, ai, args)
+		},
+	})
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "new-listing",
+		Short: "Create a new empty listing.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ai, err := st.AuthInfo(ctx, st.db)
+			if err != nil {
+				return err
+			}
+			return cmdNewListing(ctx, st, ai)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{

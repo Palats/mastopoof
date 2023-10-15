@@ -8,15 +8,15 @@ import { switchMap, takeUntil } from 'rxjs/operators';
 import * as mastodon from "./mastodon";
 
 const color1bg = css`#08415C`;
-const color1fg = css`#ffffff`;
+// const color1fg = css`#ffffff`;
 const color2bg = css`#CC2936`;
 const color2fg = css`#ffffff`;
-const color3bg = css`#EBBAB9`;
-const color3fg = css`#000000`;
+// const color3bg = css`#EBBAB9`;
+// const color3fg = css`#000000`;
 const color4bg = css`#388697`;
-const color4fg = css`#000000`;
+// const color4fg = css`#000000`;
 const color5bg = css`#B5FFE1`;
-const color5fg = css`#000000`;
+// const color5fg = css`#000000`;
 
 // https://adrianfaciu.dev/posts/observables-litelement/
 
