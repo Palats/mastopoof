@@ -18,6 +18,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/Palats/mastopoof/backend/storage"
+
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -31,315 +33,7 @@ var (
 	listingID  = flag.Int("listing_id", 1, "Listing to use")
 )
 
-// AuthInfo represents information about a user authentification in the DB.
-type AuthInfo struct {
-	// Auth UID within storage.
-	UID int64 `json:"uid"`
-
-	ServerAddr   string `json:"server_addr"`
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-	AuthURI      string `json:"auth_uri"`
-	RedirectURI  string `json:"redirect_uri"`
-
-	AccessToken string `json:"access_token"`
-}
-
-// UserState is the state of a user, stored as JSON in the DB.
-type UserState struct {
-	// User ID.
-	UID int64 `json:"uid"`
-	// Last home status ID fetched.
-	LastHomeStatusID mastodon.ID `json:"last_home_status_id"`
-}
-
-// ListingState is the state of a single listing, stored as JSON.
-type ListingState struct {
-	// Listing ID.
-	LID int64 `json:"lid"`
-	// User ID this listing belongs to.
-	UID int64 `json:"uid"`
-	// Position of the latest read status in this listing.
-	LastRead int64 `json:"last_read"`
-}
-
-type SQLQueryable interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-}
-
-func IDNewer(id1 mastodon.ID, id2 mastodon.ID) bool {
-	// From Mastodon docs https://docs.joinmastodon.org/api/guidelines/#id :
-	//  - Sort by size. Newer statuses will have longer IDs.
-	//  - Sort lexically. Newer statuses will have at least one digit that is higher when compared positionally.
-	if len(id1) > len(id2) {
-		return true
-	}
-	return id1 > id2
-}
-
-func IDLess(id1 mastodon.ID, id2 mastodon.ID) bool {
-	if IDNewer(id1, id2) {
-		return false
-	}
-	if id1 == id2 {
-		return false
-	}
-	return true
-}
-
-type Storage struct {
-	db *sql.DB
-}
-
-func NewStorage(db *sql.DB) *Storage {
-	return &Storage{db: db}
-}
-
-const schemaVersion = 4
-
-func (st *Storage) Init(ctx context.Context) error {
-	// Get version of the storage.
-	row := st.db.QueryRow("PRAGMA user_version")
-	if row == nil {
-		return fmt.Errorf("unable to find user_version")
-
-	}
-	var version int
-	if err := row.Scan(&version); err != nil {
-		return fmt.Errorf("error parsing user_version: %w", err)
-	}
-	glog.Infof("PRAGMA user_version is %d (target=%v)", version, schemaVersion)
-	if version > schemaVersion {
-		return fmt.Errorf("user_version of DB (%v) is higher than supported schema version (%v)", version, schemaVersion)
-	}
-	if version == schemaVersion {
-		return nil
-	}
-
-	glog.Infof("updating database schema")
-
-	// Prepare update of the database schema.
-	txn, err := st.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("unable to update DB schema: %w", err)
-	}
-	defer txn.Rollback()
-
-	if version < 1 {
-		sqlStmt := `
-			CREATE TABLE IF NOT EXISTS authinfo (
-				-- User ID, starts at 1
-				uid INTEGER PRIMARY KEY,
-				-- JSON marshalled AuthInfo
-				content TEXT NOT NULL
-			);
-		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
-		}
-	}
-	if version < 2 {
-		sqlStmt := `
-			CREATE TABLE IF NOT EXISTS userstate (
-				-- User ID
-				uid INTEGER PRIMARY KEY,
-				-- JSON marshalled UserState
-				state TEXT NOT NULL
-			);
-
-			CREATE TABLE IF NOT EXISTS statuses (
-				-- Arbitrary integer
-				sid INTEGER PRIMARY KEY AUTOINCREMENT,
-				-- The account is belongs to
-				uid INTEGER NOT NULL,
-				-- The full status obtained from the server, as json.
-				status TEXT NOT NULL
-			);
-		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
-		}
-	}
-
-	if version < 3 {
-		// Do backfill of status key
-		sqlStmt := `
-			ALTER TABLE statuses ADD COLUMN uri TEXT
-		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
-		}
-
-		rows, err := st.db.QueryContext(ctx, `SELECT sid, status FROM statuses`)
-		if err != nil {
-			return err
-		}
-		for rows.Next() {
-			var jsonString string
-			var sid int64
-			if err := rows.Scan(&sid, &jsonString); err != nil {
-				return err
-			}
-			var status mastodon.Status
-			if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
-				return err
-			}
-
-			stmt := `
-				UPDATE statuses SET uri = ? WHERE sid = ?;
-			`
-			if _, err := txn.ExecContext(ctx, stmt, status.URI, sid); err != nil {
-				return fmt.Errorf("unable to backfil URI for sid %v: %v", sid, err)
-			}
-		}
-	}
-
-	if version < 4 {
-		sqlStmt := `
-			CREATE TABLE listingstate (
-				-- Listing ID. Starts at 1.
-				lid INTEGER PRIMARY KEY,
-				-- JSON marshalled ListingState
-				state TEXT NOT NULL
-			);
-
-			CREATE TABLE listingcontent (
-				-- Listing ID
-				lid INTEGER NOT NULL,
-				-- Status ID
-				sid INTEGER NOT NULL,
-				-- Position of the status in the listing.
-				position INTEGER NOT NULL
-			);
-		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
-		}
-	}
-
-	if _, err := txn.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion)); err != nil {
-		return fmt.Errorf("unable to set user_version: %w", err)
-	}
-
-	// And commit the change.
-	if err := txn.Commit(); err != nil {
-		return fmt.Errorf("unable to update DB schema: %w", err)
-	}
-	return nil
-}
-
-// ClearState clears the database beside authentication.
-func (st *Storage) ClearState(ctx context.Context) error {
-	txn, err := st.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("unable to clean DB state: %w", err)
-	}
-	defer txn.Rollback()
-
-	if _, err := txn.ExecContext(ctx, `DELETE FROM userstate;`); err != nil {
-		return fmt.Errorf("unable to delete userstate: %w", err)
-	}
-	if _, err := txn.ExecContext(ctx, `DELETE FROM statuses;`); err != nil {
-		return fmt.Errorf("unable to delete statuses: %w", err)
-	}
-
-	return txn.Commit()
-}
-
-func (st *Storage) AuthInfo(ctx context.Context, db SQLQueryable) (*AuthInfo, error) {
-	var content string
-	err := db.QueryRowContext(ctx, "SELECT content FROM authinfo").Scan(&content)
-	if err == sql.ErrNoRows {
-		glog.Infof("no authinfo in storage")
-		return &AuthInfo{UID: 1}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	ai := &AuthInfo{}
-	if err := json.Unmarshal([]byte(content), ai); err != nil {
-		return nil, fmt.Errorf("unable to decode authinfo content: %v", err)
-	}
-	return ai, nil
-}
-
-func (st *Storage) SetAuthInfo(ctx context.Context, db SQLQueryable, ai *AuthInfo) error {
-	content, err := json.Marshal(ai)
-	if err != nil {
-		return err
-	}
-
-	stmt := `INSERT INTO authinfo(uid, content) VALUES(?, ?) ON CONFLICT(uid) DO UPDATE SET content = ?`
-	_, err = db.ExecContext(ctx, stmt, ai.UID, content, content)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (st *Storage) UserState(ctx context.Context, db SQLQueryable, uid int64) (*UserState, error) {
-	var jsonString string
-	err := db.QueryRowContext(ctx, "SELECT state FROM userstate WHERE uid = ?", uid).Scan(&jsonString)
-	if err == sql.ErrNoRows {
-		return &UserState{UID: uid}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	userState := &UserState{}
-	if err := json.Unmarshal([]byte(jsonString), userState); err != nil {
-		return nil, fmt.Errorf("unable to decode userstate content: %v", err)
-	}
-	return userState, nil
-}
-
-func (st *Storage) SetUserState(ctx context.Context, db SQLQueryable, userState *UserState) error {
-	jsonString, err := json.Marshal(userState)
-	if err != nil {
-		return err
-	}
-	stmt := `INSERT INTO userstate(uid, state) VALUES(?, ?) ON CONFLICT(uid) DO UPDATE SET state = ?`
-	_, err = db.ExecContext(ctx, stmt, userState.UID, jsonString, jsonString)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (st *Storage) ListingState(ctx context.Context, db SQLQueryable, lid int) (*ListingState, error) {
-	var jsonString string
-	err := db.QueryRowContext(ctx, "SELECT state FROM listingstate WHERE lid = ?", lid).Scan(&jsonString)
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("listing with lid=%d not found", lid)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	listingState := &ListingState{}
-	if err := json.Unmarshal([]byte(jsonString), listingState); err != nil {
-		return nil, fmt.Errorf("unable to decode listingstate content: %v", err)
-	}
-	return listingState, nil
-}
-
-func (st *Storage) SetListingState(ctx context.Context, db SQLQueryable, listingState *ListingState) error {
-	jsonString, err := json.Marshal(listingState)
-	if err != nil {
-		return err
-	}
-	stmt := `INSERT INTO listingstate(lid, state) VALUES(?, ?) ON CONFLICT(lid) DO UPDATE SET state = ?`
-	_, err = db.ExecContext(ctx, stmt, listingState.LID, jsonString, jsonString)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func registerApp(ctx context.Context, ai *AuthInfo) (*mastodon.Application, error) {
+func registerApp(ctx context.Context, ai *storage.AuthInfo) (*mastodon.Application, error) {
 	app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
 		Server:     ai.ServerAddr,
 		ClientName: "mastopoof",
@@ -352,22 +46,22 @@ func registerApp(ctx context.Context, ai *AuthInfo) (*mastodon.Application, erro
 	return app, nil
 }
 
-func getStorage(ctx context.Context) (*Storage, *sql.DB, error) {
+func getStorage(ctx context.Context) (*storage.Storage, *sql.DB, error) {
 	filename := "./mastopoof.db"
 	db, err := sql.Open("sqlite3", filename)
 	if err != nil {
 		return nil, nil, fmt.Errorf("unable to open storage %s: %w", filename, err)
 	}
 
-	st := NewStorage(db)
+	st := storage.NewStorage(db)
 	if err := st.Init(ctx); err != nil {
 		return nil, nil, fmt.Errorf("unable to init storage: %w", err)
 	}
 	return st, db, nil
 }
 
-func cmdInfo(ctx context.Context, st *Storage) error {
-	txn, err := st.db.BeginTx(ctx, nil)
+func cmdInfo(ctx context.Context, st *storage.Storage) error {
+	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -391,8 +85,8 @@ func cmdInfo(ctx context.Context, st *Storage) error {
 	return txn.Commit()
 }
 
-func cmdAuth(ctx context.Context, st *Storage) error {
-	txn, err := st.db.BeginTx(ctx, nil)
+func cmdAuth(ctx context.Context, st *storage.Storage) error {
+	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -481,12 +175,12 @@ func cmdAuth(ctx context.Context, st *Storage) error {
 	return txn.Commit()
 }
 
-func cmdClearState(ctx context.Context, st *Storage) error {
+func cmdClearState(ctx context.Context, st *storage.Storage) error {
 	return st.ClearState(ctx)
 }
 
-func cmdFetch(ctx context.Context, st *Storage, authInfo *AuthInfo, client *mastodon.Client) error {
-	txn, err := st.db.BeginTx(ctx, nil)
+func cmdFetch(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo, client *mastodon.Client) error {
+	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -520,7 +214,7 @@ func cmdFetch(ctx context.Context, st *Storage, authInfo *AuthInfo, client *mast
 		glog.Infof("Found %d new status on home timeline", len(timeline))
 
 		for _, status := range timeline {
-			if IDNewer(status.ID, userState.LastHomeStatusID) {
+			if storage.IDNewer(status.ID, userState.LastHomeStatusID) {
 				userState.LastHomeStatusID = status.ID
 			}
 
@@ -581,9 +275,9 @@ func httpFunc(f func(w http.ResponseWriter, r *http.Request) error) func(w http.
 	}
 }
 
-func cmdServe(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
+func cmdServe(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
 	http.HandleFunc("/list", httpFunc(func(w http.ResponseWriter, r *http.Request) error {
-		rows, err := st.db.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
+		rows, err := st.DB.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
 		if err != nil {
 			return err
 		}
@@ -610,8 +304,8 @@ func cmdServe(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 	return http.ListenAndServe(addr, nil)
 }
 
-func cmdList(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
-	rows, err := st.db.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
+func cmdList(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
+	rows, err := st.DB.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
 	if err != nil {
 		return err
 	}
@@ -632,8 +326,8 @@ func cmdList(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 	return nil
 }
 
-func cmdDumpStatus(ctx context.Context, st *Storage, authInfo *AuthInfo, args []string) error {
-	rows, err := st.db.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
+func cmdDumpStatus(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo, args []string) error {
+	rows, err := st.DB.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
 	if err != nil {
 		return err
 	}
@@ -657,8 +351,8 @@ func cmdDumpStatus(ctx context.Context, st *Storage, authInfo *AuthInfo, args []
 	return nil
 }
 
-func cmdNewListing(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
-	txn, err := st.db.BeginTx(ctx, nil)
+func cmdNewListing(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
+	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -673,7 +367,7 @@ func cmdNewListing(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 	// Pick the largest existing (or 0) listing ID and just add one to create a new one.
 	lid += 1
 
-	listing := &ListingState{
+	listing := &storage.ListingState{
 		LID: lid,
 		UID: authInfo.UID,
 	}
@@ -687,7 +381,7 @@ func cmdNewListing(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 	}
 
 	// And now, re-read it to output it.
-	listing, err = st.ListingState(ctx, st.db, int(lid))
+	listing, err = st.ListingState(ctx, st.DB, int(lid))
 	if err != nil {
 		return err
 	}
@@ -695,11 +389,11 @@ func cmdNewListing(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 	return nil
 }
 
-func cmdPickNext(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
+func cmdPickNext(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
 	lid := *listingID
 
 	// List all statuses which are not listed yet in "listingcontent" for that listing ID.
-	rows, err := st.db.QueryContext(ctx, `
+	rows, err := st.DB.QueryContext(ctx, `
 		SELECT
 			statuses.sid,
 			statuses.status
@@ -756,7 +450,7 @@ func cmdPickNext(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 	}
 
 	// Now, add that status to the listing.
-	txn, err := st.db.BeginTx(ctx, nil)
+	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -790,10 +484,10 @@ func cmdPickNext(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 	return txn.Commit()
 }
 
-func cmdMarkRead(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
+func cmdMarkRead(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
 	lid := *listingID
 
-	txn, err := st.db.BeginTx(ctx, nil)
+	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -813,10 +507,10 @@ func cmdMarkRead(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 	return txn.Commit()
 }
 
-func cmdShowOpened(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
+func cmdShowOpened(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
 	lid := *listingID
 
-	txn, err := st.db.BeginTx(ctx, nil)
+	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -827,7 +521,7 @@ func cmdShowOpened(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 		return err
 	}
 
-	rows, err := st.db.QueryContext(ctx, `
+	rows, err := st.DB.QueryContext(ctx, `
 		SELECT
 			listingcontent.position,
 			statuses.status
@@ -908,7 +602,7 @@ func run(ctx context.Context) error {
 		Short: "Get information about one's own account.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.db)
+			ai, err := st.AuthInfo(ctx, st.DB)
 			if err != nil {
 				return err
 			}
@@ -931,7 +625,7 @@ func run(ctx context.Context) error {
 		Short: "Fetch recent home content and add it to the DB.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.db)
+			ai, err := st.AuthInfo(ctx, st.DB)
 			if err != nil {
 				return err
 			}
@@ -949,7 +643,7 @@ func run(ctx context.Context) error {
 		Short: "Run mastopoof backend server",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.db)
+			ai, err := st.AuthInfo(ctx, st.DB)
 			if err != nil {
 				return err
 			}
@@ -962,7 +656,7 @@ func run(ctx context.Context) error {
 		Short: "Get list of known statuses",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.db)
+			ai, err := st.AuthInfo(ctx, st.DB)
 			if err != nil {
 				return err
 			}
@@ -973,7 +667,7 @@ func run(ctx context.Context) error {
 		Use:   "dumpstatus",
 		Short: "Display one status, identified by ID",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.db)
+			ai, err := st.AuthInfo(ctx, st.DB)
 			if err != nil {
 				return err
 			}
@@ -985,7 +679,7 @@ func run(ctx context.Context) error {
 		Short: "Create a new empty listing.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.db)
+			ai, err := st.AuthInfo(ctx, st.DB)
 			if err != nil {
 				return err
 			}
@@ -997,7 +691,7 @@ func run(ctx context.Context) error {
 		Short: "Add a status to the listing",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.db)
+			ai, err := st.AuthInfo(ctx, st.DB)
 			if err != nil {
 				return err
 			}
@@ -1009,7 +703,7 @@ func run(ctx context.Context) error {
 		Short: "Advance already-read pointer",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.db)
+			ai, err := st.AuthInfo(ctx, st.DB)
 			if err != nil {
 				return err
 			}
@@ -1021,7 +715,7 @@ func run(ctx context.Context) error {
 		Short: "List currently opened statuses (picked & not read)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.db)
+			ai, err := st.AuthInfo(ctx, st.DB)
 			if err != nil {
 				return err
 			}
