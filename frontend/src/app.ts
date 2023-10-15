@@ -18,12 +18,17 @@ const color4bg = css`#388697`;
 const color5bg = css`#B5FFE1`;
 // const color5fg = css`#000000`;
 
+interface OpenStatus {
+  position: number
+  status: mastodon.Status
+}
+
 // https://adrianfaciu.dev/posts/observables-litelement/
 
 @customElement('app-root')
 export class AppRoot extends LitElement {
   unsubscribe$ = new Subject<null>();
-  values$ = fromFetch('/_api/list').pipe(
+  values$ = fromFetch('/_api/opened').pipe(
     switchMap(response => {
       if (response.ok) {
         // OK return data
@@ -41,7 +46,7 @@ export class AppRoot extends LitElement {
   );
 
   @state()
-  private data: mastodon.Status[] = [];
+  private data: OpenStatus[] = [];
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -64,7 +69,7 @@ export class AppRoot extends LitElement {
       <div class="page">
         <div class="statuses">
           ${this.data.map(e => html`
-            <mast-status .status=${e}></mast-status>
+            <mast-status .status=${e.status}></mast-status>
           `)}
         </div>
       </div>

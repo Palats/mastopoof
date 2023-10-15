@@ -44,6 +44,7 @@ func New(st *storage.Storage, authInfo *storage.AuthInfo) *Server {
 		mux:      http.NewServeMux(),
 	}
 	s.mux.HandleFunc("/list", httpFunc(s.serveList))
+	s.mux.HandleFunc("/opened", httpFunc(s.serveOpened))
 	return s
 }
 
@@ -74,4 +75,17 @@ func (s *Server) serveList(w http.ResponseWriter, r *http.Request) error {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(data)
+}
+
+func (s *Server) serveOpened(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+
+	lid := int64(1)
+	opened, err := s.st.Opened(ctx, lid)
+	if err != nil {
+		return err
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(opened)
 }

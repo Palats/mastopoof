@@ -31,7 +31,7 @@ var (
 	clearApp   = flag.Bool("clear_app", false, "Force re-registration of the app against the Mastodon server")
 	clearAuth  = flag.Bool("clear_auth", false, "Force re-approval of auth; does not touch app registration")
 	port       = flag.Int("port", 8079, "Port to listen on for the 'serve' command")
-	listingID  = flag.Int("listing_id", 1, "Listing to use")
+	listingID  = flag.Int64("listing_id", 1, "Listing to use")
 )
 
 func registerApp(ctx context.Context, ai *storage.AuthInfo) (*mastodon.Application, error) {
@@ -343,7 +343,7 @@ func cmdNewListing(ctx context.Context, st *storage.Storage, authInfo *storage.A
 	}
 
 	// And now, re-read it to output it.
-	listing, err = st.ListingState(ctx, st.DB, int(lid))
+	listing, err = st.ListingState(ctx, st.DB, lid)
 	if err != nil {
 		return err
 	}
@@ -470,56 +470,17 @@ func cmdMarkRead(ctx context.Context, st *storage.Storage, authInfo *storage.Aut
 }
 
 func cmdShowOpened(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
-	lid := *listingID
-
-	txn, err := st.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer txn.Rollback()
-
-	rolloutState, err := st.ListingState(ctx, txn, lid)
+	opened, err := st.Opened(ctx, *listingID)
 	if err != nil {
 		return err
 	}
 
-	rows, err := st.DB.QueryContext(ctx, `
-		SELECT
-			listingcontent.position,
-			statuses.status
-		FROM
-			statuses
-			INNER JOIN listingcontent
-			USING (sid)
-		WHERE
-			listingcontent.lid = ?
-			AND listingcontent.position > ?
-		ORDER BY listingcontent.position
-		;
-	`, lid, rolloutState.LastRead)
-	if err != nil {
-		return err
-	}
-
-	for rows.Next() {
-		var position int64
-		var jsonString string
-		if err := rows.Scan(&position, &jsonString); err != nil {
-			return err
-		}
-		var status mastodon.Status
-		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
-			return err
-		}
-
+	for _, openStatus := range opened {
+		status := openStatus.Status
 		subject := strings.ReplaceAll(status.Content[:50], "\n", "  ")
-		fmt.Printf("[%d] %s@%v %s...\n", position, status.ID, status.CreatedAt, subject)
+		fmt.Printf("[%d] %s@%v %s...\n", openStatus.Position, status.ID, status.CreatedAt, subject)
 	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-
-	return txn.Commit()
+	return nil
 }
 
 func run(ctx context.Context) error {

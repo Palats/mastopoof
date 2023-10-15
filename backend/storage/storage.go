@@ -290,7 +290,7 @@ func (st *Storage) SetUserState(ctx context.Context, db SQLQueryable, userState 
 	return nil
 }
 
-func (st *Storage) ListingState(ctx context.Context, db SQLQueryable, lid int) (*ListingState, error) {
+func (st *Storage) ListingState(ctx context.Context, db SQLQueryable, lid int64) (*ListingState, error) {
 	var jsonString string
 	err := db.QueryRowContext(ctx, "SELECT state FROM listingstate WHERE lid = ?", lid).Scan(&jsonString)
 	if err == sql.ErrNoRows {
@@ -318,4 +318,66 @@ func (st *Storage) SetListingState(ctx context.Context, db SQLQueryable, listing
 		return err
 	}
 	return nil
+}
+
+type OpenStatus struct {
+	// Position in the listing.
+	Position int64           `json:"position"`
+	Status   mastodon.Status `json:"status"`
+}
+
+// Opened returns the currently open statuses in the listing.
+func (st *Storage) Opened(ctx context.Context, lid int64) ([]*OpenStatus, error) {
+	txn, err := st.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer txn.Rollback()
+
+	rolloutState, err := st.ListingState(ctx, txn, lid)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := st.DB.QueryContext(ctx, `
+		SELECT
+			listingcontent.position,
+			statuses.status
+		FROM
+			statuses
+			INNER JOIN listingcontent
+			USING (sid)
+		WHERE
+			listingcontent.lid = ?
+			AND listingcontent.position > ?
+		ORDER BY listingcontent.position
+		;
+	`, lid, rolloutState.LastRead)
+	if err != nil {
+		return nil, err
+	}
+
+	results := []*OpenStatus{}
+
+	for rows.Next() {
+		var position int64
+		var jsonString string
+		if err := rows.Scan(&position, &jsonString); err != nil {
+			return nil, err
+		}
+		var status mastodon.Status
+		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
+			return nil, err
+		}
+
+		results = append(results, &OpenStatus{
+			Position: position,
+			Status:   status,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, txn.Commit()
 }
