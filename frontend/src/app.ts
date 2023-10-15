@@ -23,7 +23,7 @@ const color5bg = css`#B5FFE1`;
 @customElement('app-root')
 export class AppRoot extends LitElement {
   unsubscribe$ = new Subject<null>();
-  values$ = fromFetch('/list').pipe(
+  values$ = fromFetch('/_api/list').pipe(
     switchMap(response => {
       if (response.ok) {
         // OK return data

@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/Palats/mastopoof/backend/server"
 	"github.com/Palats/mastopoof/backend/storage"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -255,49 +256,10 @@ func cmdFetch(ctx context.Context, st *storage.Storage, authInfo *storage.AuthIn
 	return txn.Commit()
 }
 
-type httpErr int
-
-func (herr httpErr) Error() string {
-	return fmt.Sprintf("%d: %s", int(herr), http.StatusText(int(herr)))
-}
-
-func httpFunc(f func(w http.ResponseWriter, r *http.Request) error) func(w http.ResponseWriter, r *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		err := f(w, r)
-		if err != nil {
-			var herr httpErr
-			if errors.As(err, &herr) {
-				http.Error(w, err.Error(), int(herr))
-			} else {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-		}
-	}
-}
-
 func cmdServe(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
-	http.HandleFunc("/list", httpFunc(func(w http.ResponseWriter, r *http.Request) error {
-		rows, err := st.DB.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
-		if err != nil {
-			return err
-		}
+	s := server.New(st, authInfo)
 
-		data := []any{}
-		for rows.Next() {
-			var jsonString string
-			if err := rows.Scan(&jsonString); err != nil {
-				return err
-			}
-			var status mastodon.Status
-			if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
-				return err
-			}
-
-			data = append(data, status)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		return json.NewEncoder(w).Encode(data)
-	}))
+	http.Handle("/_api/", http.StripPrefix("/_api", s))
 
 	addr := fmt.Sprintf(":%d", *port)
 	fmt.Printf("Listening on %s...\n", addr)
