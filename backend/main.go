@@ -59,6 +59,8 @@ type ListingState struct {
 	LID int64 `json:"lid"`
 	// User ID this listing belongs to.
 	UID int64 `json:"uid"`
+	// Position of the latest read status in this listing.
+	LastRead int64 `json:"last_read"`
 }
 
 type SQLQueryable interface {
@@ -788,6 +790,82 @@ func cmdPickNext(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
 	return txn.Commit()
 }
 
+func cmdMarkRead(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
+	lid := *listingID
+
+	txn, err := st.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer txn.Rollback()
+
+	listingState, err := st.ListingState(ctx, txn, lid)
+	if err != nil {
+		return err
+	}
+
+	listingState.LastRead += 1
+
+	if err := st.SetListingState(ctx, txn, listingState); err != nil {
+		return err
+	}
+
+	return txn.Commit()
+}
+
+func cmdShowOpened(ctx context.Context, st *Storage, authInfo *AuthInfo) error {
+	lid := *listingID
+
+	txn, err := st.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer txn.Rollback()
+
+	rolloutState, err := st.ListingState(ctx, txn, lid)
+	if err != nil {
+		return err
+	}
+
+	rows, err := st.db.QueryContext(ctx, `
+		SELECT
+			listingcontent.position,
+			statuses.status
+		FROM
+			statuses
+			INNER JOIN listingcontent
+			USING (sid)
+		WHERE
+			listingcontent.lid = ?
+			AND listingcontent.position > ?
+		ORDER BY listingcontent.position
+		;
+	`, lid, rolloutState.LastRead)
+	if err != nil {
+		return err
+	}
+
+	for rows.Next() {
+		var position int64
+		var jsonString string
+		if err := rows.Scan(&position, &jsonString); err != nil {
+			return err
+		}
+		var status mastodon.Status
+		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
+			return err
+		}
+
+		subject := strings.ReplaceAll(status.Content[:50], "\n", "  ")
+		fmt.Printf("[%d] %s@%v %s...\n", position, status.ID, status.CreatedAt, subject)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	return txn.Commit()
+}
+
 func run(ctx context.Context) error {
 	st, db, err := getStorage(ctx)
 	if err != nil {
@@ -924,6 +1002,30 @@ func run(ctx context.Context) error {
 				return err
 			}
 			return cmdPickNext(ctx, st, ai)
+		},
+	})
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "mark-read",
+		Short: "Advance already-read pointer",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ai, err := st.AuthInfo(ctx, st.db)
+			if err != nil {
+				return err
+			}
+			return cmdMarkRead(ctx, st, ai)
+		},
+	})
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "show-opened",
+		Short: "List currently opened statuses (picked & not read)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ai, err := st.AuthInfo(ctx, st.db)
+			if err != nil {
+				return err
+			}
+			return cmdShowOpened(ctx, st, ai)
 		},
 	})
 
