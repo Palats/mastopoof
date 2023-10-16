@@ -7,16 +7,19 @@ import { switchMap, takeUntil } from 'rxjs/operators';
 
 import * as mastodon from "./mastodon";
 
-const color1bg = css`#08415C`;
-// const color1fg = css`#ffffff`;
-const color2bg = css`#CC2936`;
-const color2fg = css`#ffffff`;
-// const color3bg = css`#EBBAB9`;
-// const color3fg = css`#000000`;
-const color4bg = css`#388697`;
-// const color4fg = css`#000000`;
-const color5bg = css`#B5FFE1`;
-// const color5fg = css`#000000`;
+const baseCSS = css`
+  .text-light { color: #ffffff; }
+
+  .text-dark { color: #000000; }
+
+  .bg-red-100 { background-color: #EBBAB9; }
+  .bg-red-400 { background-color: #CC2936; }
+
+  .bg-blue-100 { background-color: #B5FFE1; }
+  .bg-blue-400 { background-color: #388697; }
+  .bg-blue-800 { background-color: #08415C; }
+
+`;
 
 interface OpenStatus {
   position: number
@@ -136,14 +139,14 @@ export class MastStatus extends LitElement {
     }
 
     return html`
-      <div class="status">
+      <div class="status bg-blue-800">
         ${isReblog ? html`
-          <div class="reblog">
+          <div class="reblog bg-red-400 text-light">
             <img class="avatar" src=${this.status.account.avatar} alt="avatar of ${this.status.account.display_name}"></img>
             reblog by ${this.status.account.display_name}
           </div>
         `: nothing}
-        <div class="account">
+        <div class="account bg-blue-100">
           <img class="avatar" src=${s.account.avatar} alt="avatar of ${s.account.display_name}"></img>
           ${s.account.display_name} &lt;${s.account.acct}&gt;
         </div>
@@ -153,7 +156,7 @@ export class MastStatus extends LitElement {
         <div class="attachments">
           ${attachments}
         </div>
-        <div class="tools">
+        <div class="tools bg-blue-400">
           <button @click="${() => { this.showRaw = !this.showRaw }}">Show raw</button>
         </div>
         ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(this.status, null, "  ")}</pre>` : nothing}
@@ -161,12 +164,11 @@ export class MastStatus extends LitElement {
     `
   }
 
-  static styles = css`
+  static styles = [baseCSS, css`
     .status {
       border-style: solid;
-      border-color: ${color1bg};
-      border-radius: .5rem;
-      border-width: .2rem;
+      border-radius: .3rem;
+      border-width: .1rem;
       margin: 0.1rem;
       padding: 0;
       background-color: #ffffff;
@@ -182,17 +184,14 @@ export class MastStatus extends LitElement {
 
     .account {
       display: flex;
-      background-color: ${color5bg};
       align-items: center;
       padding: 0.2rem;
     }
 
     .reblog {
       display: flex;
-      background-color: ${color2bg};
       align-items: center;
       padding: 0.2rem;
-      color: ${color2fg};
     }
 
     .avatar {
@@ -227,13 +226,11 @@ export class MastStatus extends LitElement {
 
     .tools {
       display: flex;
-      background-color: ${color4bg};
       align-items: center;
       padding: 0.2rem;
       margin-top: 0.2rem;
     }
-  `
-
+  `];
 }
 
 declare global {
