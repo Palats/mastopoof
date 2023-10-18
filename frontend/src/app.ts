@@ -1,6 +1,8 @@
 import { LitElement, css, html, nothing, TemplateResult } from 'lit'
 import { customElement, state, property } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { ref, createRef } from 'lit/directives/ref.js';
+import { repeat } from 'lit/directives/repeat.js';
 import { of, catchError, Subject } from 'rxjs';
 import { fromFetch } from 'rxjs/fetch';
 import { switchMap, takeUntil } from 'rxjs/operators';
@@ -21,9 +23,21 @@ const baseCSS = css`
 
 `;
 
+// OpenStatus is the information sent from the backend.
 interface OpenStatus {
   position: number
   status: mastodon.Status
+}
+
+// StatusEntry represents the state in the UI of a given status.
+interface StatusEntry {
+  status: mastodon.Status;
+
+  // Position in the stream in the backend.
+  position: number;
+
+  // HTML element.
+  element?: Element;
 }
 
 // https://adrianfaciu.dev/posts/observables-litelement/
@@ -48,13 +62,18 @@ export class AppRoot extends LitElement {
     })
   );
 
-  @state()
-  private data: OpenStatus[] = [];
+  private statuses: StatusEntry[] = [];
 
   connectedCallback(): void {
     super.connectedCallback();
     this.values$.pipe(takeUntil(this.unsubscribe$)).subscribe(v => {
-      this.data = v;
+      this.statuses = [];
+      for (const s of (v as OpenStatus[])) {
+        this.statuses.push({
+          status: s.status,
+          position: s.position,
+        })
+      }
       this.requestUpdate();
     });
   }
@@ -65,18 +84,54 @@ export class AppRoot extends LitElement {
     this.unsubscribe$.complete();
   }
 
+  pageRef = createRef<HTMLDivElement>();
+
+  observer?: IntersectionObserver;
+
   render() {
     return html`
       <div class="header">
       </div>
-      <div class="page">
+      <div class="page" ${ref(this.pageRef)}>
         <div class="statuses">
-          ${this.data.map(e => html`
-            <mast-status .status=${e.status}></mast-status>
+          ${repeat(this.statuses, st => st.status.id, st => html`
+            <mast-status class="statustrack" .status=${st.status} ${ref(elt => this.refStatusUpdated(st, elt))}></mast-status>
           `)}
         </div>
       </div>
-    `
+    `;
+  }
+
+  refStatusUpdated(st: StatusEntry, elt?: Element) {
+    console.log("ref", st.position, elt);
+    if (st.element && st.element != elt) {
+      this.observer?.unobserve(st.element);
+    }
+    st.element = elt;
+    if (!elt) {
+      return;
+    }
+    if (this.observer) {
+      this.observer.observe(elt);
+    }
+  }
+
+  firstUpdated(): void {
+    console.log("firstUpdated");
+    this.observer = new IntersectionObserver((entries: IntersectionObserverEntry[]) => {
+      console.log("observer", entries);
+      for (const entry of entries) {
+        const st = this.statuses.find(st => st.element == entry.target);
+        console.log("st", st?.position, entry.isIntersecting, entry.intersectionRatio);
+      }
+    }, {
+      // root: this.pageRef.value,
+      rootMargin: "0px",
+    });
+  }
+
+  updated(changedProperties: Map<string, any>): void {
+    console.log("updated", changedProperties);
   }
 
   static styles = css`
