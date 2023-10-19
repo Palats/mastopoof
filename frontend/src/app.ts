@@ -32,12 +32,22 @@ interface OpenStatus {
 // StatusEntry represents the state in the UI of a given status.
 interface StatusEntry {
   status: mastodon.Status;
-
   // Position in the stream in the backend.
   position: number;
-
   // HTML element.
   element?: Element;
+
+  // Timestamp when the entry started to be visible on the page.
+  visible_start?: DOMHighResTimeStamp;
+  // Timestamp when the entry stopped being visible on the page.
+  visible_stop?: DOMHighResTimeStamp;
+  // When a post gets hidden, start a timer to detect after a while that it should be marked as read.
+  // However, it must be cancelled if it gets visible again.
+  mark_as_read_timer?: number;
+  marked_as_read: boolean;
+  // Was this status every visible on the screen?
+  was_visible: boolean;
+
 }
 
 // https://adrianfaciu.dev/posts/observables-litelement/
@@ -72,6 +82,8 @@ export class AppRoot extends LitElement {
         this.statuses.push({
           status: s.status,
           position: s.position,
+          was_visible: false,
+          marked_as_read: false,
         })
       }
       this.requestUpdate();
@@ -103,7 +115,7 @@ export class AppRoot extends LitElement {
   }
 
   refStatusUpdated(st: StatusEntry, elt?: Element) {
-    console.log("ref", st.position, elt);
+    // console.log("ref", st.position, elt);
     if (st.element && st.element != elt) {
       this.observer?.unobserve(st.element);
     }
@@ -117,12 +129,9 @@ export class AppRoot extends LitElement {
   }
 
   firstUpdated(): void {
-    console.log("firstUpdated");
     this.observer = new IntersectionObserver((entries: IntersectionObserverEntry[]) => {
-      console.log("observer", entries);
       for (const entry of entries) {
-        const st = this.statuses.find(st => st.element == entry.target);
-        console.log("st", st?.position, entry.isIntersecting, entry.intersectionRatio);
+        this.onIntersection(entry);
       }
     }, {
       // root: this.pageRef.value,
@@ -130,8 +139,39 @@ export class AppRoot extends LitElement {
     });
   }
 
-  updated(changedProperties: Map<string, any>): void {
-    console.log("updated", changedProperties);
+  updated(changedProperties: Map<string, any>): void { }
+
+  onIntersection(entry: IntersectionObserverEntry) {
+    const st = this.statuses.find(st => st.element == entry.target);
+    if (!st) {
+      console.log("observer element not found", entry);
+      return;
+    }
+    if (!entry.rootBounds) { return; }
+
+    if (entry.isIntersecting) {
+      st.was_visible = true;
+      st.visible_stop = undefined;
+      if (!st.visible_start) {
+        st.visible_start = entry.time;
+      }
+      if (st.mark_as_read_timer) {
+        clearTimeout(st.mark_as_read_timer);
+        st.mark_as_read_timer = undefined;
+      }
+    } else {
+      if (!st.visible_stop) {
+        st.visible_stop = entry.time;
+        st.visible_start = undefined;
+        // Start timer to mark as read if the status disappeared through top of the screen.
+        if (entry.boundingClientRect.bottom <= 0 && !st.marked_as_read) {
+          st.mark_as_read_timer = setTimeout(() => {
+            console.log("status marked as read", st.position);
+            st.marked_as_read = true;
+          }, 1000);
+        }
+      }
+    }
   }
 
   static styles = css`
