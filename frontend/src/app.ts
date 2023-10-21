@@ -21,6 +21,19 @@ const baseCSS = css`
   .bg-blue-400 { background-color: #388697; }
   .bg-blue-800 { background-color: #08415C; }
 
+  .material-symbols-outlined {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    font-size: 24px;  /* Preferred icon size */
+    display: inline-block;
+    line-height: 1;
+    text-transform: none;
+    letter-spacing: normal;
+    word-wrap: normal;
+    white-space: nowrap;
+    direction: ltr;
+  }
 `;
 
 // OpenStatus is the information sent from the backend.
@@ -102,8 +115,7 @@ export class AppRoot extends LitElement {
 
   render() {
     return html`
-      <div class="header">
-      </div>
+      <div class="header"></div>
       <div class="page" ${ref(this.pageRef)}>
         <div class="statuses">
           ${repeat(this.statuses, st => st.status.id, st => html`
@@ -174,7 +186,7 @@ export class AppRoot extends LitElement {
     }
   }
 
-  static styles = css`
+  static styles = [baseCSS, css`
     :host {
       display: grid;
       grid-template-rows: 40px 1fr;
@@ -197,7 +209,7 @@ export class AppRoot extends LitElement {
     .statuses {
       grid-column: 2;
     }
-  `
+  `];
 }
 
 declare global {
@@ -252,6 +264,10 @@ export class MastStatus extends LitElement {
           ${attachments}
         </div>
         <div class="tools bg-blue-400">
+          <span class="material-symbols-outlined" title="Favorite">favorite</span>
+          <span class="material-symbols-outlined" title="Boost">cached</span>
+          <span class="material-symbols-outlined" title="Reply...">reply</span>
+          <span class="material-symbols-outlined" title="Reply...">code</span>
           <button @click="${() => { this.showRaw = !this.showRaw }}">Show raw</button>
         </div>
         ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(this.status, null, "  ")}</pre>` : nothing}
