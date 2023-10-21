@@ -7,11 +7,12 @@ import { of, catchError, Subject } from 'rxjs';
 import { fromFetch } from 'rxjs/fetch';
 import { switchMap, takeUntil } from 'rxjs/operators';
 
-import baseCSSstring from "./base.css?inline";
+import normalizeCSSstr from "./normalize.css?inline";
+import baseCSSstr from "./base.css?inline";
 
 import * as mastodon from "./mastodon";
 
-const baseCSS = unsafeCSS(baseCSSstring);
+const baseCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
 
 // OpenStatus is the information sent from the backend.
 interface OpenStatus {
