@@ -200,7 +200,7 @@ export class MastStatus extends LitElement {
   status?: mastodon.Status;
 
   @state()
-  private showRaw = false;
+  private accessor showRaw = false;
 
   render() {
     if (!this.status) {
