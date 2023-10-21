@@ -1,0 +1,42 @@
+.text-light {
+    color: #ffffff;
+}
+
+.text-dark {
+    color: #000000;
+}
+
+.bg-red-100 {
+    background-color: #EBBAB9;
+}
+
+.bg-red-400 {
+    background-color: #CC2936;
+}
+
+.bg-blue-100 {
+    background-color: #B5FFE1;
+}
+
+.bg-blue-400 {
+    background-color: #388697;
+}
+
+.bg-blue-800 {
+    background-color: #08415C;
+}
+
+.material-symbols-outlined {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    font-size: 24px;
+    /* Preferred icon size */
+    display: inline-block;
+    line-height: 1;
+    text-transform: none;
+    letter-spacing: normal;
+    word-wrap: normal;
+    white-space: nowrap;
+    direction: ltr;
+}

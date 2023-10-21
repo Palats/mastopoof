@@ -1,4 +1,4 @@
-import { LitElement, css, html, nothing, TemplateResult } from 'lit'
+import { LitElement, css, html, nothing, TemplateResult, unsafeCSS } from 'lit'
 import { customElement, state, property } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { ref, createRef } from 'lit/directives/ref.js';
@@ -7,34 +7,11 @@ import { of, catchError, Subject } from 'rxjs';
 import { fromFetch } from 'rxjs/fetch';
 import { switchMap, takeUntil } from 'rxjs/operators';
 
+import baseCSSstring from "./base.css?inline";
+
 import * as mastodon from "./mastodon";
 
-const baseCSS = css`
-  .text-light { color: #ffffff; }
-
-  .text-dark { color: #000000; }
-
-  .bg-red-100 { background-color: #EBBAB9; }
-  .bg-red-400 { background-color: #CC2936; }
-
-  .bg-blue-100 { background-color: #B5FFE1; }
-  .bg-blue-400 { background-color: #388697; }
-  .bg-blue-800 { background-color: #08415C; }
-
-  .material-symbols-outlined {
-    font-family: 'Material Symbols Outlined';
-    font-weight: normal;
-    font-style: normal;
-    font-size: 24px;  /* Preferred icon size */
-    display: inline-block;
-    line-height: 1;
-    text-transform: none;
-    letter-spacing: normal;
-    word-wrap: normal;
-    white-space: nowrap;
-    direction: ltr;
-  }
-`;
+const baseCSS = unsafeCSS(baseCSSstring);
 
 // OpenStatus is the information sent from the backend.
 interface OpenStatus {
@@ -150,8 +127,6 @@ export class AppRoot extends LitElement {
       rootMargin: "0px",
     });
   }
-
-  updated(changedProperties: Map<string, any>): void { }
 
   onIntersection(entry: IntersectionObserverEntry) {
     const st = this.statuses.find(st => st.element == entry.target);
