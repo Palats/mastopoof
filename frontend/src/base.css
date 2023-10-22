@@ -26,12 +26,26 @@
     background-color: #08415C;
 }
 
+button {
+    background-color: #B5FFE1;
+    border: none;
+    border-radius: 0.2rem;
+    margin: 0.1rem;
+
+    &:hover {
+        background-color: #cbb5ff;
+    }
+
+    &:active {
+        background-color: #574d6e;
+    }
+}
+
 .material-symbols-outlined {
     font-family: 'Material Symbols Outlined';
     font-weight: normal;
     font-style: normal;
-    font-size: 24px;
-    /* Preferred icon size */
+    /*font-size: 24px;*/
     display: inline-block;
     line-height: 1;
     text-transform: none;
@@ -39,4 +53,6 @@
     word-wrap: normal;
     white-space: nowrap;
     direction: ltr;
+
+    vertical-align: text-bottom;
 }

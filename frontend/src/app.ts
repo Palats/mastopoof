@@ -12,6 +12,7 @@ import baseCSSstr from "./base.css?inline";
 
 import * as mastodon from "./mastodon";
 
+console.log(baseCSSstr);
 const baseCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
 
 // OpenStatus is the information sent from the backend.
@@ -239,12 +240,13 @@ export class MastStatus extends LitElement {
         <div class="attachments">
           ${attachments}
         </div>
-        <div class="tools bg-blue-400">
-          <span class="material-symbols-outlined" title="Favorite">favorite</span>
-          <span class="material-symbols-outlined" title="Boost">cached</span>
-          <span class="material-symbols-outlined" title="Reply...">reply</span>
-          <span class="material-symbols-outlined" title="Reply...">code</span>
-          <button @click="${() => { this.showRaw = !this.showRaw }}">Show raw</button>
+        <div class="tools bg-blue-400 text-light">
+          <button><span class="material-symbols-outlined" title="Favorite">favorite</span></button>
+          <button><span class="material-symbols-outlined" title="Boost">cached</span></button>
+          <button><span class="material-symbols-outlined" title="Reply...">reply</span></button>
+          <button @click="${() => { this.showRaw = !this.showRaw }}" title="Show raw status">
+            <span class="material-symbols-outlined">${this.showRaw ? 'unfold_less' : 'unfold_more'}</span>
+          </button>
         </div>
         ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(this.status, null, "  ")}</pre>` : nothing}
       </div>
