@@ -77,3 +77,46 @@ export interface PreviewCard { }
 
 // https://docs.joinmastodon.org/entities/FilterResult/
 export interface FilterResult { }
+
+export function newFakeStatus(content?: string): Status {
+    const username = "fakeuser" + (100 + Math.floor(Math.random() * 800)).toString();
+    const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString();
+    if (content === undefined) {
+        content = "Some status content.";
+    }
+    return {
+        id: id,
+        uri: `https://example.com/users/${username}/statuses/${id}`,
+        url: `https://example.com/@${username}/${id}`,
+        account: {
+            id: Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(),
+            username: username,
+            acct: `${username}@example.com`,
+            url: `https://example.com/@${username}`,
+            display_name: `The account of user ${username}`,
+            note: "Fake user",
+            avatar: "http://www.gravatar.com/avatar/?d=mp",
+            avatar_static: "http://www.gravatar.com/avatar/?d=mp",
+        },
+        created_at: new Date().toISOString(),
+        content: content,
+        visibility: "public",
+        sensitive: false,
+        spoiler_text: "",
+        media_attachments: [],
+        mentions: [],
+        tags: [],
+        emojis: [],
+        reblogs_count: 0,
+        favourites_count: 0,
+        replies_count: 0,
+        in_reply_to_id: null,
+        in_reply_to_account_id: null,
+        reblog: null,
+        poll: null,
+        card: null,
+        language: null,
+        text: null,
+        edited_at: null,
+    }
+}

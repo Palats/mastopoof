@@ -12,13 +12,19 @@ import baseCSSstr from "./base.css?inline";
 
 import * as mastodon from "./mastodon";
 
-console.log(baseCSSstr);
-const baseCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
+const commonCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
 
 // OpenStatus is the information sent from the backend.
 interface OpenStatus {
   position: number
   status: mastodon.Status
+}
+
+// Describes whether a given status is on the screen or above (past) or below (future).
+enum StatusSector {
+  Above,
+  Middle,
+  Below,
 }
 
 // StatusEntry represents the state in the UI of a given status.
@@ -29,6 +35,8 @@ interface StatusEntry {
   // HTML element.
   element?: Element;
 
+  // Current sector of the status in the UI.
+  sector?: StatusSector;
   // Timestamp when the entry started to be visible on the page.
   visible_start?: DOMHighResTimeStamp;
   // Timestamp when the entry stopped being visible on the page.
@@ -39,7 +47,6 @@ interface StatusEntry {
   marked_as_read: boolean;
   // Was this status every visible on the screen?
   was_visible: boolean;
-
 }
 
 // https://adrianfaciu.dev/posts/observables-litelement/
@@ -71,12 +78,7 @@ export class AppRoot extends LitElement {
     this.values$.pipe(takeUntil(this.unsubscribe$)).subscribe(v => {
       this.statuses = [];
       for (const s of (v as OpenStatus[])) {
-        this.statuses.push({
-          status: s.status,
-          position: s.position,
-          was_visible: false,
-          marked_as_read: false,
-        })
+        this.insertStatus(s);
       }
       this.requestUpdate();
     });
@@ -105,8 +107,8 @@ export class AppRoot extends LitElement {
     `;
   }
 
+  // Reference to a Status UI entry changed.
   refStatusUpdated(st: StatusEntry, elt?: Element) {
-    // console.log("ref", st.position, elt);
     if (st.element && st.element != elt) {
       this.observer?.unobserve(st.element);
     }
@@ -120,14 +122,32 @@ export class AppRoot extends LitElement {
   }
 
   firstUpdated(): void {
+    // Setup observer on status to detect moving in / out of the window.
     this.observer = new IntersectionObserver((entries: IntersectionObserverEntry[]) => {
       for (const entry of entries) {
         this.onIntersection(entry);
       }
+      this.checkForExtraStatuses();
     }, {
       // root: this.pageRef.value,
       rootMargin: "0px",
     });
+  }
+
+  insertStatus(s: OpenStatus) {
+    if (this.statuses.length > 20) {
+      console.error("too many statuses");
+      return;
+    }
+    this.statuses.push({
+      status: s.status,
+      position: s.position,
+      was_visible: false,
+      marked_as_read: false,
+    });
+    // Keep the list in order. Terribly inefficient.
+    this.statuses.sort((s1, s2) => s1.position - s2.position);
+    this.requestUpdate();
   }
 
   onIntersection(entry: IntersectionObserverEntry) {
@@ -136,9 +156,13 @@ export class AppRoot extends LitElement {
       console.log("observer element not found", entry);
       return;
     }
-    if (!entry.rootBounds) { return; }
+    if (!entry.rootBounds) {
+      console.log("ignoring intersection (no root bounds)", st.position);
+      return;
+    }
 
     if (entry.isIntersecting) {
+      st.sector = StatusSector.Middle;
       st.was_visible = true;
       st.visible_stop = undefined;
       if (!st.visible_start) {
@@ -149,6 +173,7 @@ export class AppRoot extends LitElement {
         st.mark_as_read_timer = undefined;
       }
     } else {
+      st.sector = entry.boundingClientRect.bottom <= 0 ? StatusSector.Above : StatusSector.Below;
       if (!st.visible_stop) {
         st.visible_stop = entry.time;
         st.visible_start = undefined;
@@ -161,9 +186,67 @@ export class AppRoot extends LitElement {
         }
       }
     }
+    console.log("intersection", st.sector, st.position);
   }
 
-  static styles = [baseCSS, css`
+  // Determine whether new statuses should be obtained from the server.
+  checkForExtraStatuses() {
+    // If any of the status is not yet placed, stop trying - otherwise on initial render
+    // and other transition step, we can end up adding too much stuff.
+    for (const st of this.statuses) {
+      if (st.sector === undefined) {
+        console.log("some status without layout");
+        return;
+      }
+    }
+
+    // Let's first find what we have - how many statuses are hidden in the past
+    // and vice versa.
+    let firstVisible: number | undefined;
+    let lastVisible: number | undefined;
+
+    for (let i = 0; i < this.statuses.length; i++) {
+      if (this.statuses[i].sector != StatusSector.Above) {
+        firstVisible = i;
+        break;
+      }
+    }
+    if (firstVisible === undefined) {
+      console.log("everything is above");
+      return;
+    }
+
+    for (let i = firstVisible; i < this.statuses.length; i++) {
+      if (this.statuses[i].sector === StatusSector.Middle) {
+        lastVisible = i;
+      } else {
+        break;
+      }
+    }
+
+    if (lastVisible === undefined) {
+      console.error("unable to find display boundaries");
+      return;
+    }
+    console.log(`${firstVisible} statuses above, ${this.statuses.length - lastVisible - 1} statuses below`);
+
+    // We have the limits - determine if we need to load more things.
+    /*if (firstVisible < 2) {
+      this.insertStatus({
+        status: mastodon.newFakeStatus(),
+        position: this.statuses[0].position - 1,
+      });
+    }*/
+    if (lastVisible > this.statuses.length - 3) {
+      console.log("adding below");
+      this.insertStatus({
+        status: mastodon.newFakeStatus(),
+        position: this.statuses[this.statuses.length - 1].position + 1,
+      });
+    }
+  }
+
+  static styles = [commonCSS, css`
     :host {
       display: grid;
       grid-template-rows: 40px 1fr;
@@ -253,7 +336,7 @@ export class MastStatus extends LitElement {
     `
   }
 
-  static styles = [baseCSS, css`
+  static styles = [commonCSS, css`
     .status {
       border-style: solid;
       border-radius: .3rem;

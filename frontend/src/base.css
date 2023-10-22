@@ -28,9 +28,10 @@
 
 button {
     background-color: #B5FFE1;
-    border: none;
     border-radius: 0.2rem;
     margin: 0.1rem;
+    border-style: outset;
+    border-width: 0.1rem;
 
     &:hover {
         background-color: #cbb5ff;
