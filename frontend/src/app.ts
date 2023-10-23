@@ -20,13 +20,6 @@ interface OpenStatus {
   status: mastodon.Status
 }
 
-// Describes whether a given status is on the screen or above (past) or below (future).
-enum StatusSector {
-  Above,
-  Middle,
-  Below,
-}
-
 // StatusEntry represents the state in the UI of a given status.
 interface StatusEntry {
   status: mastodon.Status;
@@ -35,18 +28,8 @@ interface StatusEntry {
   // HTML element.
   element?: Element;
 
-  // Current sector of the status in the UI.
-  sector?: StatusSector;
-  // Timestamp when the entry started to be visible on the page.
-  visible_start?: DOMHighResTimeStamp;
-  // Timestamp when the entry stopped being visible on the page.
-  visible_stop?: DOMHighResTimeStamp;
-  // When a post gets hidden, start a timer to detect after a while that it should be marked as read.
-  // However, it must be cancelled if it gets visible again.
-  mark_as_read_timer?: number;
-  marked_as_read: boolean;
-  // Was this status every visible on the screen?
-  was_visible: boolean;
+  // Is it currently visible on the screen of the user?
+  visible: boolean;
 }
 
 // https://adrianfaciu.dev/posts/observables-litelement/
@@ -123,126 +106,115 @@ export class AppRoot extends LitElement {
 
   firstUpdated(): void {
     // Setup observer on status to detect moving in / out of the window.
-    this.observer = new IntersectionObserver((entries: IntersectionObserverEntry[]) => {
-      for (const entry of entries) {
-        this.onIntersection(entry);
-      }
-      this.checkForExtraStatuses();
-    }, {
-      // root: this.pageRef.value,
-      rootMargin: "0px",
-    });
+    this.observer = new IntersectionObserver(
+      (entries: IntersectionObserverEntry[]) => this.onIntersection(entries),
+      {
+        // root: this.pageRef.value,
+        rootMargin: "0px",
+      });
   }
 
-  insertStatus(s: OpenStatus) {
+  insertStatus(s: OpenStatus, beginning = false) {
     if (this.statuses.length > 20) {
       console.error("too many statuses");
       return;
     }
-    this.statuses.push({
+    const st = {
       status: s.status,
       position: s.position,
-      was_visible: false,
-      marked_as_read: false,
-    });
-    // Keep the list in order. Terribly inefficient.
-    this.statuses.sort((s1, s2) => s1.position - s2.position);
-    this.requestUpdate();
+      visible: false,
+    };
+
+    if (beginning) {
+      this.statuses.unshift(st);
+    } else {
+      this.statuses.push(st);
+    }
   }
 
-  onIntersection(entry: IntersectionObserverEntry) {
-    const st = this.statuses.find(st => st.element == entry.target);
-    if (!st) {
-      console.log("observer element not found", entry);
-      return;
+  onIntersection(entries: IntersectionObserverEntry[]) {
+    let visibilityChanged = false;
+    for (const entry of entries) {
+      // Operator ||= is lazy and might not evaluate right element.
+      const v = this.onSingleIntersection(entry);
+      visibilityChanged ||= v;
     }
-    if (!entry.rootBounds) {
-      console.log("ignoring intersection (no root bounds)", st.position);
-      return;
+    if (visibilityChanged) {
+      this.checkForExtraStatuses();
     }
+  }
 
-    if (entry.isIntersecting) {
-      st.sector = StatusSector.Middle;
-      st.was_visible = true;
-      st.visible_stop = undefined;
-      if (!st.visible_start) {
-        st.visible_start = entry.time;
-      }
-      if (st.mark_as_read_timer) {
-        clearTimeout(st.mark_as_read_timer);
-        st.mark_as_read_timer = undefined;
-      }
-    } else {
-      st.sector = entry.boundingClientRect.bottom <= 0 ? StatusSector.Above : StatusSector.Below;
-      if (!st.visible_stop) {
-        st.visible_stop = entry.time;
-        st.visible_start = undefined;
-        // Start timer to mark as read if the status disappeared through top of the screen.
-        if (entry.boundingClientRect.bottom <= 0 && !st.marked_as_read) {
-          st.mark_as_read_timer = setTimeout(() => {
-            console.log("status marked as read", st.position);
-            st.marked_as_read = true;
-          }, 1000);
-        }
-      }
+  // Returns false if no visibility changed, true otherwise.
+  onSingleIntersection(entry: IntersectionObserverEntry): boolean {
+    const idx = this.statuses.findIndex(st => st.element == entry.target);
+    if (idx < 0) {
+      console.error("observer element not found", entry);
+      return false;
     }
-    console.log("intersection", st.sector, st.position);
+    const st = this.statuses[idx];
+    // In doubt, it is better to consider that something is hidden - it avoids
+    // infinitely loading by mistake.
+    if (!entry.rootBounds) {
+      return false;
+    }
+    if (st.visible == entry.isIntersecting) {
+      return false;
+    }
+    st.visible = entry.isIntersecting;
+    return true;
   }
 
   // Determine whether new statuses should be obtained from the server.
   checkForExtraStatuses() {
-    // If any of the status is not yet placed, stop trying - otherwise on initial render
-    // and other transition step, we can end up adding too much stuff.
-    for (const st of this.statuses) {
-      if (st.sector === undefined) {
-        console.log("some status without layout");
-        return;
-      }
-    }
-
     // Let's first find what we have - how many statuses are hidden in the past
     // and vice versa.
     let firstVisible: number | undefined;
     let lastVisible: number | undefined;
 
     for (let i = 0; i < this.statuses.length; i++) {
-      if (this.statuses[i].sector != StatusSector.Above) {
+      if (this.statuses[i].visible) {
         firstVisible = i;
         break;
       }
     }
     if (firstVisible === undefined) {
-      console.log("everything is above");
+      console.log("nothing is visible yet");
       return;
     }
-
     for (let i = firstVisible; i < this.statuses.length; i++) {
-      if (this.statuses[i].sector === StatusSector.Middle) {
+      if (this.statuses[i].visible) {
         lastVisible = i;
       } else {
         break;
       }
     }
-
     if (lastVisible === undefined) {
       console.error("unable to find display boundaries");
       return;
     }
+    for (let i = lastVisible + 1; i < this.statuses.length; i++) {
+      if (this.statuses[i].visible) {
+        console.error("extra visible statuses", firstVisible, lastVisible, "all:", this.statuses.map(st => st.visible));
+        return;
+      }
+    }
     console.log(`${firstVisible} statuses above, ${this.statuses.length - lastVisible - 1} statuses below`);
 
     // We have the limits - determine if we need to load more things.
-    /*if (firstVisible < 2) {
-      this.insertStatus({
+    if (firstVisible < 2) {
+      /*this.insertStatus({
         status: mastodon.newFakeStatus(),
         position: this.statuses[0].position - 1,
-      });
-    }*/
+      }, true);
+      this.requestUpdate();*/
+    }
     if (lastVisible > this.statuses.length - 3) {
       console.log("adding below");
       this.insertStatus({
         status: mastodon.newFakeStatus(),
         position: this.statuses[this.statuses.length - 1].position + 1,
       });
+      this.requestUpdate();
     }
   }
 
