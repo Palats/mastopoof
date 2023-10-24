@@ -296,11 +296,11 @@ export class MastStatus extends LitElement {
           ${attachments}
         </div>
         <div class="tools bg-blue-400 text-light">
-          <button><span class="material-symbols-outlined" title="Favorite">favorite</span></button>
-          <button><span class="material-symbols-outlined" title="Boost">cached</span></button>
+          <button><span class="material-symbols-outlined" title="Favorite">star</span></button>
+          <button><span class="material-symbols-outlined" title="Boost">repeat</span></button>
           <button><span class="material-symbols-outlined" title="Reply...">reply</span></button>
           <button @click="${() => { this.showRaw = !this.showRaw }}" title="Show raw status">
-            <span class="material-symbols-outlined">${this.showRaw ? 'unfold_less' : 'unfold_more'}</span>
+            <span class="material-symbols-outlined">${this.showRaw ? 'collapse_all' : 'expand_all'}</span>
           </button>
         </div>
         ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(this.status, null, "  ")}</pre>` : nothing}
