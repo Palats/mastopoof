@@ -2,10 +2,13 @@ import { LitElement, css, html, nothing, TemplateResult, unsafeCSS } from 'lit'
 import { customElement, state, property } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { ref, createRef } from 'lit/directives/ref.js';
-import { repeat } from 'lit/directives/repeat.js';
 import { of, catchError, Subject } from 'rxjs';
 import { fromFetch } from 'rxjs/fetch';
 import { switchMap, takeUntil } from 'rxjs/operators';
+import { LitVirtualizer, RangeChangedEvent } from '@lit-labs/virtualizer';
+
+// Import the element registration.
+import '@lit-labs/virtualizer';
 
 import normalizeCSSstr from "./normalize.css?inline";
 import baseCSSstr from "./base.css?inline";
@@ -55,13 +58,21 @@ export class AppRoot extends LitElement {
   );
 
   private statuses: StatusEntry[] = [];
+  private startPosition = 1000;
+  virtuRef = createRef<LitVirtualizer>();
 
   connectedCallback(): void {
     super.connectedCallback();
-    this.values$.pipe(takeUntil(this.unsubscribe$)).subscribe(v => {
+    this.values$.pipe(takeUntil(this.unsubscribe$)).subscribe((v: OpenStatus[]) => {
+      // Initial loading.
       this.statuses = [];
-      for (const s of (v as OpenStatus[])) {
-        this.insertStatus(s);
+      // for (const s of (v as OpenStatus[])) {
+      for (let i = 0; i < v.length; i++) {
+        this.statuses[i + this.startPosition] = {
+          status: v[i].status,
+          position: v[i].position,
+          visible: false,
+        };
       }
       this.requestUpdate();
     });
@@ -73,149 +84,51 @@ export class AppRoot extends LitElement {
     this.unsubscribe$.complete();
   }
 
-  pageRef = createRef<HTMLDivElement>();
-
-  observer?: IntersectionObserver;
-
   render() {
     return html`
       <div class="header"></div>
-      <div class="page" ${ref(this.pageRef)}>
-        <div class="statuses">
-          ${repeat(this.statuses, st => st.status.id, st => html`
-            <mast-status class="statustrack" .status=${st.status} ${ref(elt => this.refStatusUpdated(st, elt))}></mast-status>
-          `)}
-        </div>
+      <div class="page">
+        <lit-virtualizer
+          class="statuses"
+          .items=${this.statuses}
+          scroller
+          ${ref(this.virtuRef)}
+          @rangeChanged=${(e: RangeChangedEvent) => this.rangeChanged(e)}
+          .layout=${{ pin: { index: this.startPosition, block: 'start' } } as any}
+          .renderItem=${(st: StatusEntry, _: number): TemplateResult => st ? html`
+            <mast-status class="statustrack" .status=${st.status}></mast-status>
+        `: html`<div>empty</div>`}
+        ></lit-virtualizer>
       </div>
     `;
   }
 
-  // Reference to a Status UI entry changed.
-  refStatusUpdated(st: StatusEntry, elt?: Element) {
-    if (st.element && st.element != elt) {
-      this.observer?.unobserve(st.element);
+  rangeChanged(e: RangeChangedEvent) {
+    console.log("range", e.first, e.last, e);
+    if (e.last > this.statuses.length - 3) {
+      console.log("adding below");
+      this.statuses.push({
+        status: mastodon.newFakeStatus(),
+        position: this.statuses[this.statuses.length - 1].position + 1,
+        visible: false,
+      });
     }
-    st.element = elt;
-    if (!elt) {
-      return;
-    }
-    if (this.observer) {
-      this.observer.observe(elt);
+    for (let i = e.first; i < e.last; i++) {
+      if (this.statuses[i] === undefined) {
+        console.log("filling", i);
+        this.statuses[i] = {
+          status: mastodon.newFakeStatus(),
+          position: i,
+          visible: false,
+        };
+      }
     }
   }
 
   firstUpdated(): void {
-    // Setup observer on status to detect moving in / out of the window.
-    this.observer = new IntersectionObserver(
-      (entries: IntersectionObserverEntry[]) => this.onIntersection(entries),
-      {
-        // root: this.pageRef.value,
-        rootMargin: "0px",
-      });
-  }
-
-  insertStatus(s: OpenStatus, beginning = false) {
-    if (this.statuses.length > 20) {
-      console.error("too many statuses");
-      return;
-    }
-    const st = {
-      status: s.status,
-      position: s.position,
-      visible: false,
-    };
-
-    if (beginning) {
-      this.statuses.unshift(st);
-    } else {
-      this.statuses.push(st);
-    }
-  }
-
-  onIntersection(entries: IntersectionObserverEntry[]) {
-    let visibilityChanged = false;
-    for (const entry of entries) {
-      // Operator ||= is lazy and might not evaluate right element.
-      const v = this.onSingleIntersection(entry);
-      visibilityChanged ||= v;
-    }
-    if (visibilityChanged) {
-      this.checkForExtraStatuses();
-    }
-  }
-
-  // Returns false if no visibility changed, true otherwise.
-  onSingleIntersection(entry: IntersectionObserverEntry): boolean {
-    const idx = this.statuses.findIndex(st => st.element == entry.target);
-    if (idx < 0) {
-      console.error("observer element not found", entry);
-      return false;
-    }
-    const st = this.statuses[idx];
-    // In doubt, it is better to consider that something is hidden - it avoids
-    // infinitely loading by mistake.
-    if (!entry.rootBounds) {
-      return false;
-    }
-    if (st.visible == entry.isIntersecting) {
-      return false;
-    }
-    st.visible = entry.isIntersecting;
-    return true;
-  }
-
-  // Determine whether new statuses should be obtained from the server.
-  checkForExtraStatuses() {
-    // Let's first find what we have - how many statuses are hidden in the past
-    // and vice versa.
-    let firstVisible: number | undefined;
-    let lastVisible: number | undefined;
-
-    for (let i = 0; i < this.statuses.length; i++) {
-      if (this.statuses[i].visible) {
-        firstVisible = i;
-        break;
-      }
-    }
-    if (firstVisible === undefined) {
-      console.log("nothing is visible yet");
-      return;
-    }
-    for (let i = firstVisible; i < this.statuses.length; i++) {
-      if (this.statuses[i].visible) {
-        lastVisible = i;
-      } else {
-        break;
-      }
-    }
-    if (lastVisible === undefined) {
-      console.error("unable to find display boundaries");
-      return;
-    }
-    for (let i = lastVisible + 1; i < this.statuses.length; i++) {
-      if (this.statuses[i].visible) {
-        console.error("extra visible statuses", firstVisible, lastVisible, "all:", this.statuses.map(st => st.visible));
-        return;
-      }
-    }
-    console.log(`${firstVisible} statuses above, ${this.statuses.length - lastVisible - 1} statuses below`);
-
-    // We have the limits - determine if we need to load more things.
-    if (firstVisible < 2) {
-      /*this.insertStatus({
-        status: mastodon.newFakeStatus(),
-        position: this.statuses[0].position - 1,
-      }, true);
-      this.requestUpdate();*/
-    }
-    if (lastVisible > this.statuses.length - 3) {
-      console.log("adding below");
-      this.insertStatus({
-        status: mastodon.newFakeStatus(),
-        position: this.statuses[this.statuses.length - 1].position + 1,
-      });
-      this.requestUpdate();
-    }
+    // setTimeout(() => this.virtuRef.value!.scrollToIndex(this.startPosition, 'start'), 1000);
+    console.log("firstUpdated");
+    // this.virtuRef.value!.scrollToIndex(this.startPosition, 'start')
   }
 
   static styles = [commonCSS, css`
@@ -223,6 +136,7 @@ export class AppRoot extends LitElement {
       display: grid;
       grid-template-rows: 40px 1fr;
       grid-template-columns: 1fr;
+      height: 100%;
     }
 
     .header {
@@ -240,6 +154,10 @@ export class AppRoot extends LitElement {
 
     .statuses {
       grid-column: 2;
+    }
+
+    mast-status {
+      width: 100%;
     }
   `];
 }
