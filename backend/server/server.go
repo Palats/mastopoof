@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/Palats/mastopoof/backend/storage"
 	"github.com/golang/glog"
@@ -45,6 +46,7 @@ func New(st *storage.Storage, authInfo *storage.AuthInfo) *Server {
 	}
 	s.mux.HandleFunc("/list", httpFunc(s.serveList))
 	s.mux.HandleFunc("/opened", httpFunc(s.serveOpened))
+	s.mux.HandleFunc("/statusat", httpFunc(s.serveStatusAt))
 	return s
 }
 
@@ -77,6 +79,7 @@ func (s *Server) serveList(w http.ResponseWriter, r *http.Request) error {
 	return json.NewEncoder(w).Encode(data)
 }
 
+// serveOpened returns the list of status currently opened for the user.
 func (s *Server) serveOpened(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 
@@ -88,4 +91,34 @@ func (s *Server) serveOpened(w http.ResponseWriter, r *http.Request) error {
 
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(opened)
+}
+
+// serveStatusAt returns the status at the given position, if it exists.
+// Query args:
+//
+//	position: index of the status to load.
+//
+// JSON Response:
+//
+//	OpenPosition
+func (s *Server) serveStatusAt(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+
+	rawPosition := r.URL.Query().Get("position")
+	if rawPosition == "" {
+		return fmt.Errorf("missing 'position' argument: %w", httpErr(http.StatusBadRequest))
+	}
+	position, err := strconv.ParseInt(rawPosition, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid 'position' argument: %v; %w", err, httpErr(http.StatusBadRequest))
+	}
+
+	lid := int64(1)
+	status, err := s.st.StatusAt(ctx, lid, position)
+	if err != nil {
+		return err
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(status)
 }

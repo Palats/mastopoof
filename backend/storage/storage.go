@@ -381,3 +381,45 @@ func (st *Storage) Opened(ctx context.Context, lid int64) ([]*OpenStatus, error)
 
 	return results, txn.Commit()
 }
+
+// StatusAt gets the status at the provided position in the stream.
+// Returns nil, nil if there is no matching status at that position.
+func (st *Storage) StatusAt(ctx context.Context, lid int64, position int64) (*OpenStatus, error) {
+	txn, err := st.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer txn.Rollback()
+
+	var jsonString string
+
+	row := st.DB.QueryRowContext(ctx, `
+		SELECT
+			statuses.status
+		FROM
+			statuses
+			INNER JOIN listingcontent
+			USING (sid)
+		WHERE
+			listingcontent.lid = ?
+			AND listingcontent.position = ?
+		;
+	`, lid, position)
+
+	err = row.Scan(&jsonString)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var status mastodon.Status
+	if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
+		return nil, err
+	}
+
+	return &OpenStatus{
+		Position: position,
+		Status:   status,
+	}, txn.Commit()
+}

@@ -26,11 +26,12 @@ interface OpenStatus {
 
 // StatusEntry represents the state in the UI of a given status.
 interface StatusEntry {
-  status: mastodon.Status;
   // Position in the stream in the backend.
   position: number;
-  // HTML element.
-  element?: Element;
+  // status, if loaded.
+  status?: mastodon.Status;
+  // error, if loading did not work.
+  error?: string;
 }
 
 // https://adrianfaciu.dev/posts/observables-litelement/
@@ -56,17 +57,32 @@ export class AppRoot extends LitElement {
   );
 
   private statuses: StatusEntry[] = [];
-  private startPosition = 1000;
+  // startIndex is the arbitrary point in the statuses list where initial status are added.
+  private startIndex = 1000;
+  // Indicates the delta between stream position (backend) and index in the
+  // frontend (here) list of statuses.
+  // i.e., position + positionOffset == index
+  private positionOffset?: number;
   virtuRef = createRef<LitVirtualizer>();
 
   connectedCallback(): void {
     super.connectedCallback();
     this.values$.pipe(takeUntil(this.unsubscribe$)).subscribe((v: OpenStatus[]) => {
       // Initial loading.
+      if (v.length < 1) {
+        console.error("no status");
+        return;
+      }
+
+      // Calculate offsets. We want position of the first status here to be at the startPosition.
+      //   startIndex == v[0].position + positionOffset
+      this.positionOffset = this.startIndex - v[0].position;
+
       for (let i = 0; i < v.length; i++) {
-        this.statuses[i + this.startPosition] = {
-          status: v[i].status,
-          position: v[i].position,
+        const st = v[i];
+        this.statuses[st.position + this.positionOffset] = {
+          status: st.status,
+          position: st.position,
         };
       }
       this.requestUpdate();
@@ -89,17 +105,24 @@ export class AppRoot extends LitElement {
           .items=${this.statuses}
           ${ref(this.virtuRef)}
           @rangeChanged=${(e: RangeChangedEvent) => this.rangeChanged(e)}
-          .layout=${flow({ pin: { index: this.startPosition, block: 'start' } })}
-          .renderItem=${(st: StatusEntry, _: number): TemplateResult => st ? html`
-            <mast-status class="statustrack" .status=${st.status as any}></mast-status>
-        `: html`<div>empty</div>`}
+          .layout=${flow({ pin: { index: this.startIndex, block: 'start' } })}
+          .renderItem=${(st: StatusEntry, _: number): TemplateResult => this.renderStatus(st)}
         ></lit-virtualizer>
       </div>
     `;
   }
 
+  renderStatus(st: StatusEntry): TemplateResult {
+    if (!st) { return html`<div>empty</div>` }
+    if (st.error) { return html`<div>error: ${st.error}</div>` }
+    if (st.status) {
+      return html`<mast-status class="statustrack" .status=${st.status as any}></mast-status>`;
+    }
+    return html`<div>loading</div>`;
+  }
+
   rangeChanged(e: RangeChangedEvent) {
-    if (!this.statuses.length) { return; }
+    if (this.positionOffset === undefined) { return; }  // Not started.
     if (e.first == -1 || e.last == -1) { return; }
 
     // Make sure that statuses in range are loaded. Include a bit of margin to
@@ -107,11 +130,42 @@ export class AppRoot extends LitElement {
     for (let i = e.first - 2; i <= e.last + 2; i++) {
       if (i < 0) { continue; }
       if (this.statuses[i] === undefined) {
-        this.statuses[i] = {
-          status: mastodon.newFakeStatus("stuff to download"),
-          position: i,
-        };
+        this.loadStatusAtIdx(i);
       }
+    }
+  }
+
+  async loadStatusAtIdx(idx: number) {
+    if (this.positionOffset === undefined) {
+      console.error("shoud not have been called");
+      return;
+    }
+    const position = idx - this.positionOffset
+    const st: StatusEntry = {
+      position: position,
+    }
+    this.statuses[idx] = st;
+
+    if (position < 1) {
+      st.error = "negative position";
+      return;
+    }
+
+    const params = new URLSearchParams();
+    params.set("position", position.toString());
+    const u = `/_api/statusat?${params.toString()}`;
+
+    // Issue the request.
+    try {
+      const response = await fetch(u);
+      const ost = await response.json() as OpenStatus;
+      if (!ost) {
+        st.error = "no content";
+      } else {
+        st.status = ost.status;
+      }
+    } catch (err) {
+      console.error("failed to load:", err);
     }
   }
 
