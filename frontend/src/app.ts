@@ -6,6 +6,7 @@ import { of, catchError, Subject } from 'rxjs';
 import { fromFetch } from 'rxjs/fetch';
 import { switchMap, takeUntil } from 'rxjs/operators';
 import { LitVirtualizer, RangeChangedEvent } from '@lit-labs/virtualizer';
+import { flow } from '@lit-labs/virtualizer/layouts/flow.js';
 
 // Import the element registration.
 import '@lit-labs/virtualizer';
@@ -30,9 +31,6 @@ interface StatusEntry {
   position: number;
   // HTML element.
   element?: Element;
-
-  // Is it currently visible on the screen of the user?
-  visible: boolean;
 }
 
 // https://adrianfaciu.dev/posts/observables-litelement/
@@ -65,13 +63,10 @@ export class AppRoot extends LitElement {
     super.connectedCallback();
     this.values$.pipe(takeUntil(this.unsubscribe$)).subscribe((v: OpenStatus[]) => {
       // Initial loading.
-      this.statuses = [];
-      // for (const s of (v as OpenStatus[])) {
       for (let i = 0; i < v.length; i++) {
         this.statuses[i + this.startPosition] = {
           status: v[i].status,
           position: v[i].position,
-          visible: false,
         };
       }
       this.requestUpdate();
@@ -90,13 +85,13 @@ export class AppRoot extends LitElement {
       <div class="page">
         <lit-virtualizer
           class="statuses"
-          .items=${this.statuses}
           scroller
+          .items=${this.statuses}
           ${ref(this.virtuRef)}
           @rangeChanged=${(e: RangeChangedEvent) => this.rangeChanged(e)}
-          .layout=${{ pin: { index: this.startPosition, block: 'start' } } as any}
+          .layout=${flow({ pin: { index: this.startPosition, block: 'start' } })}
           .renderItem=${(st: StatusEntry, _: number): TemplateResult => st ? html`
-            <mast-status class="statustrack" .status=${st.status}></mast-status>
+            <mast-status class="statustrack" .status=${st.status as any}></mast-status>
         `: html`<div>empty</div>`}
         ></lit-virtualizer>
       </div>
@@ -104,31 +99,20 @@ export class AppRoot extends LitElement {
   }
 
   rangeChanged(e: RangeChangedEvent) {
-    console.log("range", e.first, e.last, e);
-    if (e.last > this.statuses.length - 3) {
-      console.log("adding below");
-      this.statuses.push({
-        status: mastodon.newFakeStatus(),
-        position: this.statuses[this.statuses.length - 1].position + 1,
-        visible: false,
-      });
-    }
-    for (let i = e.first; i < e.last; i++) {
+    if (!this.statuses.length) { return; }
+    if (e.first == -1 || e.last == -1) { return; }
+
+    // Make sure that statuses in range are loaded. Include a bit of margin to
+    // accelerate stuff.
+    for (let i = e.first - 2; i <= e.last + 2; i++) {
+      if (i < 0) { continue; }
       if (this.statuses[i] === undefined) {
-        console.log("filling", i);
         this.statuses[i] = {
-          status: mastodon.newFakeStatus(),
+          status: mastodon.newFakeStatus("stuff to download"),
           position: i,
-          visible: false,
         };
       }
     }
-  }
-
-  firstUpdated(): void {
-    // setTimeout(() => this.virtuRef.value!.scrollToIndex(this.startPosition, 'start'), 1000);
-    console.log("firstUpdated");
-    // this.virtuRef.value!.scrollToIndex(this.startPosition, 'start')
   }
 
   static styles = [commonCSS, css`
@@ -141,7 +125,7 @@ export class AppRoot extends LitElement {
 
     .header {
       grid-row: 1;
-      background-color: #efefef;
+      background-color: #ddf4ff;
       position: sticky;
       top: 0;
     }
@@ -154,6 +138,12 @@ export class AppRoot extends LitElement {
 
     .statuses {
       grid-column: 2;
+
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      &::-webkit-scrollbar {
+        display: none;
+      }
     }
 
     mast-status {
