@@ -58,7 +58,7 @@ export class AppRoot extends LitElement {
 
   private statuses: StatusEntry[] = [];
   // startIndex is the arbitrary point in the statuses list where initial status are added.
-  private startIndex = 1000;
+  private startIndex?: number;
   // Indicates the delta between stream position (backend) and index in the
   // frontend (here) list of statuses.
   // i.e., position + positionOffset == index
@@ -74,9 +74,13 @@ export class AppRoot extends LitElement {
         return;
       }
 
-      // Calculate offsets. We want position of the first status here to be at the startPosition.
-      //   startIndex == v[0].position + positionOffset
-      this.positionOffset = this.startIndex - v[0].position;
+      // Calculate offsets.
+      // We want to have index 0 (first element in the UI) to match position 1 - first element in the stream.
+      // We also have: position + positionOffset == index
+      // So: positionOffset = 0 (index) - position (1) = -1
+      this.positionOffset = -1;
+      // And we want to load the view on v[0].position
+      this.startIndex = v[0].position + this.positionOffset;
 
       for (let i = 0; i < v.length; i++) {
         const st = v[i];
@@ -99,6 +103,7 @@ export class AppRoot extends LitElement {
     return html`
       <div class="header"></div>
       <div class="page">
+        ${this.startIndex === undefined ? html`Loading...` : html`
         <lit-virtualizer
           class="statuses"
           scroller
@@ -108,6 +113,7 @@ export class AppRoot extends LitElement {
           .layout=${flow({ pin: { index: this.startIndex, block: 'start' } })}
           .renderItem=${(st: StatusEntry, _: number): TemplateResult => this.renderStatus(st)}
         ></lit-virtualizer>
+        `}
       </div>
     `;
   }
