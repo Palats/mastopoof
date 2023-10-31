@@ -20,8 +20,14 @@ const commonCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
 
 // OpenStatus is the information sent from the backend.
 interface OpenStatus {
-  position: number
-  status: mastodon.Status
+  position: number;
+  status: mastodon.Status;
+}
+
+// JSON response for `opened` backend call.
+interface OpenedResponse {
+  last_read: number;
+  statuses: OpenStatus[];
 }
 
 // StatusEntry represents the state in the UI of a given status.
@@ -63,40 +69,46 @@ export class AppRoot extends LitElement {
   // frontend (here) list of statuses.
   // i.e., position + positionOffset == index
   private positionOffset?: number;
+  // Position of the last status marked as read.
+  private lastRead?: number;
+
   virtuRef = createRef<LitVirtualizer>();
 
   connectedCallback(): void {
     super.connectedCallback();
-    this.values$.pipe(takeUntil(this.unsubscribe$)).subscribe((v: OpenStatus[]) => {
-      // Initial loading.
-      if (v.length < 1) {
-        console.error("no status");
-        return;
-      }
-
-      // Calculate offsets.
-      // We want to have index 0 (first element in the UI) to match position 1 - first element in the stream.
-      // We also have: position + positionOffset == index
-      // So: positionOffset = 0 (index) - position (1) = -1
-      this.positionOffset = -1;
-      // And we want to load the view on v[0].position
-      this.startIndex = v[0].position + this.positionOffset;
-
-      for (let i = 0; i < v.length; i++) {
-        const st = v[i];
-        this.statuses[st.position + this.positionOffset] = {
-          status: st.status,
-          position: st.position,
-        };
-      }
-      this.requestUpdate();
-    });
+    this.values$.pipe(takeUntil(this.unsubscribe$)).subscribe((r: OpenedResponse) => this.processOpened(r));
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this.unsubscribe$.next(null);
     this.unsubscribe$.complete();
+  }
+
+  processOpened(resp: OpenedResponse) {
+    this.lastRead = resp.last_read;
+    // Initial loading.
+    if (resp.statuses.length < 1) {
+      console.error("no status");
+      return;
+    }
+
+    // Calculate offsets.
+    // We want to have index 0 (first element in the UI) to match position 1 - first element in the stream.
+    // We also have: position + positionOffset == index
+    // So: positionOffset = 0 (index) - position (1) = -1
+    this.positionOffset = -1;
+    // And we want to load the view on v[0].position
+    this.startIndex = resp.statuses[0].position + this.positionOffset;
+
+    for (let i = 0; i < resp.statuses.length; i++) {
+      const st = resp.statuses[i];
+      this.statuses[st.position + this.positionOffset] = {
+        status: st.status,
+        position: st.position,
+      };
+    }
+    this.requestUpdate();
   }
 
   render() {
@@ -120,11 +132,21 @@ export class AppRoot extends LitElement {
 
   renderStatus(st: StatusEntry): TemplateResult {
     if (!st) { return html`<div>empty</div>` }
-    if (st.error) { return html`<div>error: ${st.error}</div>` }
+
+    const content: TemplateResult[] = [];
+    if (st.error) { content.push(html`<div>error: ${st.error}</div>`); }
+
     if (st.status) {
-      return html`<mast-status class="statustrack" .status=${st.status as any}></mast-status>`;
+      content.push(html`<mast-status class="statustrack" .status=${st.status as any}></mast-status>`);
+    } else {
+      content.push(html`<div>loading</div>`);
     }
-    return html`<div>loading</div>`;
+
+    if (st.position == this.lastRead) {
+      content.push(html`<div class="lastread">Last read</div>`);
+    }
+
+    return html`${content}`;
   }
 
   rangeChanged(e: RangeChangedEvent) {
@@ -207,6 +229,11 @@ export class AppRoot extends LitElement {
     }
 
     mast-status {
+      width: 100%;
+    }
+
+    .lastread {
+      background-color: #dfa1a1;
       width: 100%;
     }
   `];

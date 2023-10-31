@@ -79,18 +79,32 @@ func (s *Server) serveList(w http.ResponseWriter, r *http.Request) error {
 	return json.NewEncoder(w).Encode(data)
 }
 
+type OpenedResponse struct {
+	LastRead int64                 `json:"last_read"`
+	Statuses []*storage.OpenStatus `json:"statuses"`
+}
+
 // serveOpened returns the list of status currently opened for the user.
 func (s *Server) serveOpened(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
+	var resp OpenedResponse
 
 	lid := int64(1)
+
 	opened, err := s.st.Opened(ctx, lid)
 	if err != nil {
 		return err
 	}
+	resp.Statuses = opened
+
+	lstate, err := s.st.ListingState(ctx, s.st.DB, lid)
+	if err != nil {
+		return err
+	}
+	resp.LastRead = lstate.LastRead
 
 	w.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(w).Encode(opened)
+	return json.NewEncoder(w).Encode(resp)
 }
 
 // serveStatusAt returns the status at the given position, if it exists.
