@@ -15,6 +15,7 @@ import normalizeCSSstr from "./normalize.css?inline";
 import baseCSSstr from "./base.css?inline";
 
 import * as mastodon from "./mastodon";
+import { VisibilityChangedEvent } from '../node_modules/@lit-labs/virtualizer/events';
 
 const commonCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
 
@@ -122,6 +123,7 @@ export class AppRoot extends LitElement {
           .items=${this.statuses}
           ${ref(this.virtuRef)}
           @rangeChanged=${(e: RangeChangedEvent) => this.rangeChanged(e)}
+          @visibilityChanged=${(e: VisibilityChangedEvent) => this.visibilityChanged(e)}
           .layout=${flow({ pin: { index: this.startIndex, block: 'start' } })}
           .renderItem=${(st: StatusEntry, _: number): TemplateResult => this.renderStatus(st)}
         ></lit-virtualizer>
@@ -146,7 +148,7 @@ export class AppRoot extends LitElement {
       content.push(html`<div class="lastread">Last read</div>`);
     }
 
-    return html`${content}`;
+    return html`<div style="width: 100%">${content}</div>`;
   }
 
   rangeChanged(e: RangeChangedEvent) {
@@ -161,6 +163,10 @@ export class AppRoot extends LitElement {
         this.loadStatusAtIdx(i);
       }
     }
+  }
+
+  visibilityChanged(e: VisibilityChangedEvent) {
+    console.log("visibility", e.first, e.last);
   }
 
   async loadStatusAtIdx(idx: number) {
