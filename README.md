@@ -31,6 +31,18 @@ Run:
 npm run dev
 ```
 
+## Comms
+
+Usage of:
+ - https://buf.build/ for protobuf management
+ - https://connectrpc.com/ for backend/frontend communication
+
+To regen:
+
+```
+cd proto/ && buf generate
+```
+
 ## Notes
 
 Goal is to present a stream of statuses to the user. The stream, once revealed,

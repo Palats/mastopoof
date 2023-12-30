@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package mastopoof;
+
+// option go_package = "github.com/Palats/mastopoof/proto/gen;greetv1";
+
+message PingRequest {
+    string msg = 1;
+}
+
+message PingResponse {
+    string msg = 2;
+}
+
+service Mastopoof {
+    rpc Ping(PingRequest) returns (PingResponse);
+}

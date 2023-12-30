@@ -21,6 +21,7 @@ import (
 	"github.com/Palats/mastopoof/backend/server"
 	"github.com/Palats/mastopoof/backend/storage"
 
+	_ "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	_ "github.com/mattn/go-sqlite3"
 )
 
