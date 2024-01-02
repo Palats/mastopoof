@@ -8,6 +8,11 @@ import { switchMap, takeUntil } from 'rxjs/operators';
 import { LitVirtualizer, RangeChangedEvent } from '@lit-labs/virtualizer';
 import { flow } from '@lit-labs/virtualizer/layouts/flow.js';
 
+import { createPromiseClient } from "@connectrpc/connect";
+import { createConnectTransport } from "@connectrpc/connect-web";
+import { Mastopoof } from "../../proto/gen/mastopoof/mastopoof_connect";
+console.log(createPromiseClient, createConnectTransport, Mastopoof);
+
 // Import the element registration.
 import '@lit-labs/virtualizer';
 

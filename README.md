@@ -17,6 +17,12 @@ Reauth:
 go run main.go --server https://mastodon.social --clear_app --clear_auth auth
 ```
 
+Server:
+
+```
+go run main.go --alsologtostderr serve
+```
+
 ## Frontend
 
 Initial setup:
