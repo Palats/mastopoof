@@ -49,6 +49,12 @@ To regen:
 cd proto/ && buf generate
 ```
 
+Example call:
+
+```
+curl --header 'Content-Type: application/json' --data '{"msg": "plop"}' http://localhost:8079/_rpc/mastopoof.Mastopoof/Ping
+```
+
 ## Notes
 
 Goal is to present a stream of statuses to the user. The stream, once revealed,

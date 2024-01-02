@@ -17,11 +17,13 @@ import (
 	"github.com/mattn/go-mastodon"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
 	"github.com/Palats/mastopoof/backend/server"
 	"github.com/Palats/mastopoof/backend/storage"
 
-	_ "github.com/Palats/mastopoof/proto/gen/mastopoof"
+	"github.com/Palats/mastopoof/proto/gen/mastopoof/mastopoofconnect"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -258,13 +260,23 @@ func cmdFetch(ctx context.Context, st *storage.Storage, authInfo *storage.AuthIn
 }
 
 func cmdServe(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
+	mux := http.NewServeMux()
+
 	s := server.New(st, authInfo)
 
-	http.Handle("/_api/", http.StripPrefix("/_api", s))
+	mux.Handle("/_api/", http.StripPrefix("/_api", s))
+
+	api := http.NewServeMux()
+	api.Handle(mastopoofconnect.NewMastopoofHandler(s))
+	mux.Handle("/_rpc/", http.StripPrefix("/_rpc", api))
 
 	addr := fmt.Sprintf(":%d", *port)
 	fmt.Printf("Listening on %s...\n", addr)
-	return http.ListenAndServe(addr, nil)
+
+	return http.ListenAndServe(addr,
+		// Use h2c so we can serve HTTP/2 without TLS.
+		h2c.NewHandler(mux, &http2.Server{}),
+	)
 }
 
 func cmdList(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {

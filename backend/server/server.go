@@ -1,15 +1,19 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 
+	"connectrpc.com/connect"
 	"github.com/Palats/mastopoof/backend/storage"
 	"github.com/golang/glog"
 	"github.com/mattn/go-mastodon"
+
+	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 )
 
 type httpErr int
@@ -53,6 +57,13 @@ func New(st *storage.Storage, authInfo *storage.AuthInfo) *Server {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	glog.Infof("request %v", r.URL)
 	s.mux.ServeHTTP(w, r)
+}
+
+func (s *Server) Ping(ctx context.Context, req *connect.Request[pb.PingRequest]) (*connect.Response[pb.PingResponse], error) {
+	resp := connect.NewResponse(&pb.PingResponse{
+		Msg: fmt.Sprintf("Got: %v", req.Msg),
+	})
+	return resp, nil
 }
 
 func (s *Server) serveList(w http.ResponseWriter, r *http.Request) error {
