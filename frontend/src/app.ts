@@ -11,7 +11,13 @@ import { flow } from '@lit-labs/virtualizer/layouts/flow.js';
 import { createPromiseClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import { Mastopoof } from "mastopoof-proto/gen/mastopoof/mastopoof_connect";
+import * as pb from 'mastopoof-proto/gen/mastopoof/mastopoof_pb';
 console.log(createPromiseClient, createConnectTransport, Mastopoof);
+
+const transport = createConnectTransport({
+  baseUrl: "/_rpc/",
+});
+const client = createPromiseClient(Mastopoof, transport);
 
 // Import the element registration.
 import '@lit-labs/virtualizer';
@@ -21,6 +27,7 @@ import baseCSSstr from "./base.css?inline";
 
 import * as mastodon from "./mastodon";
 import { VisibilityChangedEvent } from '../node_modules/@lit-labs/virtualizer/events';
+
 
 const commonCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
 
@@ -115,6 +122,13 @@ export class AppRoot extends LitElement {
       };
     }
     this.requestUpdate();
+
+    console.log("ping");
+    client.ping({ msg: "plop" })
+      .catch(reason => console.log("exception:", reason))
+      .then((value: pb.PingResponse | void) => {
+        console.log("response", value);
+      });
   }
 
   render() {
