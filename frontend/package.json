@@ -14,7 +14,8 @@
     "@connectrpc/connect-web": "1.2.1",
     "@lit-labs/virtualizer": "^2.0.9",
     "lit": "^3.0.0",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "mastopoof-proto": "file:../proto"
   },
   "devDependencies": {
     "typescript": "^5.2.2",

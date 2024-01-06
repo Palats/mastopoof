@@ -10,7 +10,7 @@ import { flow } from '@lit-labs/virtualizer/layouts/flow.js';
 
 import { createPromiseClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
-import { Mastopoof } from "../../proto/gen/mastopoof/mastopoof_connect";
+import { Mastopoof } from "mastopoof-proto/gen/mastopoof/mastopoof_connect";
 console.log(createPromiseClient, createConnectTransport, Mastopoof);
 
 // Import the element registration.
