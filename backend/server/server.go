@@ -11,7 +11,6 @@ import (
 	"connectrpc.com/connect"
 	"github.com/Palats/mastopoof/backend/storage"
 	"github.com/golang/glog"
-	"github.com/mattn/go-mastodon"
 
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 )
@@ -48,8 +47,6 @@ func New(st *storage.Storage, authInfo *storage.AuthInfo) *Server {
 		authInfo: authInfo,
 		mux:      http.NewServeMux(),
 	}
-	s.mux.HandleFunc("/list", httpFunc(s.serveList))
-	s.mux.HandleFunc("/opened", httpFunc(s.serveOpened))
 	s.mux.HandleFunc("/statusat", httpFunc(s.serveStatusAt))
 	return s
 }
@@ -66,56 +63,33 @@ func (s *Server) Ping(ctx context.Context, req *connect.Request[pb.PingRequest])
 	return resp, nil
 }
 
-func (s *Server) serveList(w http.ResponseWriter, r *http.Request) error {
-	ctx := r.Context()
-	rows, err := s.st.DB.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, s.authInfo.UID)
-	if err != nil {
-		return err
-	}
-
-	data := []any{}
-	for rows.Next() {
-		var jsonString string
-		if err := rows.Scan(&jsonString); err != nil {
-			return err
-		}
-		var status mastodon.Status
-		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
-			return err
-		}
-
-		data = append(data, status)
-	}
-	w.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(w).Encode(data)
-}
-
-type OpenedResponse struct {
-	LastRead int64                 `json:"last_read"`
-	Statuses []*storage.OpenStatus `json:"statuses"`
-}
-
-// serveOpened returns the list of status currently opened for the user.
-func (s *Server) serveOpened(w http.ResponseWriter, r *http.Request) error {
-	ctx := r.Context()
-	var resp OpenedResponse
+func (s *Server) InitialStatuses(ctx context.Context, req *connect.Request[pb.InitialStatusesRequest]) (*connect.Response[pb.InitialStatusesResponse], error) {
+	resp := &pb.InitialStatusesResponse{}
 
 	lid := int64(1)
 
 	opened, err := s.st.Opened(ctx, lid)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	resp.Statuses = opened
+	for _, openedStatus := range opened {
+		raw, err := json.Marshal(openedStatus.Status)
+		if err != nil {
+			return nil, err
+		}
+		resp.Items = append(resp.Items, &pb.Item{
+			Status:   &pb.MastodonStatus{Content: string(raw)},
+			Position: openedStatus.Position,
+		})
+	}
 
 	lstate, err := s.st.ListingState(ctx, s.st.DB, lid)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	resp.LastRead = lstate.LastRead
 
-	w.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(w).Encode(resp)
+	return connect.NewResponse(resp), nil
 }
 
 // serveStatusAt returns the status at the given position, if it exists.

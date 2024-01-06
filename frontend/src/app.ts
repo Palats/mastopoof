@@ -2,18 +2,14 @@ import { LitElement, css, html, nothing, TemplateResult, unsafeCSS } from 'lit'
 import { customElement, state, property } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { ref, createRef } from 'lit/directives/ref.js';
-import { of, catchError, Subject } from 'rxjs';
-import { fromFetch } from 'rxjs/fetch';
-import { switchMap, takeUntil } from 'rxjs/operators';
 import { LitVirtualizer, RangeChangedEvent } from '@lit-labs/virtualizer';
 import { flow } from '@lit-labs/virtualizer/layouts/flow.js';
 
 import { createPromiseClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import { Mastopoof } from "mastopoof-proto/gen/mastopoof/mastopoof_connect";
-import * as pb from 'mastopoof-proto/gen/mastopoof/mastopoof_pb';
-console.log(createPromiseClient, createConnectTransport, Mastopoof);
 
+// XXX move that elsewhere
 const transport = createConnectTransport({
   baseUrl: "/_rpc/",
 });
@@ -37,12 +33,6 @@ interface OpenStatus {
   status: mastodon.Status;
 }
 
-// JSON response for `opened` backend call.
-interface OpenedResponse {
-  last_read: number;
-  statuses: OpenStatus[];
-}
-
 // StatusEntry represents the state in the UI of a given status.
 interface StatusEntry {
   // Position in the stream in the backend.
@@ -57,24 +47,6 @@ interface StatusEntry {
 
 @customElement('app-root')
 export class AppRoot extends LitElement {
-  unsubscribe$ = new Subject<null>();
-  values$ = fromFetch('/_api/opened').pipe(
-    switchMap(response => {
-      if (response.ok) {
-        // OK return data
-        return response.json();
-      } else {
-        // Server is returning a status requiring the client to try something else.
-        return of({ error: true, message: `Error ${response.status}` });
-      }
-    }),
-    catchError(err => {
-      // Network or other error, handle appropriately
-      console.error(err);
-      return of({ error: true, message: err.message })
-    })
-  );
-
   private statuses: StatusEntry[] = [];
   // startIndex is the arbitrary point in the statuses list where initial status are added.
   private startIndex?: number;
@@ -89,19 +61,19 @@ export class AppRoot extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback();
-    this.values$.pipe(takeUntil(this.unsubscribe$)).subscribe((r: OpenedResponse) => this.processOpened(r));
+    this.initialFetch();
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    this.unsubscribe$.next(null);
-    this.unsubscribe$.complete();
   }
 
-  processOpened(resp: OpenedResponse) {
-    this.lastRead = resp.last_read;
+  async initialFetch() {
+    const resp = await client.initialStatuses({});
+
+    this.lastRead = Number(resp.lastRead);
     // Initial loading.
-    if (resp.statuses.length < 1) {
+    if (resp.items.length < 1) {
       console.error("no status");
       return;
     }
@@ -112,23 +84,18 @@ export class AppRoot extends LitElement {
     // So: positionOffset = 0 (index) - position (1) = -1
     this.positionOffset = -1;
     // And we want to load the view on v[0].position
-    this.startIndex = resp.statuses[0].position + this.positionOffset;
+    this.startIndex = Number(resp.items[0].position) + this.positionOffset;
 
-    for (let i = 0; i < resp.statuses.length; i++) {
-      const st = resp.statuses[i];
-      this.statuses[st.position + this.positionOffset] = {
-        status: st.status,
-        position: st.position,
+    for (let i = 0; i < resp.items.length; i++) {
+      const item = resp.items[i];
+      const position = Number(item.position);
+      const status = JSON.parse(item.status!.content) as mastodon.Status;
+      this.statuses[position + this.positionOffset] = {
+        status: status,
+        position: position,
       };
     }
     this.requestUpdate();
-
-    console.log("ping");
-    client.ping({ msg: "plop" })
-      .catch(reason => console.log("exception:", reason))
-      .then((value: pb.PingResponse | void) => {
-        console.log("response", value);
-      });
   }
 
   render() {
