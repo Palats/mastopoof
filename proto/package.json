@@ -1,0 +1,10 @@
+{
+  "name": "mastopoof-proto",
+  "version": "0.0.0",
+  "scripts": {},
+  "dependencies": {
+    "@bufbuild/protobuf": "1.6.0",
+    "@connectrpc/connect": "1.2.1",
+    "@connectrpc/connect-web": "1.2.1"
+  }
+}

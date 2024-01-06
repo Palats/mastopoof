@@ -6,7 +6,7 @@ A Mastodon client
 
  - Get `buf` command line tool (https://github.com/bufbuild/buf/releases)
  - Run: `cd proto/ && buf generate`
- - Run `npm install` in `frontend/`
+ - Run `npm install` in `frontend/` and in `proto/`
 
 ## Backend
 Authentication is kept in the DB.
