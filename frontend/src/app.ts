@@ -5,7 +5,7 @@ import { ref, createRef } from 'lit/directives/ref.js';
 import { LitVirtualizer, RangeChangedEvent } from '@lit-labs/virtualizer';
 import { flow } from '@lit-labs/virtualizer/layouts/flow.js';
 
-import { createPromiseClient } from "@connectrpc/connect";
+import { createPromiseClient, ConnectError } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import { Mastopoof } from "mastopoof-proto/gen/mastopoof/mastopoof_connect";
 
@@ -24,14 +24,7 @@ import baseCSSstr from "./base.css?inline";
 import * as mastodon from "./mastodon";
 import { VisibilityChangedEvent } from '../node_modules/@lit-labs/virtualizer/events';
 
-
 const commonCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
-
-// OpenStatus is the information sent from the backend.
-interface OpenStatus {
-  position: number;
-  status: mastodon.Status;
-}
 
 // StatusEntry represents the state in the UI of a given status.
 interface StatusEntry {
@@ -171,21 +164,12 @@ export class AppRoot extends LitElement {
       return;
     }
 
-    const params = new URLSearchParams();
-    params.set("position", position.toString());
-    const u = `/_api/statusat?${params.toString()}`;
-
     // Issue the request.
     try {
-      const response = await fetch(u);
-      const ost = await response.json() as OpenStatus;
-      if (!ost) {
-        st.error = "no content";
-      } else {
-        st.status = ost.status;
-      }
+      const resp = await client.getStatus({ position: BigInt(position) });
+      st.status = JSON.parse(resp.item!.status!.content) as mastodon.Status;
     } catch (err) {
-      console.error("failed to load:", err);
+      st.error = ConnectError.from(err).message;
     }
   }
 
@@ -256,7 +240,7 @@ export class MastStatus extends LitElement {
     const isReblog = !!this.status.reblog;
 
     const attachments: TemplateResult[] = [];
-    for (const ma of s.media_attachments) {
+    for (const ma of (s.media_attachments ?? [])) {
       if (ma.type === "image") {
         attachments.push(html`
           <img src=${ma.preview_url} alt=${ma.description}></img>

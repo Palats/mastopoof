@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"connectrpc.com/connect"
 	"github.com/Palats/mastopoof/backend/storage"
@@ -47,7 +46,6 @@ func New(st *storage.Storage, authInfo *storage.AuthInfo) *Server {
 		authInfo: authInfo,
 		mux:      http.NewServeMux(),
 	}
-	s.mux.HandleFunc("/statusat", httpFunc(s.serveStatusAt))
 	return s
 }
 
@@ -92,32 +90,25 @@ func (s *Server) InitialStatuses(ctx context.Context, req *connect.Request[pb.In
 	return connect.NewResponse(resp), nil
 }
 
-// serveStatusAt returns the status at the given position, if it exists.
-// Query args:
-//
-//	position: index of the status to load.
-//
-// JSON Response:
-//
-//	OpenPosition
-func (s *Server) serveStatusAt(w http.ResponseWriter, r *http.Request) error {
-	ctx := r.Context()
-
-	rawPosition := r.URL.Query().Get("position")
-	if rawPosition == "" {
-		return fmt.Errorf("missing 'position' argument: %w", httpErr(http.StatusBadRequest))
-	}
-	position, err := strconv.ParseInt(rawPosition, 10, 64)
-	if err != nil {
-		return fmt.Errorf("invalid 'position' argument: %v; %w", err, httpErr(http.StatusBadRequest))
-	}
-
+func (s *Server) GetStatus(ctx context.Context, req *connect.Request[pb.GetStatusRequest]) (*connect.Response[pb.GetStatusResponse], error) {
 	lid := int64(1)
-	status, err := s.st.StatusAt(ctx, lid, position)
+	ost, err := s.st.StatusAt(ctx, lid, req.Msg.Position)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(w).Encode(status)
+	if ost == nil {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("no status at position %d", req.Msg.Position))
+	}
+
+	resp := &pb.GetStatusResponse{}
+	raw, err := json.Marshal(ost.Status)
+	if err != nil {
+		return nil, err
+	}
+	resp.Item = &pb.Item{
+		Status:   &pb.MastodonStatus{Content: string(raw)},
+		Position: ost.Position,
+	}
+	return connect.NewResponse(resp), nil
 }

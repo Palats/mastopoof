@@ -8,6 +8,8 @@ service Mastopoof {
     // Get opened statuses and a bit of context if needed.
     // Used on client opening.
     rpc InitialStatuses(InitialStatusesRequest) returns (InitialStatusesResponse);
+    // Get a status by stream position.
+    rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
 }
 
 message PingRequest {
@@ -26,6 +28,15 @@ message InitialStatusesResponse {
     // It will means the statuses will be at last_read+1 and beyond.
     repeated Item items = 1;
     int64 last_read = 2;
+}
+
+message GetStatusRequest {
+    // The index in the stream of the status to fetch.
+    int64 position = 1;
+}
+
+message GetStatusResponse {
+    Item item = 1;
 }
 
 // An item in the stream - i.e., a status with some metadata.
