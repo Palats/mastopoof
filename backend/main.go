@@ -264,8 +264,6 @@ func cmdServe(ctx context.Context, st *storage.Storage, authInfo *storage.AuthIn
 
 	s := server.New(st, authInfo)
 
-	mux.Handle("/_api/", http.StripPrefix("/_api", s))
-
 	api := http.NewServeMux()
 	api.Handle(mastopoofconnect.NewMastopoofHandler(s))
 	mux.Handle("/_rpc/", http.StripPrefix("/_rpc", api))

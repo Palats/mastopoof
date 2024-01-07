@@ -3,36 +3,14 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
 	"connectrpc.com/connect"
 	"github.com/Palats/mastopoof/backend/storage"
-	"github.com/golang/glog"
 
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 )
-
-type httpErr int
-
-func (herr httpErr) Error() string {
-	return fmt.Sprintf("%d: %s", int(herr), http.StatusText(int(herr)))
-}
-
-func httpFunc(f func(w http.ResponseWriter, r *http.Request) error) func(w http.ResponseWriter, r *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		err := f(w, r)
-		if err != nil {
-			var herr httpErr
-			if errors.As(err, &herr) {
-				http.Error(w, err.Error(), int(herr))
-			} else {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-		}
-	}
-}
 
 type Server struct {
 	st       *storage.Storage
@@ -47,11 +25,6 @@ func New(st *storage.Storage, authInfo *storage.AuthInfo) *Server {
 		mux:      http.NewServeMux(),
 	}
 	return s
-}
-
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	glog.Infof("request %v", r.URL)
-	s.mux.ServeHTTP(w, r)
 }
 
 func (s *Server) Ping(ctx context.Context, req *connect.Request[pb.PingRequest]) (*connect.Response[pb.PingResponse], error) {
