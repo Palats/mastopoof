@@ -79,14 +79,6 @@ export class AppRoot extends LitElement {
     this.positionOffset = -1;
     // And we want to load the view on v[0].position
     this.startIndex = Number(resp.items[0].position) + this.positionOffset;
-    setTimeout(() => {
-      console.log("plop");
-      // this.virtuRef.value!.scrollBy({ top: 100 });
-      // this.virtuRef.value!.element(this.startIndex!)?.scrollIntoView();
-      // this.scrollBy({ top: 200 });
-      // window.scrollY += 100;
-      // window.scrollBy({ top: -60 });
-    }, 500);
 
     for (let i = 0; i < resp.items.length; i++) {
       const item = resp.items[i];
@@ -97,109 +89,72 @@ export class AppRoot extends LitElement {
         position: position,
       };
     }
-    console.log("initial indexes", this.startIndex, Number(resp.items[resp.items.length - 1].position) + this.positionOffset);
     this.requestUpdate();
   }
 
   static styles = [commonCSS, css`
     :host {
-      /*display: grid;
-      grid-template-rows: 40px 1fr;
-      grid-template-columns: 1fr;*/
       display: flex;
       flex-direction: column;
       height: 100%;
-    }
 
-    .header {
-      /*grid-row: 1;*/
-      background-color: #ddf4ff;
-      position: fixed;
-      top: 0;
-      min-height: 40px;
-      width: 100%;
-      z-index: 3;
       box-sizing: border-box;
     }
 
     .page {
-      /*grid-row: 2;*/
-      /*display: grid;
-      grid-template-columns: 1fr minmax(100px, 600px) 1fr;*/
       display: flex;
       flex-direction: row;
+      justify-content: center;
       top: 40px;
-    }
 
-    .leftpane {
-      /*grid-column: 1;*/
-      background-color: #f3aeae;
-      /*top: 60px;*/
-      min-width: 285px;
-    }
-
-    .leftpanecontent {
-      /* Somehow, fixed without any coordinate does the right thing, while
-       * even with top: 0, it shifts things around */
-      position: fixed;
-      top: 60px;
+      background-color: #e0e0e0;
     }
 
     .middlepane {
-      /*grid-column: 2;*/
-      background-color: #bef3ae;
       min-width: 600px;
-      /*position: relative;
-      top: 120px;*/
     }
 
-    .rightpane {
-      /*grid-column: 3;*/
-      background-color: #aec0f3;
-      /*top: 60px;
-      right: 0;*/
-      min-width: 285px;
-    }
-
-    .rightpanecontent {
-      position: fixed;
-      top: 60px;
-    }
-
-
-    .contenthead {
+    .header {
       position: sticky;
-      top: 40px;
+      top: 0;
       z-index: 2;
-      background-color: #f3aeed;
       box-sizing: border-box;
+      min-height: 60px;
+      background-color: #e0e0e0;
+
+      display: grid;
+      grid-template-rows: 1fr;
     }
 
-    .content {
-      /*display: grid;
-      grid-template-rows: 1fr;*/
-      /*position: relative;
-      top: 60px;*/
-    }
-
-    .buffer {
-      height: 60px;
+    /* Header content is separated from header styling. This way, the header
+    element can cover everything behind (to pretend it is not there) and let
+    options for styling, beyond a basic all encompassing box.
+    */
+    .headercontent {
+      background-color: #f7fdff;
+      border-style: solid;
+      border-radius: .3rem;
+      border-width: .1rem;
+      padding: 0.5rem;
+      margin: .1rem;
     }
 
     .statuses {
-      /*grid-row: 1;*/
       scrollbar-width: none;
       -ms-overflow-style: none;
       &::-webkit-scrollbar {
         display: none;
       }
-      /* https://css-tricks.com/fixed-headers-and-jump-links-the-solution-is-scroll-margin-top/ */
-      /* scroll-margin-top: 200px; */
     }
 
     .virtualizer-item {
+      /* Shift items in the infinite scroll a bit - this way, when moving
+      them programmatically (e.g., through 'pin' when loading), the top
+      of the item on top is visible below the various status bars of the app.
+      Should be 60px, but removing 1px to avoid disgracious bleeding;
+      */
+      top: 59px;
       position: relative;
-      top: 60px;
     }
 
     mast-status {
@@ -218,21 +173,12 @@ export class AppRoot extends LitElement {
 
   render() {
     return html`
-      <div class="header">Mastopoof</div>
       <div class="page">
-        <div class="leftpane">
-          <div class="leftpanecontent">
-          The left pane
-          <ul>
-            <li>A</li>
-            <li>B</li>
-          </ul>
-          Something.
-          </div>
-        </div>
         <div class="middlepane">
-          <div class="contenthead">
-            Main
+          <div class="header">
+            <div class="headercontent">
+              Mastopoof
+            </div>
           </div>
           <div class="content">
             ${this.startIndex === undefined ? html`Loading...` : html`
@@ -242,21 +188,10 @@ export class AppRoot extends LitElement {
               ${ref(this.virtuRef)}
               @rangeChanged=${(e: RangeChangedEvent) => this.rangeChanged(e)}
               @visibilityChanged=${(e: VisibilityChangedEvent) => this.visibilityChanged(e)}
-              @unpinned=${() => console.log("unpinned")}
               .layout=${flow({ pin: { index: this.startIndex, block: 'start' } })}
               .renderItem=${(st: StatusEntry, _: number): TemplateResult => this.renderStatus(st)}
             ></lit-virtualizer>
             `}
-          </div>
-        </div>
-        <div class="rightpane">
-          <div class="rightpanecontent">
-          The right pane
-          <ul>
-            <li>1</li>
-            <li>2</li>
-          </ul>
-          Something else.
           </div>
         </div>
       </div>
@@ -297,12 +232,9 @@ export class AppRoot extends LitElement {
     }
   }
 
-  visibilityChanged(e: VisibilityChangedEvent) {
-    console.log("visibility indexes", e.first, e.last);
-  }
+  visibilityChanged(e: VisibilityChangedEvent) { }
 
   async loadStatusAtIdx(idx: number) {
-    console.log("load status index", idx);
     if (this.positionOffset === undefined) {
       console.error("shoud not have been called");
       return;
