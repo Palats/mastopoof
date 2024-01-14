@@ -8,6 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/Palats/mastopoof/backend/storage"
+	"github.com/golang/glog"
 
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 )
@@ -71,7 +72,24 @@ func (s *Server) GetStatus(ctx context.Context, req *connect.Request[pb.GetStatu
 	}
 
 	if ost == nil {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("no status at position %d", req.Msg.Position))
+		// Status was not found - is it time to pick another one?
+		lastPosition, err := s.st.LastPosition(ctx, lid, s.st.DB)
+		if err != nil {
+			return nil, err
+		}
+		if req.Msg.Position > lastPosition+1 {
+			// The requested position is beyond even the next status we could
+			// fetch, so bail out.
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("no status at position %d", req.Msg.Position))
+		}
+		ost, err = s.st.PickNext(ctx, lid)
+		if err != nil {
+			return nil, err
+		}
+		glog.Infof("picked next status at position %d", ost.Position)
+		if ost.Position != req.Msg.Position {
+			return nil, fmt.Errorf("TODO: race condition when picking up next entry")
+		}
 	}
 
 	resp := &pb.GetStatusResponse{}

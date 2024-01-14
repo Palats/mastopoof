@@ -382,6 +382,26 @@ func (st *Storage) Opened(ctx context.Context, lid int64) ([]*OpenStatus, error)
 	return results, txn.Commit()
 }
 
+// LastPosition returns the position of the latest added status in the stream.
+// Returns (0, nil) if there the stream is currently empty.
+func (st *Storage) LastPosition(ctx context.Context, lid int64, db SQLQueryable) (int64, error) {
+	var position int64
+	err := db.QueryRowContext(ctx, `
+		SELECT
+			position
+		FROM
+			listingcontent
+		WHERE
+			lid = ?
+		ORDER BY position DESC
+		LIMIT 1
+	`, lid).Scan(&position)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, err
+	}
+	return position, nil
+}
+
 // StatusAt gets the status at the provided position in the stream.
 // Returns nil, nil if there is no matching status at that position.
 func (st *Storage) StatusAt(ctx context.Context, lid int64, position int64) (*OpenStatus, error) {
@@ -393,7 +413,7 @@ func (st *Storage) StatusAt(ctx context.Context, lid int64, position int64) (*Op
 
 	var jsonString string
 
-	row := st.DB.QueryRowContext(ctx, `
+	row := txn.QueryRowContext(ctx, `
 		SELECT
 			statuses.status
 		FROM
@@ -421,5 +441,92 @@ func (st *Storage) StatusAt(ctx context.Context, lid int64, position int64) (*Op
 	return &OpenStatus{
 		Position: position,
 		Status:   status,
+	}, txn.Commit()
+}
+
+// PickNext
+// Return (nil, nil) if there is no next status.
+func (st *Storage) PickNext(ctx context.Context, lid int64) (*OpenStatus, error) {
+	txn, err := st.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer txn.Rollback()
+
+	// List all statuses which are not listed yet in "listingcontent" for that listing ID.
+	rows, err := txn.QueryContext(ctx, `
+		SELECT
+			statuses.sid,
+			statuses.status
+		FROM
+			statuses
+			LEFT OUTER JOIN listingcontent
+			USING (sid)
+		WHERE
+			(listingcontent.lid IS NULL OR listingcontent.lid != ?)
+		;
+	`, lid)
+	if err != nil {
+		return nil, err
+	}
+
+	var selectedID int64
+	var selected *mastodon.Status
+	for rows.Next() {
+		var sid int64
+		var jsonString string
+		if err := rows.Scan(&sid, &jsonString); err != nil {
+			return nil, err
+		}
+		var status mastodon.Status
+		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
+			return nil, err
+		}
+
+		// Apply the rules here - is this status better than the currently selected one?
+		match := false
+		if selected == nil {
+			match = true
+			selected = &status
+		} else {
+			// For now, just pick the oldest one.
+			if status.CreatedAt.Before(selected.CreatedAt) {
+				match = true
+			}
+		}
+
+		if match {
+			selectedID = sid
+			selected = &status
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if selected == nil {
+		fmt.Println("No next status available")
+		return nil, nil
+	}
+
+	// Now, add that status to the listing.
+	// Pick current last filled position.
+	position, err := st.LastPosition(ctx, lid, txn)
+	if err != nil {
+		return nil, err
+	}
+	// Pick the largest existing (or 0) position and just add one to create a new one.
+	position += 1
+
+	// Insert the newly selected status in the stream.
+	stmt := `INSERT INTO listingcontent(lid, sid, position) VALUES(?, ?, ?);`
+	_, err = txn.ExecContext(ctx, stmt, lid, selectedID, position)
+	if err != nil {
+		return nil, err
+	}
+
+	return &OpenStatus{
+		Position: position,
+		Status:   *selected,
 	}, txn.Commit()
 }
