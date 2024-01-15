@@ -184,6 +184,11 @@ func cmdClearAll(ctx context.Context, st *storage.Storage) error {
 	return st.ClearAll(ctx)
 }
 
+func cmdClearStream(ctx context.Context, st *storage.Storage) error {
+	lid := *listingID
+	return st.ClearStream(ctx, lid)
+}
+
 func cmdMe(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo, client *mastodon.Client) error {
 	lid := *listingID
 
@@ -479,6 +484,14 @@ func run(ctx context.Context) error {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmdClearAll(ctx, st)
+		},
+	})
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "clear-stream",
+		Short: "Remove all statuses from the stream, as if nothing was ever looked at.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmdClearStream(ctx, st)
 		},
 	})
 

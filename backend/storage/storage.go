@@ -320,6 +320,31 @@ func (st *Storage) SetListingState(ctx context.Context, db SQLQueryable, listing
 	return nil
 }
 
+func (st *Storage) ClearStream(ctx context.Context, lid int64) error {
+	txn, err := st.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer txn.Rollback()
+
+	// Remove everything from the stream.
+	if _, err := txn.ExecContext(ctx, `DELETE FROM listingcontent WHERE lid = ?`, lid); err != nil {
+		return err
+	}
+
+	// Also reset last-read.
+	listingState, err := st.ListingState(ctx, txn, lid)
+	if err != nil {
+		return err
+	}
+	listingState.LastRead = 0
+	if err := st.SetListingState(ctx, txn, listingState); err != nil {
+		return err
+	}
+
+	return txn.Commit()
+}
+
 type OpenStatus struct {
 	// Position in the listing.
 	Position int64           `json:"position"`
@@ -334,7 +359,7 @@ func (st *Storage) Opened(ctx context.Context, lid int64) ([]*OpenStatus, error)
 	}
 	defer txn.Rollback()
 
-	rolloutState, err := st.ListingState(ctx, txn, lid)
+	listingState, err := st.ListingState(ctx, txn, lid)
 	if err != nil {
 		return nil, err
 	}
@@ -352,7 +377,7 @@ func (st *Storage) Opened(ctx context.Context, lid int64) ([]*OpenStatus, error)
 			AND listingcontent.position > ?
 		ORDER BY listingcontent.position
 		;
-	`, lid, rolloutState.LastRead)
+	`, lid, listingState.LastRead)
 	if err != nil {
 		return nil, err
 	}
