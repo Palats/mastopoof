@@ -187,13 +187,15 @@ func cmdClearAll(ctx context.Context, st *storage.Storage) error {
 func cmdMe(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo, client *mastodon.Client) error {
 	lid := *listingID
 
-	fmt.Println("# Mastodon Account")
-	account, err := client.GetAccountCurrentUser(ctx)
-	if err != nil {
-		return err
+	if client != nil {
+		fmt.Println("# Mastodon Account")
+		account, err := client.GetAccountCurrentUser(ctx)
+		if err != nil {
+			return err
+		}
+		spew.Dump(account)
+		fmt.Println()
 	}
-	spew.Dump(account)
-	fmt.Println()
 
 	lastPosition, err := st.LastPosition(ctx, lid, st.DB)
 	if err != nil {
@@ -479,24 +481,31 @@ func run(ctx context.Context) error {
 			return cmdClearAll(ctx, st)
 		},
 	})
-	rootCmd.AddCommand(&cobra.Command{
+
+	cmdMeDef := &cobra.Command{
 		Use:   "me",
 		Short: "Get information about one's own account.",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.DB)
-			if err != nil {
-				return err
-			}
-			client := mastodon.NewClient(&mastodon.Config{
+	}
+	showAccount := cmdMeDef.PersistentFlags().Bool("account", false, "Query and show account state from Mastodon server")
+	cmdMeDef.RunE = func(cmd *cobra.Command, args []string) error {
+		ai, err := st.AuthInfo(ctx, st.DB)
+		if err != nil {
+			return err
+		}
+		var client *mastodon.Client
+		if *showAccount {
+			client = mastodon.NewClient(&mastodon.Config{
 				Server:       ai.ServerAddr,
 				ClientID:     ai.ClientID,
 				ClientSecret: ai.ClientSecret,
 				AccessToken:  ai.AccessToken,
 			})
-			return cmdMe(ctx, st, ai, client)
-		},
-	})
+		}
+		return cmdMe(ctx, st, ai, client)
+	}
+	rootCmd.AddCommand(cmdMeDef)
+
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "fetch",
 		Short: "Fetch recent home content and add it to the DB.",
