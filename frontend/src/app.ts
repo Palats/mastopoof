@@ -232,7 +232,7 @@ export class AppRoot extends LitElement {
     }
   }
 
-  visibilityChanged(e: VisibilityChangedEvent) { }
+  visibilityChanged(_: VisibilityChangedEvent) { }
 
   async loadStatusAtIdx(idx: number) {
     if (this.positionOffset === undefined) {

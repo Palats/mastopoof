@@ -179,8 +179,33 @@ func cmdAuth(ctx context.Context, st *storage.Storage) error {
 	return txn.Commit()
 }
 
-func cmdClearState(ctx context.Context, st *storage.Storage) error {
-	return st.ClearState(ctx)
+func cmdClearAll(ctx context.Context, st *storage.Storage) error {
+	return st.ClearAll(ctx)
+}
+
+func cmdMe(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo, client *mastodon.Client) error {
+	lid := *listingID
+
+	fmt.Println("# Mastodon Account")
+	account, err := client.GetAccountCurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	spew.Dump(account)
+	fmt.Println()
+
+	lastPosition, err := st.LastPosition(ctx, lid, st.DB)
+	if err != nil {
+		return err
+	}
+	fmt.Println("# Position of last status in stream:", lastPosition)
+
+	listingState, err := st.ListingState(ctx, st.DB, lid)
+	if err != nil {
+		return err
+	}
+	fmt.Println("# Last read position:", listingState.LastRead)
+	return nil
 }
 
 func cmdFetch(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo, client *mastodon.Client) error {
@@ -365,96 +390,12 @@ func cmdNewListing(ctx context.Context, st *storage.Storage, authInfo *storage.A
 func cmdPickNext(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
 	lid := *listingID
 
-	// List all statuses which are not listed yet in "listingcontent" for that listing ID.
-	rows, err := st.DB.QueryContext(ctx, `
-		SELECT
-			statuses.sid,
-			statuses.status
-		FROM
-			statuses
-			LEFT OUTER JOIN listingcontent
-			USING (sid)
-		WHERE
-			(listingcontent.lid IS NULL OR listingcontent.lid != ?)
-		;
-	`, lid)
+	ost, err := st.PickNext(ctx, lid)
 	if err != nil {
 		return err
 	}
-
-	var selectedID int64
-	var selected *mastodon.Status
-	for rows.Next() {
-		var sid int64
-		var jsonString string
-		if err := rows.Scan(&sid, &jsonString); err != nil {
-			return err
-		}
-		var status mastodon.Status
-		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
-			return err
-		}
-
-		// Apply the rules here - is this status better than the currently selected one?
-		match := false
-		if selected == nil {
-			match = true
-			selected = &status
-		} else {
-			// For now, just pick the oldest one.
-			if status.CreatedAt.Before(selected.CreatedAt) {
-				match = true
-
-			}
-		}
-
-		if match {
-			selectedID = sid
-			selected = &status
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-
-	if selected == nil {
-		fmt.Println("No next status available")
-		return nil
-	}
-
-	// Now, add that status to the listing.
-	txn, err := st.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer txn.Rollback()
-
-	var position int64
-	err = txn.QueryRowContext(ctx, `
-		SELECT
-			position
-		FROM
-			listingcontent
-		WHERE
-			lid = ?
-		ORDER BY position DESC
-		LIMIT 1
-	`, lid).Scan(&position)
-	if err != nil && err != sql.ErrNoRows {
-		return err
-	}
-	// Pick the largest existing (or 0) position and just add one to create a new one.
-	position += 1
-
-	stmt := `INSERT INTO listingcontent(lid, sid, position) VALUES(?, ?, ?);`
-	_, err = txn.ExecContext(ctx, stmt, lid, selectedID, position)
-	if err != nil {
-		return err
-	}
-
-	spew.Dump(selected)
-
-	return txn.Commit()
+	spew.Dump(ost)
+	return nil
 }
 
 func cmdMarkRead(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
@@ -524,11 +465,11 @@ func run(ctx context.Context) error {
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
-		Use:   "clearstate",
+		Use:   "clear-all",
 		Short: "Nuke all state in the DB, except for auth against Mastodon server.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdClearState(ctx, st)
+			return cmdClearAll(ctx, st)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
@@ -546,12 +487,7 @@ func run(ctx context.Context) error {
 				ClientSecret: ai.ClientSecret,
 				AccessToken:  ai.AccessToken,
 			})
-			account, err := client.GetAccountCurrentUser(ctx)
-			if err != nil {
-				return err
-			}
-			spew.Dump(account)
-			return nil
+			return cmdMe(ctx, st, ai, client)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
@@ -598,7 +534,7 @@ func run(ctx context.Context) error {
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
-		Use:   "dumpstatus",
+		Use:   "dump-status",
 		Short: "Display one status, identified by ID",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ai, err := st.AuthInfo(ctx, st.DB)

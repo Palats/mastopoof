@@ -210,8 +210,8 @@ func (st *Storage) Init(ctx context.Context) error {
 	return nil
 }
 
-// ClearState clears the database beside authentication.
-func (st *Storage) ClearState(ctx context.Context) error {
+// ClearAll clears the database beside authentication.
+func (st *Storage) ClearAll(ctx context.Context) error {
 	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("unable to clean DB state: %w", err)
