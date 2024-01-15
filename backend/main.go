@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/davecgh/go-spew/spew"
@@ -398,7 +399,7 @@ func cmdPickNext(ctx context.Context, st *storage.Storage, authInfo *storage.Aut
 	return nil
 }
 
-func cmdMarkRead(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
+func cmdSetRead(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo, position int64) error {
 	lid := *listingID
 
 	txn, err := st.DB.BeginTx(ctx, nil)
@@ -412,7 +413,13 @@ func cmdMarkRead(ctx context.Context, st *storage.Storage, authInfo *storage.Aut
 		return err
 	}
 
-	listingState.LastRead += 1
+	fmt.Println("Current position:", listingState.LastRead)
+	if position < 0 {
+		listingState.LastRead += -position
+	} else {
+		listingState.LastRead = position
+	}
+	fmt.Println("New position:", listingState.LastRead)
 
 	if err := st.SetListingState(ctx, txn, listingState); err != nil {
 		return err
@@ -569,15 +576,22 @@ func run(ctx context.Context) error {
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
-		Use:   "mark-read",
-		Short: "Advance already-read pointer",
-		Args:  cobra.NoArgs,
+		Use:   "set-read",
+		Short: "Set the already-read pointer",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ai, err := st.AuthInfo(ctx, st.DB)
 			if err != nil {
 				return err
 			}
-			return cmdMarkRead(ctx, st, ai)
+			position := int64(-1)
+			if len(args) > 0 {
+				position, err = strconv.ParseInt(args[0], 10, 64)
+				if err != nil {
+					return err
+				}
+			}
+			return cmdSetRead(ctx, st, ai, position)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
