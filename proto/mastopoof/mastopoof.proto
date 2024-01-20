@@ -10,6 +10,9 @@ service Mastopoof {
     rpc InitialStatuses(InitialStatusesRequest) returns (InitialStatusesResponse);
     // Get a status by stream position.
     rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+
+    // Fetch status.
+    rpc Fetch(FetchRequest) returns (FetchResponse);
 }
 
 message PingRequest {
@@ -49,4 +52,42 @@ message Item {
 message MastodonStatus {
     // JSON encoded mastodon status.
     string content = 1;
+}
+
+message FetchRequest {
+    enum Direction {
+        // If unspecified - behaves as "FORWARD".
+        DEFAULT = 0;
+        // Get more recent statuses.
+        FORWARD = 1;
+        // Go back in the history of the stream.
+        BACKWARD = 2;
+    }
+    Direction direction = 1;
+
+    // Continuation position obtained from a previous request.
+    // If unset (== 0), pick from current last_read marker (excluded).
+    int64 position = 2;
+}
+
+message FetchResponse {
+    // Ordered list of statuses.
+    repeated Item items = 1;
+
+    // Position to use for continuation requests.
+    // In practice, position of the first and last item of the response.
+    int64 backward_position = 2;
+    int64 forward_position = 3;
+
+    enum State {
+        UNKNOWN = 0;
+        // More statuses are potentially available now.
+        PARTIAL = 1;
+        // No available extra statuses right now.
+        DONE = 2;
+    }
+    State state = 4;
+
+    // Position of last-read item.
+    int64 last_read = 5;
 }

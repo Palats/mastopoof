@@ -103,3 +103,37 @@ func (s *Server) GetStatus(ctx context.Context, req *connect.Request[pb.GetStatu
 	}
 	return connect.NewResponse(resp), nil
 }
+
+func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {
+	lid := int64(1)
+	resp := &pb.FetchResponse{}
+
+	var err error
+	var fetchResult *storage.FetchResult
+	switch req.Msg.Direction {
+	case pb.FetchRequest_DEFAULT, pb.FetchRequest_FORWARD:
+		fetchResult, err = s.st.FetchForward(ctx, lid, req.Msg.Position)
+		if err != nil {
+			return nil, err
+		}
+	case pb.FetchRequest_BACKWARD:
+		fetchResult, err = s.st.FetchBackward(ctx, lid, req.Msg.Position)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("unknown direction %v", req.Msg.Direction)
+	}
+
+	resp.LastRead = fetchResult.LastRead
+	resp.State = pb.FetchResponse_PARTIAL
+	if fetchResult.AtEnd {
+		resp.State = pb.FetchResponse_DONE
+	}
+	if len(fetchResult.Items) > 0 {
+		resp.BackwardPosition = fetchResult.Items[0].Position
+		resp.ForwardPosition = fetchResult.Items[len(fetchResult.Items)-1].Position
+	}
+
+	return connect.NewResponse(resp), nil
+}

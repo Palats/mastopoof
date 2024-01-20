@@ -477,7 +477,14 @@ func (st *Storage) PickNext(ctx context.Context, lid int64) (*OpenStatus, error)
 		return nil, err
 	}
 	defer txn.Rollback()
+	o, err := st.pickNextInTxn(ctx, lid, txn)
+	if err != nil {
+		return nil, err
+	}
+	return o, txn.Commit()
+}
 
+func (st *Storage) pickNextInTxn(ctx context.Context, lid int64, txn *sql.Tx) (*OpenStatus, error) {
 	// List all statuses which are not listed yet in "listingcontent" for that listing ID.
 	rows, err := txn.QueryContext(ctx, `
 		SELECT
@@ -553,5 +560,174 @@ func (st *Storage) PickNext(ctx context.Context, lid int64) (*OpenStatus, error)
 	return &OpenStatus{
 		Position: position,
 		Status:   *selected,
-	}, txn.Commit()
+	}, nil
+}
+
+type FetchResult struct {
+	LastRead int64
+	AtEnd    bool
+	Items    []*OpenStatus
+}
+
+// FetchForward get statuses after the provided position.
+// It can insert things in the stream if necessary.
+func (st *Storage) FetchForward(ctx context.Context, lid int64, refPosition int64) (*FetchResult, error) {
+	if refPosition < 0 {
+		return nil, fmt.Errorf("invalid position %d", refPosition)
+	}
+
+	txn, err := st.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer txn.Rollback()
+
+	result := &FetchResult{}
+
+	listingState, err := st.ListingState(ctx, txn, lid)
+	if err != nil {
+		return nil, err
+	}
+	result.LastRead = listingState.LastRead
+
+	if refPosition == 0 {
+		refPosition = listingState.LastRead
+	}
+
+	maxCount := 10
+
+	// Fetch what is currently available after refPosition
+	rows, err := st.DB.QueryContext(ctx, `
+		SELECT
+			listingcontent.position,
+			statuses.status
+		FROM
+			statuses
+			INNER JOIN listingcontent
+			USING (sid)
+		WHERE
+			listingcontent.lid = ?
+			AND listingcontent.position > ?
+		ORDER BY listingcontent.position
+		LIMIT ?
+		;
+	`, lid, refPosition, maxCount)
+	if err != nil {
+		return nil, err
+	}
+
+	for rows.Next() {
+		var position int64
+		var jsonString string
+		if err := rows.Scan(&position, &jsonString); err != nil {
+			return nil, err
+		}
+		var status mastodon.Status
+		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
+			return nil, err
+		}
+		result.Items = append(result.Items, &OpenStatus{
+			Position: position,
+			Status:   status,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Do we want to fetch more?
+	for len(result.Items) < maxCount {
+		// If we're here, it means we've reached the end of the current stream,
+		// so we need to try to inject new items.
+		ost, err := st.pickNextInTxn(ctx, lid, txn)
+		if err != nil {
+			return nil, err
+		}
+		if ost == nil {
+			// Nothing is available anymore to insert at this point.
+			result.AtEnd = true
+			break
+		}
+		result.Items = append(result.Items, ost)
+	}
+
+	return result, txn.Commit()
+}
+
+// FetchBackward get statuses before the provided position.
+// It can insert things in the stream if necessary.
+func (st *Storage) FetchBackward(ctx context.Context, lid int64, refPosition int64) (*FetchResult, error) {
+	if refPosition < 0 {
+		return nil, fmt.Errorf("invalid postion %d", refPosition)
+	}
+
+	txn, err := st.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer txn.Rollback()
+
+	result := &FetchResult{}
+
+	listingState, err := st.ListingState(ctx, txn, lid)
+	if err != nil {
+		return nil, err
+	}
+	result.LastRead = listingState.LastRead
+
+	if refPosition == 0 {
+		refPosition = listingState.LastRead
+	}
+
+	maxCount := 10
+
+	// Fetch what is currently available after refPosition
+	rows, err := st.DB.QueryContext(ctx, `
+		SELECT
+			listingcontent.position,
+			statuses.status
+		FROM
+			statuses
+			INNER JOIN listingcontent
+			USING (sid)
+		WHERE
+			listingcontent.lid = ?
+			AND listingcontent.position < ?
+		ORDER BY listingcontent.position DESC
+		LIMIT ?
+		;
+	`, lid, refPosition, maxCount)
+	if err != nil {
+		return nil, err
+	}
+
+	// Result is descending by position, so reversed compared to what we want.
+	var reverseItems []*OpenStatus
+	for rows.Next() {
+		var position int64
+		var jsonString string
+		if err := rows.Scan(&position, &jsonString); err != nil {
+			return nil, err
+		}
+		var status mastodon.Status
+		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
+			return nil, err
+		}
+		reverseItems = append(reverseItems, &OpenStatus{
+			Position: position,
+			Status:   status,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for i := len(reverseItems) - 1; i >= 0; i-- {
+		result.Items = append(result.Items, reverseItems[i])
+	}
+
+	// No fetching more - all is sorted already in stream when going backward.
+	result.AtEnd = (len(result.Items) < maxCount) || (result.Items[0].Position <= 1)
+
+	return result, txn.Commit()
 }
