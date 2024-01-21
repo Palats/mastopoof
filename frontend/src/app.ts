@@ -1,13 +1,12 @@
 import { LitElement, css, html, nothing, TemplateResult, unsafeCSS } from 'lit'
 import { customElement, state, property } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
-import { ref, createRef } from 'lit/directives/ref.js';
-import { LitVirtualizer, RangeChangedEvent } from '@lit-labs/virtualizer';
-import { flow } from '@lit-labs/virtualizer/layouts/flow.js';
+import { repeat } from 'lit/directives/repeat.js';
 
-import { createPromiseClient, ConnectError } from "@connectrpc/connect";
+import { createPromiseClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import { Mastopoof } from "mastopoof-proto/gen/mastopoof/mastopoof_connect";
+import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 
 // XXX move that elsewhere
 const transport = createConnectTransport({
@@ -22,7 +21,6 @@ import normalizeCSSstr from "./normalize.css?inline";
 import baseCSSstr from "./base.css?inline";
 
 import * as mastodon from "./mastodon";
-import { VisibilityChangedEvent } from '../node_modules/@lit-labs/virtualizer/events';
 
 const commonCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
 
@@ -38,20 +36,20 @@ interface StatusEntry {
 
 // https://adrianfaciu.dev/posts/observables-litelement/
 // https://github.com/lit/lit/tree/main/packages/labs/virtualizer#readme
+// https://stackoverflow.com/questions/60678734/insert-elements-on-top-of-something-without-changing-visible-scrolled-content
 
 @customElement('app-root')
 export class AppRoot extends LitElement {
-  private statuses: StatusEntry[] = [];
-  // startIndex is the arbitrary point in the statuses list where initial status are added.
-  private startIndex?: number;
-  // Indicates the delta between stream position (backend) and index in the
-  // frontend (here) list of statuses.
-  // i.e., position + positionOffset == index
-  private positionOffset?: number;
+  private items: StatusEntry[] = [];
   // Position of the last status marked as read.
   private lastRead?: number;
 
-  virtuRef = createRef<LitVirtualizer>();
+  private backwardPosition: number = 0;
+  private backwardState: pb.FetchResponse_State = pb.FetchResponse_State.PARTIAL;
+  private forwardPosition: number = 0;
+  private forwardState: pb.FetchResponse_State = pb.FetchResponse_State.PARTIAL;
+
+  private isInitialLoading = true;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -63,31 +61,61 @@ export class AppRoot extends LitElement {
   }
 
   async initialFetch() {
-    const resp = await client.initialStatuses({});
-
+    const resp = await client.fetch({});
     this.lastRead = Number(resp.lastRead);
-    // Initial loading.
-    if (resp.items.length < 1) {
-      console.error("no status");
-      return;
-    }
-
-    // Calculate offsets.
-    // We want to have index 0 (first element in the UI) to match position 1 - first element in the stream.
-    // We also have: position + positionOffset == index
-    // So: positionOffset = 0 (index) - position (1) = -1
-    this.positionOffset = -1;
-    // And we want to load the view on v[0].position
-    this.startIndex = Number(resp.items[0].position) + this.positionOffset;
+    this.forwardPosition = Number(resp.forwardPosition)
+    this.backwardPosition = Number(resp.backwardPosition)
+    this.forwardState = resp.state;
 
     for (let i = 0; i < resp.items.length; i++) {
       const item = resp.items[i];
       const position = Number(item.position);
       const status = JSON.parse(item.status!.content) as mastodon.Status;
-      this.statuses[position + this.positionOffset] = {
+      this.items.push({
         status: status,
         position: position,
-      };
+      });
+    }
+    this.isInitialLoading = false;
+    this.requestUpdate();
+  }
+
+  async loadPrevious() {
+    const resp = await client.fetch({ position: BigInt(this.backwardPosition), direction: pb.FetchRequest_Direction.BACKWARD })
+
+    this.lastRead = Number(resp.lastRead);
+    this.backwardPosition = Number(resp.backwardPosition);
+    this.backwardState = resp.state;
+
+    const newItems = [];
+    for (let i = 0; i < resp.items.length; i++) {
+      const item = resp.items[i];
+      const position = Number(item.position);
+      const status = JSON.parse(item.status!.content) as mastodon.Status;
+      newItems.push({
+        status: status,
+        position: position,
+      });
+    }
+    this.items = [...newItems, ...this.items];
+    this.requestUpdate();
+  }
+
+  async loadNext() {
+    const resp = await client.fetch({ position: BigInt(this.forwardPosition), direction: pb.FetchRequest_Direction.FORWARD })
+
+    this.lastRead = Number(resp.lastRead);
+    this.forwardPosition = Number(resp.forwardPosition);
+    this.forwardState = resp.state;
+
+    for (let i = 0; i < resp.items.length; i++) {
+      const item = resp.items[i];
+      const position = Number(item.position);
+      const status = JSON.parse(item.status!.content) as mastodon.Status;
+      this.items.push({
+        status: status,
+        position: position,
+      });
     }
     this.requestUpdate();
   }
@@ -112,6 +140,7 @@ export class AppRoot extends LitElement {
 
     .middlepane {
       min-width: 600px;
+      width: 600px;
     }
 
     .header {
@@ -147,16 +176,6 @@ export class AppRoot extends LitElement {
       }
     }
 
-    .virtualizer-item {
-      /* Shift items in the infinite scroll a bit - this way, when moving
-      them programmatically (e.g., through 'pin' when loading), the top
-      of the item on top is visible below the various status bars of the app.
-      Should be 60px, but removing 1px to avoid disgracious bleeding;
-      */
-      top: 59px;
-      position: relative;
-    }
-
     mast-status {
       width: 100%;
     }
@@ -168,6 +187,10 @@ export class AppRoot extends LitElement {
 
     .statusloading {
       min-height: 200px;
+    }
+
+    .noanchor {
+      overflow-anchor: none;
     }
   `];
 
@@ -181,17 +204,23 @@ export class AppRoot extends LitElement {
             </div>
           </div>
           <div class="content">
-            ${this.startIndex === undefined ? html`Loading...` : html`
-            <lit-virtualizer
-              class="statuses"
-              .items=${this.statuses}
-              ${ref(this.virtuRef)}
-              @rangeChanged=${(e: RangeChangedEvent) => this.rangeChanged(e)}
-              @visibilityChanged=${(e: VisibilityChangedEvent) => this.visibilityChanged(e)}
-              .layout=${flow({ pin: { index: this.startIndex, block: 'start' } })}
-              .renderItem=${(st: StatusEntry, _: number): TemplateResult => this.renderStatus(st)}
-            ></lit-virtualizer>
+            ${this.isInitialLoading ? html`Loading...` : html``}
+            <div class="noanchor">${this.forwardState === pb.FetchResponse_State.DONE ? html`
+              Reached beginning of stream.
+            `: html`
+              <button @click=${this.loadPrevious}>Load earlier statuses</button></div>
             `}
+            </div>
+
+            <div class="statuses">
+              ${repeat(this.items, (item) => item.position, (item, _) => { return this.renderStatus(item); })}
+            </div>
+            <div class="noanchor">${this.forwardState === pb.FetchResponse_State.DONE ? html`
+              Nothing more right now. <button @click=${this.loadNext}>Try again</button>
+            `: html`
+              <button @click=${this.loadNext}>Load more statuses</button></div>
+            `}
+            </div>
           </div>
         </div>
       </div>
@@ -215,49 +244,7 @@ export class AppRoot extends LitElement {
       content.push(html`<div class="lastread">Last read</div>`);
     }
 
-    return html`<div style="width: 100%"><div class="virtualizer-item"> ${content}</div></div>`;
-  }
-
-  rangeChanged(e: RangeChangedEvent) {
-    if (this.positionOffset === undefined) { return; }  // Not started.
-    if (e.first == -1 || e.last == -1) { return; }
-
-    // Make sure that statuses in range are loaded. Include a bit of margin to
-    // accelerate stuff.
-    for (let i = e.first - 2; i <= e.last + 2; i++) {
-      if (i < 0) { continue; }
-      if (this.statuses[i] === undefined) {
-        this.loadStatusAtIdx(i);
-      }
-    }
-  }
-
-  visibilityChanged(_: VisibilityChangedEvent) { }
-
-  async loadStatusAtIdx(idx: number) {
-    if (this.positionOffset === undefined) {
-      console.error("shoud not have been called");
-      return;
-    }
-    const position = idx - this.positionOffset;
-
-    const st: StatusEntry = {
-      position: position,
-    }
-    this.statuses[idx] = st;
-
-    if (position < 1) {
-      st.error = "negative position";
-      return;
-    }
-
-    // Issue the request.
-    try {
-      const resp = await client.getStatus({ position: BigInt(position) });
-      st.status = JSON.parse(resp.item!.status!.content) as mastodon.Status;
-    } catch (err) {
-      st.error = ConnectError.from(err).message;
-    }
+    return html`<div>${content}</div>`;
   }
 }
 

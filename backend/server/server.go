@@ -134,6 +134,17 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		resp.BackwardPosition = fetchResult.Items[0].Position
 		resp.ForwardPosition = fetchResult.Items[len(fetchResult.Items)-1].Position
 	}
+	// XXX - how to deal with positions on empty responses?
+	for _, item := range fetchResult.Items {
+		raw, err := json.Marshal(item.Status)
+		if err != nil {
+			return nil, err
+		}
+		resp.Items = append(resp.Items, &pb.Item{
+			Status:   &pb.MastodonStatus{Content: string(raw)},
+			Position: item.Position,
+		})
+	}
 
 	return connect.NewResponse(resp), nil
 }
