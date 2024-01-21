@@ -164,13 +164,31 @@ export class AppRoot extends LitElement {
       margin: .1rem;
     }
 
+    .content {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .contentitem {
+      width: 100%;
+    }
+
     mast-status {
       width: 100%;
     }
 
+    .streambeginning {
+      background-color: #a1bcdf;
+    }
+
+    .streamend {
+      background-color: #a1bcdf;
+    }
+
     .lastread {
       background-color: #dfa1a1;
-      width: 100%;
     }
 
     .statusloading {
@@ -179,6 +197,13 @@ export class AppRoot extends LitElement {
 
     .noanchor {
       overflow-anchor: none;
+    }
+
+    .centered {
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      align-items: center;
     }
   `];
 
@@ -192,9 +217,9 @@ export class AppRoot extends LitElement {
             </div>
           </div>
           <div class="content">
-            ${this.isInitialLoading ? html`Loading...` : html``}
-            <div class="noanchor">${this.backwardState === pb.FetchResponse_State.DONE ? html`
-              Reached beginning of stream.
+            ${this.isInitialLoading ? html`<div class="contentitem"><div class="centered">Loading...</div></div>` : html``}
+            <div class="noanchor contentitem streambeginning">${this.backwardState === pb.FetchResponse_State.DONE ? html`
+              <div class="centered">Beginning of stream.</div>
             `: html`
               <button @click=${this.loadPrevious}>Load earlier statuses</button></div>
             `}
@@ -202,12 +227,12 @@ export class AppRoot extends LitElement {
 
             ${repeat(this.items, (item) => item.position, (item, _) => { return this.renderStatus(item); })}
 
-            <div class="noanchor">${this.forwardState === pb.FetchResponse_State.DONE ? html`
+            <div class="noanchor contentitem streamend"><div class="centered">${this.forwardState === pb.FetchResponse_State.DONE ? html`
               Nothing more right now. <button @click=${this.loadNext}>Try again</button>
             `: html`
               <button @click=${this.loadNext}>Load more statuses</button></div>
             `}
-            </div>
+            </div></div>
           </div>
         </div>
       </div>
@@ -231,7 +256,7 @@ export class AppRoot extends LitElement {
       content.push(html`<div class="lastread">Last read</div>`);
     }
 
-    return html`<div>${content}</div>`;
+    return html`<div class="contentitem">${content}</div>`;
   }
 }
 
