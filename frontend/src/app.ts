@@ -2,6 +2,7 @@ import { LitElement, css, html, nothing, TemplateResult, unsafeCSS } from 'lit'
 import { customElement, state, property } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { repeat } from 'lit/directives/repeat.js';
+import { ref } from 'lit/directives/ref.js';
 
 import { createPromiseClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
@@ -32,6 +33,13 @@ interface StatusEntry {
   status?: mastodon.Status;
   // error, if loading did not work.
   error?: string;
+
+  // HTML element used to represent this status.
+  elt?: Element;
+  // Was the status visible fully on the screen at some point?
+  wasSeen: boolean;
+  // Did the element moved from fully visible to completely invisible?
+  disappeared: boolean;
 }
 
 // https://adrianfaciu.dev/posts/observables-litelement/
@@ -41,8 +49,13 @@ interface StatusEntry {
 @customElement('app-root')
 export class AppRoot extends LitElement {
   private items: StatusEntry[] = [];
+  private perEltItem = new Map<Element, StatusEntry>();
+
   // Position of the last status marked as read.
-  private lastRead?: number;
+  // From server info.
+  private serverLastRead?: number;
+  // From frontend perspective.
+  @state() private lastRead: number = 0;
 
   private backwardPosition: number = 0;
   private backwardState: pb.FetchResponse_State = pb.FetchResponse_State.UNKNOWN;
@@ -51,8 +64,46 @@ export class AppRoot extends LitElement {
 
   private isInitialLoading = true;
 
+  private observer?: IntersectionObserver;
+
   connectedCallback(): void {
     super.connectedCallback();
+    this.observer = new IntersectionObserver(
+      (entries: IntersectionObserverEntry[], _: IntersectionObserver) => {
+        // console.log("intersection", entries);
+        for (const entry of entries) {
+          const targetItem = this.perEltItem.get(entry.target);
+          if (targetItem) {
+            // console.info("intersection", entry.isIntersecting, "position", targetItem.position);
+            if (entry.isIntersecting) {
+              targetItem.wasSeen = true;
+              targetItem.disappeared = false;
+            } else if (targetItem.wasSeen) {
+              targetItem.disappeared = true;
+            }
+          } else {
+            console.error("not item found for element", entry);
+          }
+        }
+
+        // Found until which item things have disappeared.
+        let position = 0;
+        for (const item of this.items) {
+          if (!item.disappeared) {
+            break;
+          }
+          position = item.position;
+        }
+        console.log("isread until", position);
+        if (position > this.lastRead) {
+          this.lastRead = position;
+        }
+      }, {
+      root: null,
+      rootMargin: "0px",
+      threshold: 0.0,
+    });
+
     this.loadNext();
   }
 
@@ -63,7 +114,7 @@ export class AppRoot extends LitElement {
   async loadPrevious() {
     const resp = await client.fetch({ position: BigInt(this.backwardPosition), direction: pb.FetchRequest_Direction.BACKWARD })
 
-    this.lastRead = Number(resp.lastRead);
+    this.serverLastRead = Number(resp.lastRead);
 
     if (resp.backwardPosition > 0) {
       this.backwardPosition = Number(resp.backwardPosition);
@@ -82,6 +133,8 @@ export class AppRoot extends LitElement {
       newItems.push({
         status: status,
         position: position,
+        wasSeen: false,
+        disappeared: false,
       });
     }
     this.items = [...newItems, ...this.items];
@@ -92,7 +145,7 @@ export class AppRoot extends LitElement {
     const resp = await client.fetch({ position: BigInt(this.forwardPosition), direction: pb.FetchRequest_Direction.FORWARD })
     console.log(resp);
 
-    this.lastRead = Number(resp.lastRead);
+    this.serverLastRead = Number(resp.lastRead);
     if (resp.backwardPosition > 0 && this.backwardState === pb.FetchResponse_State.UNKNOWN) {
       this.backwardPosition = Number(resp.backwardPosition);
       this.backwardState = resp.backwardState;
@@ -109,6 +162,8 @@ export class AppRoot extends LitElement {
       this.items.push({
         status: status,
         position: position,
+        wasSeen: false,
+        disappeared: false,
       });
     }
     // Always indicate that initial loading is done - this is a latch anyway.
@@ -256,7 +311,26 @@ export class AppRoot extends LitElement {
       content.push(html`<div class="lastread">Last read</div>`);
     }
 
-    return html`<div class="contentitem">${content}</div>`;
+    const updateRef = (elt?: Element) => {
+      if (!this.observer) {
+        return;
+      }
+      if (st.elt === elt) {
+        return;
+      }
+
+      if (st.elt) {
+        this.observer.unobserve(st.elt);
+        this.perEltItem.delete(st.elt);
+      }
+      if (elt) {
+        this.observer.observe(elt);
+        this.perEltItem.set(elt, st);
+      }
+      st.elt = elt;
+    };
+
+    return html`<div class="contentitem" ${ref(updateRef)}>${content}</div>`;
   }
 }
 
