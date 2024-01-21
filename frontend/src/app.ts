@@ -45,47 +45,34 @@ export class AppRoot extends LitElement {
   private lastRead?: number;
 
   private backwardPosition: number = 0;
-  private backwardState: pb.FetchResponse_State = pb.FetchResponse_State.PARTIAL;
+  private backwardState: pb.FetchResponse_State = pb.FetchResponse_State.UNKNOWN;
   private forwardPosition: number = 0;
-  private forwardState: pb.FetchResponse_State = pb.FetchResponse_State.PARTIAL;
+  private forwardState: pb.FetchResponse_State = pb.FetchResponse_State.UNKNOWN;
 
   private isInitialLoading = true;
 
   connectedCallback(): void {
     super.connectedCallback();
-    this.initialFetch();
+    this.loadNext();
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
   }
 
-  async initialFetch() {
-    const resp = await client.fetch({});
-    this.lastRead = Number(resp.lastRead);
-    this.forwardPosition = Number(resp.forwardPosition)
-    this.backwardPosition = Number(resp.backwardPosition)
-    this.forwardState = resp.state;
-
-    for (let i = 0; i < resp.items.length; i++) {
-      const item = resp.items[i];
-      const position = Number(item.position);
-      const status = JSON.parse(item.status!.content) as mastodon.Status;
-      this.items.push({
-        status: status,
-        position: position,
-      });
-    }
-    this.isInitialLoading = false;
-    this.requestUpdate();
-  }
-
   async loadPrevious() {
     const resp = await client.fetch({ position: BigInt(this.backwardPosition), direction: pb.FetchRequest_Direction.BACKWARD })
 
     this.lastRead = Number(resp.lastRead);
-    this.backwardPosition = Number(resp.backwardPosition);
-    this.backwardState = resp.state;
+
+    if (resp.backwardPosition > 0) {
+      this.backwardPosition = Number(resp.backwardPosition);
+      this.backwardState = resp.backwardState;
+    }
+    if (resp.forwardPosition > 0 && this.forwardState === pb.FetchResponse_State.UNKNOWN) {
+      this.forwardPosition = Number(resp.forwardPosition);
+      this.forwardState = resp.forwardState;
+    }
 
     const newItems = [];
     for (let i = 0; i < resp.items.length; i++) {
@@ -103,10 +90,17 @@ export class AppRoot extends LitElement {
 
   async loadNext() {
     const resp = await client.fetch({ position: BigInt(this.forwardPosition), direction: pb.FetchRequest_Direction.FORWARD })
+    console.log(resp);
 
     this.lastRead = Number(resp.lastRead);
-    this.forwardPosition = Number(resp.forwardPosition);
-    this.forwardState = resp.state;
+    if (resp.backwardPosition > 0 && this.backwardState === pb.FetchResponse_State.UNKNOWN) {
+      this.backwardPosition = Number(resp.backwardPosition);
+      this.backwardState = resp.backwardState;
+    }
+    if (resp.forwardPosition > 0) {
+      this.forwardPosition = Number(resp.forwardPosition);
+      this.forwardState = resp.forwardState;
+    }
 
     for (let i = 0; i < resp.items.length; i++) {
       const item = resp.items[i];
@@ -117,6 +111,8 @@ export class AppRoot extends LitElement {
         position: position,
       });
     }
+    // Always indicate that initial loading is done - this is a latch anyway.
+    this.isInitialLoading = false;
     this.requestUpdate();
   }
 
@@ -168,14 +164,6 @@ export class AppRoot extends LitElement {
       margin: .1rem;
     }
 
-    .statuses {
-      scrollbar-width: none;
-      -ms-overflow-style: none;
-      &::-webkit-scrollbar {
-        display: none;
-      }
-    }
-
     mast-status {
       width: 100%;
     }
@@ -205,16 +193,15 @@ export class AppRoot extends LitElement {
           </div>
           <div class="content">
             ${this.isInitialLoading ? html`Loading...` : html``}
-            <div class="noanchor">${this.forwardState === pb.FetchResponse_State.DONE ? html`
+            <div class="noanchor">${this.backwardState === pb.FetchResponse_State.DONE ? html`
               Reached beginning of stream.
             `: html`
               <button @click=${this.loadPrevious}>Load earlier statuses</button></div>
             `}
             </div>
 
-            <div class="statuses">
-              ${repeat(this.items, (item) => item.position, (item, _) => { return this.renderStatus(item); })}
-            </div>
+            ${repeat(this.items, (item) => item.position, (item, _) => { return this.renderStatus(item); })}
+
             <div class="noanchor">${this.forwardState === pb.FetchResponse_State.DONE ? html`
               Nothing more right now. <button @click=${this.loadNext}>Try again</button>
             `: html`

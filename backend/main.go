@@ -212,6 +212,8 @@ func cmdMe(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo,
 	if err != nil {
 		return err
 	}
+	fmt.Println("# First position:", listingState.FirstPosition)
+	fmt.Println("# Last position:", listingState.LastPosition)
 	fmt.Println("# Last read position:", listingState.LastRead)
 	return nil
 }

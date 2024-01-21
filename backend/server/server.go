@@ -111,30 +111,38 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	var err error
 	var fetchResult *storage.FetchResult
 	switch req.Msg.Direction {
-	case pb.FetchRequest_DEFAULT, pb.FetchRequest_FORWARD:
+	case pb.FetchRequest_FORWARD, pb.FetchRequest_DEFAULT:
 		fetchResult, err = s.st.FetchForward(ctx, lid, req.Msg.Position)
 		if err != nil {
 			return nil, err
+		}
+		resp.ForwardState = pb.FetchResponse_PARTIAL
+		if fetchResult.HasLast {
+			resp.ForwardState = pb.FetchResponse_DONE
 		}
 	case pb.FetchRequest_BACKWARD:
 		fetchResult, err = s.st.FetchBackward(ctx, lid, req.Msg.Position)
 		if err != nil {
 			return nil, err
 		}
+		// Looking backward never checks for potential extra statuses to insert
+		// into the stream, so it cannot say anything about.
+		resp.ForwardState = pb.FetchResponse_UNKNOWN
 	default:
 		return nil, fmt.Errorf("unknown direction %v", req.Msg.Direction)
 	}
 
 	resp.LastRead = fetchResult.LastRead
-	resp.State = pb.FetchResponse_PARTIAL
-	if fetchResult.AtEnd {
-		resp.State = pb.FetchResponse_DONE
+	resp.BackwardState = pb.FetchResponse_PARTIAL
+	if fetchResult.HasFirst {
+		resp.BackwardState = pb.FetchResponse_DONE
 	}
+
 	if len(fetchResult.Items) > 0 {
 		resp.BackwardPosition = fetchResult.Items[0].Position
 		resp.ForwardPosition = fetchResult.Items[len(fetchResult.Items)-1].Position
 	}
-	// XXX - how to deal with positions on empty responses?
+
 	for _, item := range fetchResult.Items {
 		raw, err := json.Marshal(item.Status)
 		if err != nil {

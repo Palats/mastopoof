@@ -56,7 +56,7 @@ message MastodonStatus {
 
 message FetchRequest {
     enum Direction {
-        // If unspecified - behaves as "FORWARD".
+        // If unspecified - behaves as "INITIAL".
         DEFAULT = 0;
         // Get more recent statuses.
         FORWARD = 1;
@@ -66,28 +66,36 @@ message FetchRequest {
     Direction direction = 1;
 
     // Continuation position obtained from a previous request.
-    // If unset (== 0), pick from current last_read marker (excluded).
+    // Cannot be zero for BACKWARD.
+    // If zero for FORWARD, gives statuses around last_read.
     int64 position = 2;
 }
 
 message FetchResponse {
     // Ordered list of statuses.
+    // If empty, another INITIAL request will need to be done later.
     repeated Item items = 1;
 
     // Position to use for continuation requests.
     // In practice, position of the first and last item of the response.
+    // Zero if there are no items.
     int64 backward_position = 2;
     int64 forward_position = 3;
 
+    // Whether more statuses are available on each end. That includes statuses
+    // which might not be yet inserted in the stream.
     enum State {
+        // Information is not available.
         UNKNOWN = 0;
         // More statuses are potentially available now.
         PARTIAL = 1;
         // No available extra statuses right now.
         DONE = 2;
     }
-    State state = 4;
+    State backward_state = 4;
+    State forward_state = 6;
 
     // Position of last-read item.
+    // Can be outside the range of items directly returned in this response.
     int64 last_read = 5;
 }
