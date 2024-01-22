@@ -11,8 +11,10 @@ service Mastopoof {
     // Get a status by stream position.
     rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
 
-    // Fetch status.
+    // Fetch statuses.
     rpc Fetch(FetchRequest) returns (FetchResponse);
+    // Set the position of the read-marker.
+    rpc SetRead(SetReadRequest) returns (SetReadResponse);
 }
 
 message PingRequest {
@@ -99,3 +101,10 @@ message FetchResponse {
     // Can be outside the range of items directly returned in this response.
     int64 last_read = 5;
 }
+
+message SetReadRequest {
+    // Position to set the last_read to.
+    int64 last_read = 1;
+}
+
+message SetReadResponse {}

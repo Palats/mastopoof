@@ -57,6 +57,9 @@ export class AppRoot extends LitElement {
   // From frontend perspective.
   @state() private lastRead: number = 0;
 
+  private lastReadDirty = false;
+  private lastReadQueued = false;
+
   private backwardPosition: number = 0;
   private backwardState: pb.FetchResponse_State = pb.FetchResponse_State.UNKNOWN;
   private forwardPosition: number = 0;
@@ -97,6 +100,11 @@ export class AppRoot extends LitElement {
         console.log("isread until", position);
         if (position > this.lastRead) {
           this.lastRead = position;
+          this.lastReadDirty = true;
+          if (!this.lastReadQueued) {
+            this.lastReadQueued = true;
+            requestIdleCallback(() => this.updateLastRead(), { timeout: 1000 });
+          }
         }
       }, {
       root: null,
@@ -109,6 +117,21 @@ export class AppRoot extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this.observer?.disconnect();
+  }
+
+  async updateLastRead() {
+    if (!this.lastReadDirty) {
+      this.lastReadQueued = false;
+      return;
+    }
+
+    console.log("setting last read to", this.lastRead);
+    const promise = client.setRead({ lastRead: BigInt(this.lastRead) });
+    this.lastReadDirty = false;
+    await promise;
+
+    setTimeout(() => this.updateLastRead(), 1000);
   }
 
   async loadPrevious() {
@@ -146,6 +169,10 @@ export class AppRoot extends LitElement {
     console.log(resp);
 
     this.serverLastRead = Number(resp.lastRead);
+    if (this.lastRead === 0) {
+      this.lastRead = this.serverLastRead;
+    }
+
     if (resp.backwardPosition > 0 && this.backwardState === pb.FetchResponse_State.UNKNOWN) {
       this.backwardPosition = Number(resp.backwardPosition);
       this.backwardState = resp.backwardState;

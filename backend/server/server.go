@@ -156,3 +156,22 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 
 	return connect.NewResponse(resp), nil
 }
+
+func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadRequest]) (*connect.Response[pb.SetReadResponse], error) {
+	lid := int64(1)
+
+	listingState, err := s.st.ListingState(ctx, s.st.DB, lid)
+	if err != nil {
+		return nil, err
+	}
+
+	v := req.Msg.GetLastRead()
+	if v < listingState.FirstPosition-1 || v > listingState.LastPosition {
+		return nil, fmt.Errorf("position %d is invalid", v)
+	}
+	listingState.LastRead = v
+	if err := s.st.SetListingState(ctx, s.st.DB, listingState); err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&pb.SetReadResponse{}), nil
+}
