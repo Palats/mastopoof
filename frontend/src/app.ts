@@ -99,12 +99,7 @@ export class AppRoot extends LitElement {
         }
         console.log("isread until", position);
         if (position > this.lastRead) {
-          this.lastRead = position;
-          this.lastReadDirty = true;
-          if (!this.lastReadQueued) {
-            this.lastReadQueued = true;
-            requestIdleCallback(() => this.updateLastRead(), { timeout: 1000 });
-          }
+          this.setLastRead(position);
         }
       }, {
       root: null,
@@ -118,6 +113,15 @@ export class AppRoot extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this.observer?.disconnect();
+  }
+
+  setLastRead(position: number) {
+    this.lastRead = position;
+    this.lastReadDirty = true;
+    if (!this.lastReadQueued) {
+      this.lastReadQueued = true;
+      requestIdleCallback(() => this.updateLastRead(), { timeout: 1000 });
+    }
   }
 
   async updateLastRead() {
@@ -329,7 +333,7 @@ export class AppRoot extends LitElement {
     if (st.error) { content.push(html`<div>error: ${st.error}</div>`); }
 
     if (st.status) {
-      content.push(html`<mast-status class="statustrack" .status=${st.status as any}></mast-status>`);
+      content.push(html`<mast-status class="statustrack" .app=${this as any} .item=${st as any}></mast-status>`);
     } else {
       content.push(html`<div class="statusloading">loading</div>`);
     }
@@ -370,20 +374,36 @@ declare global {
 @customElement('mast-status')
 export class MastStatus extends LitElement {
   @property({ attribute: false })
-  status?: mastodon.Status;
+  item?: StatusEntry;
+
+  @property({ attribute: false })
+  app?: AppRoot;
 
   @state()
   private accessor showRaw = false;
 
+  markUnread() {
+    if (!this.app || !this.item) {
+      console.error("missing connection");
+      return;
+    }
+    // Not sure if doing computation on "position" is fine, but... well.
+    this.app.setLastRead(this.item?.position - 1);
+  }
+
   render() {
-    if (!this.status) {
+    if (!this.item) {
       return html`<div class="status"></div>`
+    }
+    if (!this.item.status) {
+      return html`<div class="status">oops</div>`;
     }
 
     // This actual status - i.e., the reblogged one when it is a reblogged, or
     // the basic one.
-    const s = this.status.reblog ?? this.status;
-    const isReblog = !!this.status.reblog;
+    const s = this.item.status.reblog ?? this.item.status;
+    const isReblog = !!this.item.status.reblog;
+    const account = this.item.status.account;
 
     const attachments: TemplateResult[] = [];
     for (const ma of (s.media_attachments ?? [])) {
@@ -398,8 +418,8 @@ export class MastStatus extends LitElement {
       <div class="status bg-blue-800">
         ${isReblog ? html`
           <div class="reblog bg-red-400 text-light">
-            <img class="avatar" src=${this.status.account.avatar} alt="avatar of ${this.status.account.display_name}"></img>
-            reblog by ${this.status.account.display_name}
+            <img class="avatar" src=${account.avatar} alt="avatar of ${account.display_name}"></img>
+            reblog by ${account.display_name}
           </div>
         `: nothing}
         <div class="account bg-blue-100">
@@ -419,8 +439,11 @@ export class MastStatus extends LitElement {
           <button @click="${() => { this.showRaw = !this.showRaw }}" title="Show raw status">
             <span class="material-symbols-outlined">${this.showRaw ? 'collapse_all' : 'expand_all'}</span>
           </button>
+          <button @click="${() => this.markUnread()}" title="Mark as unread and move read-marker above">
+            <span class="material-symbols-outlined">mark_as_unread</span>
+          </button>
         </div>
-        ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(this.status, null, "  ")}</pre>` : nothing}
+        ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(this.item.status, null, "  ")}</pre>` : nothing}
       </div>
     `
   }
