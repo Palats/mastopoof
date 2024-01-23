@@ -662,7 +662,7 @@ func (st *Storage) FetchBackward(ctx context.Context, lid int64, refPosition int
 
 // FetchForward get statuses after the provided position.
 // It can insert things in the stream if necessary.
-// If refPosition is 0, replaced with current last-read.
+// If refPosition is 0, gives data around the provided position.
 func (st *Storage) FetchForward(ctx context.Context, lid int64, refPosition int64) (*FetchResult, error) {
 	if refPosition < 0 {
 		return nil, fmt.Errorf("invalid position %d", refPosition)
@@ -683,7 +683,11 @@ func (st *Storage) FetchForward(ctx context.Context, lid int64, refPosition int6
 	result.LastRead = listingState.LastRead
 
 	if refPosition == 0 {
-		refPosition = listingState.LastRead
+		// Also pick the one last read status, for context.
+		refPosition = listingState.LastRead - 1
+		if refPosition < 0 {
+			refPosition = 0
+		}
 	}
 
 	maxCount := 10
