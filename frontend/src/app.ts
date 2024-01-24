@@ -30,9 +30,7 @@ interface StatusItem {
   // Position in the stream in the backend.
   position: number;
   // status, if loaded.
-  status?: mastodon.Status;
-  // error, if loading did not work.
-  error?: string;
+  status: mastodon.Status;
 
   // HTML element used to represent this status.
   elt?: Element;
@@ -205,43 +203,33 @@ export class AppRoot extends LitElement {
     this.requestUpdate();
   }
 
-  renderStatus(st: StatusItem): TemplateResult {
-    if (!st) { return html`<div>empty</div>` }
+  updateStatusRef(item: StatusItem, elt?: Element) {
+    if (!this.observer) {
+      return;
+    }
+    if (item.elt === elt) {
+      return;
+    }
 
+    if (item.elt) {
+      this.observer.unobserve(item.elt);
+      this.perEltItem.delete(item.elt);
+    }
+    if (elt) {
+      this.observer.observe(elt);
+      this.perEltItem.set(elt, item);
+    }
+    item.elt = elt;
+  }
+
+  renderStatus(item: StatusItem): TemplateResult[] {
     const content: TemplateResult[] = [];
-
-    if (st.error) { content.push(html`<div>error: ${st.error}</div>`); }
-
-    if (st.status) {
-      content.push(html`<mast-status class="statustrack" .app=${this as any} .item=${st as any}></mast-status>`);
-    } else {
-      content.push(html`<div class="statusloading">loading</div>`);
+    content.push(html`<mast-status class="statustrack contentitem" ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .app=${this as any} .item=${item as any}></mast-status>`);
+    if (item.position == this.lastRead) {
+      content.push(html`<div class="lastread contentitem">Last read</div>`);
     }
 
-    if (st.position == this.lastRead) {
-      content.push(html`<div class="lastread">Last read</div>`);
-    }
-
-    const updateRef = (elt?: Element) => {
-      if (!this.observer) {
-        return;
-      }
-      if (st.elt === elt) {
-        return;
-      }
-
-      if (st.elt) {
-        this.observer.unobserve(st.elt);
-        this.perEltItem.delete(st.elt);
-      }
-      if (elt) {
-        this.observer.observe(elt);
-        this.perEltItem.set(elt, st);
-      }
-      st.elt = elt;
-    };
-
-    return html`<div class="contentitem" ${ref(updateRef)}>${content}</div>`;
+    return content;
   }
 
   render() {
@@ -262,7 +250,7 @@ export class AppRoot extends LitElement {
             `}
             </div>
 
-            ${repeat(this.items, (item) => item.position, (item, _) => { return this.renderStatus(item); })}
+            ${repeat(this.items, item => item.position, (item, _) => this.renderStatus(item))}
 
             <div class="noanchor contentitem streamend"><div class="centered">${this.forwardState === pb.FetchResponse_State.DONE ? html`
               Nothing more right now. <button @click=${this.loadNext}>Try again</button>
@@ -351,10 +339,6 @@ export class AppRoot extends LitElement {
       background-color: #dfa1a1;
     }
 
-    .statusloading {
-      min-height: 200px;
-    }
-
     .noanchor {
       overflow-anchor: none;
     }
@@ -396,10 +380,7 @@ export class MastStatus extends LitElement {
 
   render() {
     if (!this.item) {
-      return html`<div class="status"></div>`
-    }
-    if (!this.item.status) {
-      return html`<div class="status">oops</div>`;
+      return html`<div class="status">oops.</div>`
     }
 
     // This actual status - i.e., the reblogged one when it is a reblogged, or
