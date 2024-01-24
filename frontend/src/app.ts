@@ -25,8 +25,8 @@ import * as mastodon from "./mastodon";
 
 const commonCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
 
-// StatusEntry represents the state in the UI of a given status.
-interface StatusEntry {
+// StatusItem represents the state in the UI of a given status.
+interface StatusItem {
   // Position in the stream in the backend.
   position: number;
   // status, if loaded.
@@ -48,8 +48,8 @@ interface StatusEntry {
 
 @customElement('app-root')
 export class AppRoot extends LitElement {
-  private items: StatusEntry[] = [];
-  private perEltItem = new Map<Element, StatusEntry>();
+  private items: StatusItem[] = [];
+  private perEltItem = new Map<Element, StatusItem>();
 
   // Position of the last status marked as read.
   // From server info.
@@ -72,36 +72,7 @@ export class AppRoot extends LitElement {
   connectedCallback(): void {
     super.connectedCallback();
     this.observer = new IntersectionObserver(
-      (entries: IntersectionObserverEntry[], _: IntersectionObserver) => {
-        // console.log("intersection", entries);
-        for (const entry of entries) {
-          const targetItem = this.perEltItem.get(entry.target);
-          if (targetItem) {
-            // console.info("intersection", entry.isIntersecting, "position", targetItem.position);
-            if (entry.isIntersecting) {
-              targetItem.wasSeen = true;
-              targetItem.disappeared = false;
-            } else if (targetItem.wasSeen) {
-              targetItem.disappeared = true;
-            }
-          } else {
-            console.error("not item found for element", entry);
-          }
-        }
-
-        // Found until which item things have disappeared.
-        let position = 0;
-        for (const item of this.items) {
-          if (!item.disappeared) {
-            break;
-          }
-          position = item.position;
-        }
-        console.log("isread until", position);
-        if (position > this.lastRead) {
-          this.setLastRead(position);
-        }
-      }, {
+      (entries: IntersectionObserverEntry[], _: IntersectionObserver) => this.onIntersection(entries), {
       root: null,
       rootMargin: "0px",
       threshold: 0.0,
@@ -113,6 +84,36 @@ export class AppRoot extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this.observer?.disconnect();
+  }
+
+  // Called when intersections of statuses changes - i.e., that
+  // a status becomes visible / invisible.
+  onIntersection(entries: IntersectionObserverEntry[]) {
+    for (const entry of entries) {
+      const targetItem = this.perEltItem.get(entry.target);
+      if (targetItem) {
+        if (entry.isIntersecting) {
+          targetItem.wasSeen = true;
+          targetItem.disappeared = false;
+        } else if (targetItem.wasSeen) {
+          targetItem.disappeared = true;
+        }
+      } else {
+        console.error("not item found for element", entry);
+      }
+    }
+
+    // Found until which item things have disappeared.
+    let position = 0;
+    for (const item of this.items) {
+      if (!item.disappeared) {
+        break;
+      }
+      position = item.position;
+    }
+    if (position > this.lastRead) {
+      this.setLastRead(position);
+    }
   }
 
   setLastRead(position: number) {
@@ -130,7 +131,7 @@ export class AppRoot extends LitElement {
       return;
     }
 
-    console.log("setting last read to", this.lastRead);
+    console.log("last read to", this.lastRead);
     const promise = client.setRead({ lastRead: BigInt(this.lastRead) });
     this.lastReadDirty = false;
     await promise;
@@ -138,6 +139,7 @@ export class AppRoot extends LitElement {
     setTimeout(() => this.updateLastRead(), 1000);
   }
 
+  // Load earlier statuses.
   async loadPrevious() {
     const resp = await client.fetch({ position: BigInt(this.backwardPosition), direction: pb.FetchRequest_Direction.BACKWARD })
 
@@ -168,6 +170,7 @@ export class AppRoot extends LitElement {
     this.requestUpdate();
   }
 
+  // Load newer statuses.
   async loadNext() {
     const resp = await client.fetch({ position: BigInt(this.forwardPosition), direction: pb.FetchRequest_Direction.FORWARD })
     console.log(resp);
@@ -200,6 +203,77 @@ export class AppRoot extends LitElement {
     // Always indicate that initial loading is done - this is a latch anyway.
     this.isInitialLoading = false;
     this.requestUpdate();
+  }
+
+  renderStatus(st: StatusItem): TemplateResult {
+    if (!st) { return html`<div>empty</div>` }
+
+    const content: TemplateResult[] = [];
+
+    if (st.error) { content.push(html`<div>error: ${st.error}</div>`); }
+
+    if (st.status) {
+      content.push(html`<mast-status class="statustrack" .app=${this as any} .item=${st as any}></mast-status>`);
+    } else {
+      content.push(html`<div class="statusloading">loading</div>`);
+    }
+
+    if (st.position == this.lastRead) {
+      content.push(html`<div class="lastread">Last read</div>`);
+    }
+
+    const updateRef = (elt?: Element) => {
+      if (!this.observer) {
+        return;
+      }
+      if (st.elt === elt) {
+        return;
+      }
+
+      if (st.elt) {
+        this.observer.unobserve(st.elt);
+        this.perEltItem.delete(st.elt);
+      }
+      if (elt) {
+        this.observer.observe(elt);
+        this.perEltItem.set(elt, st);
+      }
+      st.elt = elt;
+    };
+
+    return html`<div class="contentitem" ${ref(updateRef)}>${content}</div>`;
+  }
+
+  render() {
+    return html`
+      <div class="page">
+        <div class="middlepane">
+          <div class="header">
+            <div class="headercontent">
+              Mastopoof
+            </div>
+          </div>
+          <div class="content">
+            ${this.isInitialLoading ? html`<div class="contentitem"><div class="centered">Loading...</div></div>` : html``}
+            <div class="noanchor contentitem streambeginning">${this.backwardState === pb.FetchResponse_State.DONE ? html`
+              <div class="centered">Beginning of stream.</div>
+            `: html`
+              <button @click=${this.loadPrevious}>Load earlier statuses</button></div>
+            `}
+            </div>
+
+            ${repeat(this.items, (item) => item.position, (item, _) => { return this.renderStatus(item); })}
+
+            <div class="noanchor contentitem streamend"><div class="centered">${this.forwardState === pb.FetchResponse_State.DONE ? html`
+              Nothing more right now. <button @click=${this.loadNext}>Try again</button>
+            `: html`
+              <button @click=${this.loadNext}>Load more statuses</button></div>
+            `}
+            </div></div>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   static styles = [commonCSS, css`
@@ -292,77 +366,6 @@ export class AppRoot extends LitElement {
       align-items: center;
     }
   `];
-
-  render() {
-    return html`
-      <div class="page">
-        <div class="middlepane">
-          <div class="header">
-            <div class="headercontent">
-              Mastopoof
-            </div>
-          </div>
-          <div class="content">
-            ${this.isInitialLoading ? html`<div class="contentitem"><div class="centered">Loading...</div></div>` : html``}
-            <div class="noanchor contentitem streambeginning">${this.backwardState === pb.FetchResponse_State.DONE ? html`
-              <div class="centered">Beginning of stream.</div>
-            `: html`
-              <button @click=${this.loadPrevious}>Load earlier statuses</button></div>
-            `}
-            </div>
-
-            ${repeat(this.items, (item) => item.position, (item, _) => { return this.renderStatus(item); })}
-
-            <div class="noanchor contentitem streamend"><div class="centered">${this.forwardState === pb.FetchResponse_State.DONE ? html`
-              Nothing more right now. <button @click=${this.loadNext}>Try again</button>
-            `: html`
-              <button @click=${this.loadNext}>Load more statuses</button></div>
-            `}
-            </div></div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  renderStatus(st: StatusEntry): TemplateResult {
-    if (!st) { return html`<div>empty</div>` }
-
-    const content: TemplateResult[] = [];
-
-    if (st.error) { content.push(html`<div>error: ${st.error}</div>`); }
-
-    if (st.status) {
-      content.push(html`<mast-status class="statustrack" .app=${this as any} .item=${st as any}></mast-status>`);
-    } else {
-      content.push(html`<div class="statusloading">loading</div>`);
-    }
-
-    if (st.position == this.lastRead) {
-      content.push(html`<div class="lastread">Last read</div>`);
-    }
-
-    const updateRef = (elt?: Element) => {
-      if (!this.observer) {
-        return;
-      }
-      if (st.elt === elt) {
-        return;
-      }
-
-      if (st.elt) {
-        this.observer.unobserve(st.elt);
-        this.perEltItem.delete(st.elt);
-      }
-      if (elt) {
-        this.observer.observe(elt);
-        this.perEltItem.set(elt, st);
-      }
-      st.elt = elt;
-    };
-
-    return html`<div class="contentitem" ${ref(updateRef)}>${content}</div>`;
-  }
 }
 
 declare global {
@@ -374,7 +377,7 @@ declare global {
 @customElement('mast-status')
 export class MastStatus extends LitElement {
   @property({ attribute: false })
-  item?: StatusEntry;
+  item?: StatusItem;
 
   @property({ attribute: false })
   app?: AppRoot;
