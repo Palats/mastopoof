@@ -5,12 +5,6 @@ package mastopoof;
 service Mastopoof {
     rpc Ping(PingRequest) returns (PingResponse);
 
-    // Get opened statuses and a bit of context if needed.
-    // Used on client opening.
-    rpc InitialStatuses(InitialStatusesRequest) returns (InitialStatusesResponse);
-    // Get a status by stream position.
-    rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
-
     // Fetch statuses.
     rpc Fetch(FetchRequest) returns (FetchResponse);
     // Set the position of the read-marker.
@@ -23,25 +17,6 @@ message PingRequest {
 
 message PingResponse {
     string msg = 2;
-}
-
-message InitialStatusesRequest { }
-
-message InitialStatusesResponse {
-    // List of status the server thinks a client needs now.
-    // In practice: list of opened but unread items.
-    // It will means the statuses will be at last_read+1 and beyond.
-    repeated Item items = 1;
-    int64 last_read = 2;
-}
-
-message GetStatusRequest {
-    // The index in the stream of the status to fetch.
-    int64 position = 1;
-}
-
-message GetStatusResponse {
-    Item item = 1;
 }
 
 // An item in the stream - i.e., a status with some metadata.
