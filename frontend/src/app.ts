@@ -5,7 +5,7 @@ import { repeat } from 'lit/directives/repeat.js';
 import { ref } from 'lit/directives/ref.js';
 
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
-import * as backend from "./backend";
+import { Backend, LastReadEvent } from "./backend";
 
 // Import the element registration.
 import '@lit-labs/virtualizer';
@@ -14,6 +14,9 @@ import normalizeCSSstr from "./normalize.css?inline";
 import baseCSSstr from "./base.css?inline";
 
 import * as mastodon from "./mastodon";
+
+// Create a global backend access.
+const backend = new Backend();
 
 const commonCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
 
@@ -32,12 +35,6 @@ interface StatusItem {
   disappeared: boolean;
 }
 
-// Return a random value around [ref-delta, ref+delta[, where
-// delta = ref * deltaRatio.
-function fuzzy(ref: number, deltaRatio: number): number {
-  return ref + (2 * Math.random() - 1) * (ref * deltaRatio);
-}
-
 // https://adrianfaciu.dev/posts/observables-litelement/
 // https://github.com/lit/lit/tree/main/packages/labs/virtualizer#readme
 // https://stackoverflow.com/questions/60678734/insert-elements-on-top-of-something-without-changing-visible-scrolled-content
@@ -46,15 +43,6 @@ function fuzzy(ref: number, deltaRatio: number): number {
 export class AppRoot extends LitElement {
   private items: StatusItem[] = [];
   private perEltItem = new Map<Element, StatusItem>();
-
-  // Position of the last status marked as read.
-  // From server info.
-  private serverLastRead?: number;
-  // From frontend perspective.
-  @state() private lastRead: number = 0;
-
-  private lastReadDirty = false;
-  private lastReadQueued = false;
 
   private backwardPosition: number = 0;
   private backwardState: pb.FetchResponse_State = pb.FetchResponse_State.UNKNOWN;
@@ -65,6 +53,8 @@ export class AppRoot extends LitElement {
 
   private observer?: IntersectionObserver;
 
+  @state() private lastRead?: number;
+
   connectedCallback(): void {
     super.connectedCallback();
     this.observer = new IntersectionObserver(
@@ -72,6 +62,10 @@ export class AppRoot extends LitElement {
       root: null,
       rootMargin: "0px",
       threshold: 0.0,
+    });
+
+    backend.onLastRead.addEventListener("last-read", (evt: LastReadEvent) => {
+      this.lastRead = evt.newPosition;
     });
 
     this.loadNext();
@@ -107,40 +101,14 @@ export class AppRoot extends LitElement {
       }
       position = item.position;
     }
-    if (position > this.lastRead) {
-      this.setLastRead(position);
+    if (this.lastRead !== undefined && position > this.lastRead) {
+      backend.setLastRead(position);
     }
-  }
-
-  setLastRead(position: number) {
-    this.lastRead = position;
-    this.lastReadDirty = true;
-    if (!this.lastReadQueued) {
-      this.lastReadQueued = true;
-      requestIdleCallback(() => this.updateLastRead(), { timeout: fuzzy(1000, 0.1) });
-    }
-  }
-
-  // Internal method used in rate-limiting updates of last-read marker.
-  async updateLastRead() {
-    if (!this.lastReadDirty) {
-      this.lastReadQueued = false;
-      return;
-    }
-
-    console.log("last read to", this.lastRead);
-    const promise = backend.client.setRead({ lastRead: BigInt(this.lastRead) });
-    this.lastReadDirty = false;
-    await promise;
-
-    setTimeout(() => this.updateLastRead(), 1000);
   }
 
   // Load earlier statuses.
   async loadPrevious() {
-    const resp = await backend.client.fetch({ position: BigInt(this.backwardPosition), direction: pb.FetchRequest_Direction.BACKWARD })
-
-    this.serverLastRead = Number(resp.lastRead);
+    const resp = await backend.fetch({ position: BigInt(this.backwardPosition), direction: pb.FetchRequest_Direction.BACKWARD })
 
     if (resp.backwardPosition > 0) {
       this.backwardPosition = Number(resp.backwardPosition);
@@ -169,13 +137,8 @@ export class AppRoot extends LitElement {
 
   // Load newer statuses.
   async loadNext() {
-    const resp = await backend.client.fetch({ position: BigInt(this.forwardPosition), direction: pb.FetchRequest_Direction.FORWARD })
+    const resp = await backend.fetch({ position: BigInt(this.forwardPosition), direction: pb.FetchRequest_Direction.FORWARD })
     console.log(resp);
-
-    this.serverLastRead = Number(resp.lastRead);
-    if (this.lastRead === 0) {
-      this.lastRead = this.serverLastRead;
-    }
 
     if (resp.backwardPosition > 0 && this.backwardState === pb.FetchResponse_State.UNKNOWN) {
       this.backwardPosition = Number(resp.backwardPosition);
@@ -227,7 +190,6 @@ export class AppRoot extends LitElement {
     if (item.position == this.lastRead) {
       content.push(html`<div class="lastread contentitem">Last read</div>`);
     }
-
     return content;
   }
 
@@ -374,7 +336,7 @@ export class MastStatus extends LitElement {
       return;
     }
     // Not sure if doing computation on "position" is fine, but... well.
-    this.app.setLastRead(this.item?.position - 1);
+    backend.setLastRead(this.item?.position - 1);
   }
 
   render() {
