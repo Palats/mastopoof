@@ -40,6 +40,12 @@ interface StatusItem {
   disappeared: boolean;
 }
 
+// Return a random value around [ref-delta, ref+delta[, where
+// delta = ref * deltaRatio.
+function fuzzy(ref: number, deltaRatio: number): number {
+  return ref + (2 * Math.random() - 1) * (ref * deltaRatio);
+}
+
 // https://adrianfaciu.dev/posts/observables-litelement/
 // https://github.com/lit/lit/tree/main/packages/labs/virtualizer#readme
 // https://stackoverflow.com/questions/60678734/insert-elements-on-top-of-something-without-changing-visible-scrolled-content
@@ -119,10 +125,11 @@ export class AppRoot extends LitElement {
     this.lastReadDirty = true;
     if (!this.lastReadQueued) {
       this.lastReadQueued = true;
-      requestIdleCallback(() => this.updateLastRead(), { timeout: 1000 });
+      requestIdleCallback(() => this.updateLastRead(), { timeout: fuzzy(1000, 0.1) });
     }
   }
 
+  // Internal method used in rate-limiting updates of last-read marker.
   async updateLastRead() {
     if (!this.lastReadDirty) {
       this.lastReadQueued = false;
