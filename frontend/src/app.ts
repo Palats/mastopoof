@@ -4,16 +4,8 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { ref } from 'lit/directives/ref.js';
 
-import { createPromiseClient } from "@connectrpc/connect";
-import { createConnectTransport } from "@connectrpc/connect-web";
-import { Mastopoof } from "mastopoof-proto/gen/mastopoof/mastopoof_connect";
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
-
-// XXX move that elsewhere
-const transport = createConnectTransport({
-  baseUrl: "/_rpc/",
-});
-const client = createPromiseClient(Mastopoof, transport);
+import * as backend from "./backend";
 
 // Import the element registration.
 import '@lit-labs/virtualizer';
@@ -137,7 +129,7 @@ export class AppRoot extends LitElement {
     }
 
     console.log("last read to", this.lastRead);
-    const promise = client.setRead({ lastRead: BigInt(this.lastRead) });
+    const promise = backend.client.setRead({ lastRead: BigInt(this.lastRead) });
     this.lastReadDirty = false;
     await promise;
 
@@ -146,7 +138,7 @@ export class AppRoot extends LitElement {
 
   // Load earlier statuses.
   async loadPrevious() {
-    const resp = await client.fetch({ position: BigInt(this.backwardPosition), direction: pb.FetchRequest_Direction.BACKWARD })
+    const resp = await backend.client.fetch({ position: BigInt(this.backwardPosition), direction: pb.FetchRequest_Direction.BACKWARD })
 
     this.serverLastRead = Number(resp.lastRead);
 
@@ -177,7 +169,7 @@ export class AppRoot extends LitElement {
 
   // Load newer statuses.
   async loadNext() {
-    const resp = await client.fetch({ position: BigInt(this.forwardPosition), direction: pb.FetchRequest_Direction.FORWARD })
+    const resp = await backend.client.fetch({ position: BigInt(this.forwardPosition), direction: pb.FetchRequest_Direction.FORWARD })
     console.log(resp);
 
     this.serverLastRead = Number(resp.lastRead);
