@@ -226,6 +226,10 @@ export class AppRoot extends LitElement {
             `}
             </div></div>
           </div>
+          <div class="footer">
+            <div class="footercontent">
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -272,6 +276,26 @@ export class AppRoot extends LitElement {
     */
     .headercontent {
       background-color: #f7fdff;
+      border-style: solid;
+      border-radius: .3rem;
+      border-width: .1rem;
+      padding: 0.5rem;
+      margin: .1rem;
+    }
+
+    .footer {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+      box-sizing: border-box;
+      min-height: 30px;
+      background-color: #e0e0e0;
+
+      display: grid;
+      grid-template-rows: 1fr;
+    }
+    .footercontent {
+      background-color: #c99272;
       border-style: solid;
       border-radius: .3rem;
       border-width: .1rem;
