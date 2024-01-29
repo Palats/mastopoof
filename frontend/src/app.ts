@@ -64,6 +64,12 @@ export class AppRoot extends LitElement {
       threshold: 0.0,
     });
 
+    // Prevent browser to automatically scroll to random places on load - it
+    // does not work well given that the list of elements might have changed.
+    if (history.scrollRestoration) {
+      history.scrollRestoration = "manual";
+    }
+
     backend.onLastRead.addEventListener("last-read", (evt: LastReadEvent) => {
       this.lastRead = evt.newPosition;
     });
