@@ -54,6 +54,8 @@ export class AppRoot extends LitElement {
   private observer?: IntersectionObserver;
 
   @state() private lastRead?: number;
+  @state() private lastPosition?: number;
+  @state() private remainingPool?: number;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -72,6 +74,8 @@ export class AppRoot extends LitElement {
 
     backend.onStreamUpdate.addEventListener("stream-update", ((evt: StreamUpdateEvent) => {
       this.lastRead = evt.curr.lastRead;
+      this.lastPosition = evt.curr.lastPosition;
+      this.remainingPool = evt.curr.remaining;
     }) as EventListener);
 
     this.loadNext();
@@ -227,6 +231,7 @@ export class AppRoot extends LitElement {
           </div>
           <div class="footer">
             <div class="footercontent">
+              Not yet in stream: ${this.remainingPool} (lastpos=${this.lastPosition})
             </div>
           </div>
         </div>
