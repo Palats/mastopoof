@@ -62,7 +62,9 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		return nil, fmt.Errorf("unknown direction %v", req.Msg.Direction)
 	}
 
-	resp.LastRead = fetchResult.LastRead
+	resp.LastRead = fetchResult.ListingState.LastRead
+	resp.LastPosition = fetchResult.ListingState.LastPosition
+	resp.RemainingPool = fetchResult.ListingState.Remaining
 	resp.BackwardState = pb.FetchResponse_PARTIAL
 	if fetchResult.HasFirst {
 		resp.BackwardState = pb.FetchResponse_DONE

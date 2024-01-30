@@ -215,6 +215,7 @@ func cmdMe(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo,
 	fmt.Println("# First position:", listingState.FirstPosition)
 	fmt.Println("# Last position:", listingState.LastPosition)
 	fmt.Println("# Last read position:", listingState.LastRead)
+	fmt.Println("# Remaining in pool:", listingState.Remaining)
 	return nil
 }
 

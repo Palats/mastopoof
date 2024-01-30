@@ -44,7 +44,10 @@ type ListingState struct {
 	LastRead int64 `json:"last_read"`
 	// Position of the first status, if any. Usually == 1.
 	FirstPosition int64 `json:"first_position"`
-	LastPosition  int64 `json:"last_position"`
+	// Position of the last status, if any.
+	LastPosition int64 `json:"last_position"`
+	// Remaining statuses in the pool which are not yet added in the stream.
+	Remaining int64 `json:"remaining"`
 }
 
 type SQLQueryable interface {
@@ -350,14 +353,14 @@ func (st *Storage) ClearStream(ctx context.Context, lid int64) error {
 	return txn.Commit()
 }
 
-type OpenStatus struct {
+type Item struct {
 	// Position in the listing.
 	Position int64           `json:"position"`
 	Status   mastodon.Status `json:"status"`
 }
 
 // Opened returns the currently open statuses in the listing.
-func (st *Storage) Opened(ctx context.Context, lid int64) ([]*OpenStatus, error) {
+func (st *Storage) Opened(ctx context.Context, lid int64) ([]*Item, error) {
 	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -387,7 +390,7 @@ func (st *Storage) Opened(ctx context.Context, lid int64) ([]*OpenStatus, error)
 		return nil, err
 	}
 
-	results := []*OpenStatus{}
+	results := []*Item{}
 
 	for rows.Next() {
 		var position int64
@@ -400,7 +403,7 @@ func (st *Storage) Opened(ctx context.Context, lid int64) ([]*OpenStatus, error)
 			return nil, err
 		}
 
-		results = append(results, &OpenStatus{
+		results = append(results, &Item{
 			Position: position,
 			Status:   status,
 		})
@@ -434,7 +437,7 @@ func (st *Storage) LastPosition(ctx context.Context, lid int64, db SQLQueryable)
 
 // StatusAt gets the status at the provided position in the stream.
 // Returns nil, nil if there is no matching status at that position.
-func (st *Storage) StatusAt(ctx context.Context, lid int64, position int64) (*OpenStatus, error) {
+func (st *Storage) StatusAt(ctx context.Context, lid int64, position int64) (*Item, error) {
 	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -468,7 +471,7 @@ func (st *Storage) StatusAt(ctx context.Context, lid int64, position int64) (*Op
 		return nil, err
 	}
 
-	return &OpenStatus{
+	return &Item{
 		Position: position,
 		Status:   status,
 	}, txn.Commit()
@@ -476,7 +479,7 @@ func (st *Storage) StatusAt(ctx context.Context, lid int64, position int64) (*Op
 
 // PickNext
 // Return (nil, nil) if there is no next status.
-func (st *Storage) PickNext(ctx context.Context, lid int64) (*OpenStatus, error) {
+func (st *Storage) PickNext(ctx context.Context, lid int64) (*Item, error) {
 	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -493,7 +496,7 @@ func (st *Storage) PickNext(ctx context.Context, lid int64) (*OpenStatus, error)
 	return o, txn.Commit()
 }
 
-func (st *Storage) pickNextInTxn(ctx context.Context, lid int64, txn *sql.Tx, listingState *ListingState) (*OpenStatus, error) {
+func (st *Storage) pickNextInTxn(ctx context.Context, lid int64, txn *sql.Tx, listingState *ListingState) (*Item, error) {
 	// List all statuses which are not listed yet in "listingcontent" for that listing ID.
 	rows, err := txn.QueryContext(ctx, `
 		SELECT
@@ -513,7 +516,9 @@ func (st *Storage) pickNextInTxn(ctx context.Context, lid int64, txn *sql.Tx, li
 
 	var selectedID int64
 	var selected *mastodon.Status
+	var found int64
 	for rows.Next() {
+		found++
 		var sid int64
 		var jsonString string
 		if err := rows.Scan(&sid, &jsonString); err != nil {
@@ -547,7 +552,9 @@ func (st *Storage) pickNextInTxn(ctx context.Context, lid int64, txn *sql.Tx, li
 
 	if selected == nil {
 		fmt.Println("No next status available")
-		return nil, nil
+		// Update 'remaining' while at it.
+		listingState.Remaining = found
+		return nil, st.SetListingState(ctx, txn, listingState)
 	}
 
 	// Now, add that status to the listing.
@@ -561,6 +568,9 @@ func (st *Storage) pickNextInTxn(ctx context.Context, lid int64, txn *sql.Tx, li
 	if listingState.FirstPosition == 0 {
 		listingState.FirstPosition = position
 	}
+
+	// One of the status will be added to the stream, so do not count it.
+	listingState.Remaining = found - 1
 	if err := st.SetListingState(ctx, txn, listingState); err != nil {
 		return nil, err
 	}
@@ -572,17 +582,18 @@ func (st *Storage) pickNextInTxn(ctx context.Context, lid int64, txn *sql.Tx, li
 		return nil, err
 	}
 
-	return &OpenStatus{
+	return &Item{
 		Position: position,
 		Status:   *selected,
 	}, nil
 }
 
 type FetchResult struct {
-	LastRead int64
 	HasFirst bool
 	HasLast  bool
-	Items    []*OpenStatus
+	Items    []*Item
+
+	ListingState *ListingState
 }
 
 // FetchBackward get statuses before the provided position.
@@ -605,7 +616,7 @@ func (st *Storage) FetchBackward(ctx context.Context, lid int64, refPosition int
 	if err != nil {
 		return nil, err
 	}
-	result.LastRead = listingState.LastRead
+	result.ListingState = listingState
 
 	maxCount := 10
 
@@ -630,7 +641,7 @@ func (st *Storage) FetchBackward(ctx context.Context, lid int64, refPosition int
 	}
 
 	// Result is descending by position, so reversed compared to what we want.
-	var reverseItems []*OpenStatus
+	var reverseItems []*Item
 	for rows.Next() {
 		var position int64
 		var jsonString string
@@ -641,7 +652,7 @@ func (st *Storage) FetchBackward(ctx context.Context, lid int64, refPosition int
 		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
 			return nil, err
 		}
-		reverseItems = append(reverseItems, &OpenStatus{
+		reverseItems = append(reverseItems, &Item{
 			Position: position,
 			Status:   status,
 		})
@@ -680,7 +691,7 @@ func (st *Storage) FetchForward(ctx context.Context, lid int64, refPosition int6
 	if err != nil {
 		return nil, err
 	}
-	result.LastRead = listingState.LastRead
+	result.ListingState = listingState
 
 	if refPosition == 0 {
 		// Also pick the one last read status, for context.
@@ -722,7 +733,7 @@ func (st *Storage) FetchForward(ctx context.Context, lid int64, refPosition int6
 		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
 			return nil, err
 		}
-		result.Items = append(result.Items, &OpenStatus{
+		result.Items = append(result.Items, &Item{
 			Position: position,
 			Status:   status,
 		})

@@ -12,27 +12,31 @@ function fuzzy(ref: number, deltaRatio: number): number {
     return ref + (2 * Math.random() - 1) * (ref * deltaRatio);
 }
 
-// Event type for last-read events - i.e., when last-read is updated.
-export class LastReadEvent extends Event {
-    oldPosition?: number;
-    newPosition?: number;
+// Event type when info about the stream/pool is updated.
+export class StreamUpdateEvent extends Event {
+    prev: StreamInfo = {};
+    curr: StreamInfo = {};
 }
 
-export class Backend {
+export interface StreamInfo {
     // The last-read status position, from this frontend perspective - i.e.,
     // including local updates which might not have been propagated to the
     // server.
-    private lastRead?: number;
+    lastRead?: number;
+    // Highest position in the stream.
+    lastPosition?: number;
+    // Number of status in the pool but not in the stream.
+    remaining?: number;
+}
+
+export class Backend {
+    private streamInfo: StreamInfo = {};
 
     // Fired when last-read is changed. Gives a LastReadEvent event.
-    public onLastRead: EventTarget;
+    public onStreamUpdate: EventTarget;
 
     private lastReadDirty = false;
     private lastReadQueued = false;
-
-    // Position of the last status marked as read.
-    // From server info.
-    private serverLastRead?: number;
 
     private client: PromiseClient<typeof Mastopoof>;
 
@@ -42,23 +46,23 @@ export class Backend {
         });
 
         this.client = createPromiseClient(Mastopoof, transport);
-        this.onLastRead = new EventTarget();
+        this.onStreamUpdate = new EventTarget();
     }
 
     // Update the last-read position on the server. It will be rate limited,
     // so not all call might be immediately effective. It will always use the last value.
     public setLastRead(position: number) {
-        const old = this.lastRead;
-        this.lastRead = position;
+        const old = { ... this.streamInfo };
+        this.streamInfo.lastRead = position;
         this.lastReadDirty = true;
         if (!this.lastReadQueued) {
             this.lastReadQueued = true;
             requestIdleCallback(() => this.updateLastRead(), { timeout: fuzzy(1000, 0.1) });
         }
-        const evt = new LastReadEvent("last-read");
-        evt.oldPosition = old;
-        evt.newPosition = this.lastRead;
-        this.onLastRead.dispatchEvent(evt);
+        const evt = new StreamUpdateEvent("stream-update");
+        evt.prev = old;
+        evt.curr = { ... this.streamInfo };
+        this.onStreamUpdate.dispatchEvent(evt);
     }
 
     // Internal method used in rate-limiting updates of last-read marker.
@@ -68,10 +72,10 @@ export class Backend {
             return;
         }
 
-        console.log("last read to", this.lastRead);
+        console.log("last read to", this.streamInfo.lastRead);
         // this.lastRead is always not-undefined at this point, as the method is
         // only called after `setLastRead` which does not allow for it.
-        const promise = this.client.setRead({ lastRead: BigInt(this.lastRead!) });
+        const promise = this.client.setRead({ lastRead: BigInt(this.streamInfo.lastRead!) });
         this.lastReadDirty = false;
         await promise;
 
@@ -80,16 +84,16 @@ export class Backend {
 
     public async fetch(request: protobuf.PartialMessage<pb.FetchRequest>) {
         const resp = await this.client.fetch(request);
-        this.serverLastRead = Number(resp.lastRead);
-        if (this.lastRead === undefined) {
-            this.lastRead = this.serverLastRead;
 
-            const evt = new LastReadEvent("last-read");
-            evt.oldPosition = undefined;
-            evt.newPosition = this.lastRead;
-            this.onLastRead.dispatchEvent(evt);
+        const old = { ... this.streamInfo }
+        this.streamInfo.lastRead = Number(resp.lastRead);
+        this.streamInfo.lastPosition = Number(resp.lastPosition);
+        this.streamInfo.remaining = Number(resp.remainingPool);
+        const evt = new StreamUpdateEvent("stream-update");
+        evt.prev = old;
+        evt.curr = { ... this.streamInfo };
+        this.onStreamUpdate.dispatchEvent(evt);
 
-        }
         return resp;
     }
 }

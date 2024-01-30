@@ -5,7 +5,7 @@ import { repeat } from 'lit/directives/repeat.js';
 import { ref } from 'lit/directives/ref.js';
 
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
-import { Backend, LastReadEvent } from "./backend";
+import { Backend, StreamUpdateEvent } from "./backend";
 
 // Import the element registration.
 import '@lit-labs/virtualizer';
@@ -70,9 +70,9 @@ export class AppRoot extends LitElement {
       history.scrollRestoration = "manual";
     }
 
-    backend.onLastRead.addEventListener("last-read", (evt: LastReadEvent) => {
-      this.lastRead = evt.newPosition;
-    });
+    backend.onStreamUpdate.addEventListener("stream-update", ((evt: StreamUpdateEvent) => {
+      this.lastRead = evt.curr.lastRead;
+    }) as EventListener);
 
     this.loadNext();
   }
@@ -144,7 +144,6 @@ export class AppRoot extends LitElement {
   // Load newer statuses.
   async loadNext() {
     const resp = await backend.fetch({ position: BigInt(this.forwardPosition), direction: pb.FetchRequest_Direction.FORWARD })
-    console.log(resp);
 
     if (resp.backwardPosition > 0 && this.backwardState === pb.FetchResponse_State.UNKNOWN) {
       this.backwardPosition = Number(resp.backwardPosition);

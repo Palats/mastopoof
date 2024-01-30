@@ -75,6 +75,12 @@ message FetchResponse {
     // Position of last-read item.
     // Can be outside the range of items directly returned in this response.
     int64 last_read = 5;
+    // Position of the last item in the stream. This is specified even if the
+    // returned statuses are in the middle of the stream and do not include the
+    // last one.
+    int64 last_position = 7;
+    // Remaining status still in the pool and not yet added to the stream.
+    int64 remaining_pool = 8;
 }
 
 message SetReadRequest {
