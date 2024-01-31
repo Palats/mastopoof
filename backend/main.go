@@ -35,7 +35,7 @@ var (
 	clearApp   = flag.Bool("clear_app", false, "Force re-registration of the app against the Mastodon server")
 	clearAuth  = flag.Bool("clear_auth", false, "Force re-approval of auth; does not touch app registration")
 	port       = flag.Int("port", 8079, "Port to listen on for the 'serve' command")
-	listingID  = flag.Int64("listing_id", 1, "Listing to use")
+	streamID   = flag.Int64("stream_id", 1, "Stream to use")
 )
 
 func registerApp(ctx context.Context, ai *storage.AuthInfo) (*mastodon.Application, error) {
@@ -185,12 +185,12 @@ func cmdClearAll(ctx context.Context, st *storage.Storage) error {
 }
 
 func cmdClearStream(ctx context.Context, st *storage.Storage) error {
-	lid := *listingID
-	return st.ClearStream(ctx, lid)
+	stid := *streamID
+	return st.ClearStream(ctx, stid)
 }
 
 func cmdMe(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo, client *mastodon.Client) error {
-	lid := *listingID
+	stid := *streamID
 
 	if client != nil {
 		fmt.Println("# Mastodon Account")
@@ -202,20 +202,20 @@ func cmdMe(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo,
 		fmt.Println()
 	}
 
-	lastPosition, err := st.LastPosition(ctx, lid, st.DB)
+	lastPosition, err := st.LastPosition(ctx, stid, st.DB)
 	if err != nil {
 		return err
 	}
 	fmt.Println("# Position of last status in stream:", lastPosition)
 
-	listingState, err := st.ListingState(ctx, st.DB, lid)
+	streamState, err := st.StreamState(ctx, st.DB, stid)
 	if err != nil {
 		return err
 	}
-	fmt.Println("# First position:", listingState.FirstPosition)
-	fmt.Println("# Last position:", listingState.LastPosition)
-	fmt.Println("# Last read position:", listingState.LastRead)
-	fmt.Println("# Remaining in pool:", listingState.Remaining)
+	fmt.Println("# First position:", streamState.FirstPosition)
+	fmt.Println("# Last position:", streamState.LastPosition)
+	fmt.Println("# Last read position:", streamState.LastRead)
+	fmt.Println("# Remaining in pool:", streamState.Remaining)
 	return nil
 }
 
@@ -360,28 +360,28 @@ func cmdDumpStatus(ctx context.Context, st *storage.Storage, authInfo *storage.A
 	return nil
 }
 
-func cmdNewListing(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
+func cmdNewStream(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
 	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer txn.Rollback()
 
-	var lid int64
-	err = txn.QueryRowContext(ctx, "SELECT lid FROM listingstate ORDER BY lid LIMIT 1").Scan(&lid)
+	var stid int64
+	err = txn.QueryRowContext(ctx, "SELECT lid FROM listingstate ORDER BY lid LIMIT 1").Scan(&stid)
 	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
 
-	// Pick the largest existing (or 0) listing ID and just add one to create a new one.
-	lid += 1
+	// Pick the largest existing (or 0) stream ID and just add one to create a new one.
+	stid += 1
 
-	listing := &storage.ListingState{
-		LID: lid,
-		UID: authInfo.UID,
+	stream := &storage.StreamState{
+		StID: stid,
+		UID:  authInfo.UID,
 	}
 
-	if err := st.SetListingState(ctx, txn, listing); err != nil {
+	if err := st.SetStreamState(ctx, txn, stream); err != nil {
 		return err
 	}
 
@@ -390,18 +390,18 @@ func cmdNewListing(ctx context.Context, st *storage.Storage, authInfo *storage.A
 	}
 
 	// And now, re-read it to output it.
-	listing, err = st.ListingState(ctx, st.DB, lid)
+	stream, err = st.StreamState(ctx, st.DB, stid)
 	if err != nil {
 		return err
 	}
-	spew.Dump(listing)
+	spew.Dump(stream)
 	return nil
 }
 
 func cmdPickNext(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
-	lid := *listingID
+	stid := *streamID
 
-	ost, err := st.PickNext(ctx, lid)
+	ost, err := st.PickNext(ctx, stid)
 	if err != nil {
 		return err
 	}
@@ -410,7 +410,7 @@ func cmdPickNext(ctx context.Context, st *storage.Storage, authInfo *storage.Aut
 }
 
 func cmdSetRead(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo, position int64) error {
-	lid := *listingID
+	stid := *streamID
 
 	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -418,20 +418,20 @@ func cmdSetRead(ctx context.Context, st *storage.Storage, authInfo *storage.Auth
 	}
 	defer txn.Rollback()
 
-	listingState, err := st.ListingState(ctx, txn, lid)
+	streamState, err := st.StreamState(ctx, txn, stid)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("Current position:", listingState.LastRead)
+	fmt.Println("Current position:", streamState.LastRead)
 	if position < 0 {
-		listingState.LastRead += -position
+		streamState.LastRead += -position
 	} else {
-		listingState.LastRead = position
+		streamState.LastRead = position
 	}
-	fmt.Println("New position:", listingState.LastRead)
+	fmt.Println("New position:", streamState.LastRead)
 
-	if err := st.SetListingState(ctx, txn, listingState); err != nil {
+	if err := st.SetStreamState(ctx, txn, streamState); err != nil {
 		return err
 	}
 
@@ -439,7 +439,7 @@ func cmdSetRead(ctx context.Context, st *storage.Storage, authInfo *storage.Auth
 }
 
 func cmdShowOpened(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
-	opened, err := st.Opened(ctx, *listingID)
+	opened, err := st.Opened(ctx, *streamID)
 	if err != nil {
 		return err
 	}
@@ -577,20 +577,20 @@ func run(ctx context.Context) error {
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
-		Use:   "new-listing",
-		Short: "Create a new empty listing.",
+		Use:   "new-stream",
+		Short: "Create a new empty stream.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ai, err := st.AuthInfo(ctx, st.DB)
 			if err != nil {
 				return err
 			}
-			return cmdNewListing(ctx, st, ai)
+			return cmdNewStream(ctx, st, ai)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "pick-next",
-		Short: "Add a status to the listing",
+		Short: "Add a status to the stream",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ai, err := st.AuthInfo(ctx, st.DB)
