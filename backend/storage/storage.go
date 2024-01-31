@@ -296,6 +296,35 @@ func (st *Storage) SetUserState(ctx context.Context, db SQLQueryable, userState 
 	return nil
 }
 
+// NewStream creates a new stream for the given user and return the stream ID (stid).
+func (st *Storage) NewStream(ctx context.Context, authInfo *AuthInfo) (int64, error) {
+	txn, err := st.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer txn.Rollback()
+
+	var stid int64
+	err = txn.QueryRowContext(ctx, "SELECT lid FROM listingstate ORDER BY lid LIMIT 1").Scan(&stid)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, err
+	}
+
+	// Pick the largest existing (or 0) stream ID and just add one to create a new one.
+	stid += 1
+
+	stream := &StreamState{
+		StID: stid,
+		UID:  authInfo.UID,
+	}
+
+	if err := st.SetStreamState(ctx, txn, stream); err != nil {
+		return 0, err
+	}
+
+	return stid, txn.Commit()
+}
+
 func (st *Storage) StreamState(ctx context.Context, db SQLQueryable, stid int64) (*StreamState, error) {
 	var jsonString string
 	err := db.QueryRowContext(ctx, "SELECT state FROM listingstate WHERE lid = ?", stid).Scan(&jsonString)

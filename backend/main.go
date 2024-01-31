@@ -361,36 +361,13 @@ func cmdDumpStatus(ctx context.Context, st *storage.Storage, authInfo *storage.A
 }
 
 func cmdNewStream(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
-	txn, err := st.DB.BeginTx(ctx, nil)
+	stid, err := st.NewStream(ctx, authInfo)
 	if err != nil {
-		return err
-	}
-	defer txn.Rollback()
-
-	var stid int64
-	err = txn.QueryRowContext(ctx, "SELECT lid FROM listingstate ORDER BY lid LIMIT 1").Scan(&stid)
-	if err != nil && err != sql.ErrNoRows {
-		return err
-	}
-
-	// Pick the largest existing (or 0) stream ID and just add one to create a new one.
-	stid += 1
-
-	stream := &storage.StreamState{
-		StID: stid,
-		UID:  authInfo.UID,
-	}
-
-	if err := st.SetStreamState(ctx, txn, stream); err != nil {
-		return err
-	}
-
-	if err := txn.Commit(); err != nil {
 		return err
 	}
 
 	// And now, re-read it to output it.
-	stream, err = st.StreamState(ctx, st.DB, stid)
+	stream, err := st.StreamState(ctx, st.DB, stid)
 	if err != nil {
 		return err
 	}
