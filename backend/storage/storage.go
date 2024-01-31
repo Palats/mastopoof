@@ -37,7 +37,7 @@ type UserState struct {
 // StreamState is the state of a single stream, stored as JSON.
 type StreamState struct {
 	// Stream ID.
-	StID int64 `json:"lid"`
+	StID int64 `json:"stid"`
 	// User ID this stream belongs to.
 	UID int64 `json:"uid"`
 	// Position of the latest read status in this stream.
@@ -83,7 +83,7 @@ func NewStorage(db *sql.DB) *Storage {
 	return &Storage{DB: db}
 }
 
-const schemaVersion = 5
+const schemaVersion = 6
 
 func (st *Storage) Init(ctx context.Context) error {
 	// Get version of the storage.
@@ -216,6 +216,25 @@ func (st *Storage) Init(ctx context.Context) error {
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 		}
+	}
+
+	if version < 6 {
+		// Rename field 'lid' in JSON to 'stid'.
+		sqlStmt := `
+			UPDATE streamstate SET state = json_set(
+				streamstate.state,
+				"$.stid",
+				json_extract(streamstate.state, "$.lid")
+			);
+			UPDATE streamstate SET state = json_remove(
+				streamstate.state,
+				"$.lid"
+			);
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+		}
+
 	}
 
 	if _, err := txn.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion)); err != nil {
