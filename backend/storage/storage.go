@@ -83,7 +83,7 @@ func NewStorage(db *sql.DB) *Storage {
 	return &Storage{DB: db}
 }
 
-const schemaVersion = 4
+const schemaVersion = 5
 
 func (st *Storage) Init(ctx context.Context) error {
 	// Get version of the storage.
@@ -205,6 +205,19 @@ func (st *Storage) Init(ctx context.Context) error {
 		}
 	}
 
+	if version < 5 {
+		sqlStmt := `
+			ALTER TABLE listingstate RENAME TO streamstate;
+			ALTER TABLE listingcontent RENAME TO streamcontent;
+
+			ALTER TABLE streamstate RENAME COLUMN lid TO stid;
+			ALTER TABLE streamcontent RENAME COLUMN lid TO stid;
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+		}
+	}
+
 	if _, err := txn.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion)); err != nil {
 		return fmt.Errorf("unable to set user_version: %w", err)
 	}
@@ -305,7 +318,7 @@ func (st *Storage) NewStream(ctx context.Context, authInfo *AuthInfo) (int64, er
 	defer txn.Rollback()
 
 	var stid int64
-	err = txn.QueryRowContext(ctx, "SELECT lid FROM listingstate ORDER BY lid LIMIT 1").Scan(&stid)
+	err = txn.QueryRowContext(ctx, "SELECT stid FROM streamstate ORDER BY stid LIMIT 1").Scan(&stid)
 	if err != nil && err != sql.ErrNoRows {
 		return 0, err
 	}
@@ -327,9 +340,9 @@ func (st *Storage) NewStream(ctx context.Context, authInfo *AuthInfo) (int64, er
 
 func (st *Storage) StreamState(ctx context.Context, db SQLQueryable, stid int64) (*StreamState, error) {
 	var jsonString string
-	err := db.QueryRowContext(ctx, "SELECT state FROM listingstate WHERE lid = ?", stid).Scan(&jsonString)
+	err := db.QueryRowContext(ctx, "SELECT state FROM streamstate WHERE stid = ?", stid).Scan(&jsonString)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("stream with lid=%d not found", stid)
+		return nil, fmt.Errorf("stream with stid=%d not found", stid)
 	}
 	if err != nil {
 		return nil, err
@@ -337,7 +350,7 @@ func (st *Storage) StreamState(ctx context.Context, db SQLQueryable, stid int64)
 
 	streamState := &StreamState{}
 	if err := json.Unmarshal([]byte(jsonString), streamState); err != nil {
-		return nil, fmt.Errorf("unable to decode listingstate content: %v", err)
+		return nil, fmt.Errorf("unable to decode streamstate content: %v", err)
 	}
 	return streamState, nil
 }
@@ -347,7 +360,7 @@ func (st *Storage) SetStreamState(ctx context.Context, db SQLQueryable, streamSt
 	if err != nil {
 		return err
 	}
-	stmt := `INSERT INTO listingstate(lid, state) VALUES(?, ?) ON CONFLICT(lid) DO UPDATE SET state = ?`
+	stmt := `INSERT INTO streamstate(stid, state) VALUES(?, ?) ON CONFLICT(stid) DO UPDATE SET state = ?`
 	_, err = db.ExecContext(ctx, stmt, streamState.StID, jsonString, jsonString)
 	if err != nil {
 		return err
@@ -363,7 +376,7 @@ func (st *Storage) ClearStream(ctx context.Context, stid int64) error {
 	defer txn.Rollback()
 
 	// Remove everything from the stream.
-	if _, err := txn.ExecContext(ctx, `DELETE FROM listingcontent WHERE lid = ?`, stid); err != nil {
+	if _, err := txn.ExecContext(ctx, `DELETE FROM streamcontent WHERE stid = ?`, stid); err != nil {
 		return err
 	}
 
@@ -403,16 +416,16 @@ func (st *Storage) Opened(ctx context.Context, stid int64) ([]*Item, error) {
 
 	rows, err := st.DB.QueryContext(ctx, `
 		SELECT
-			listingcontent.position,
+			streamcontent.position,
 			statuses.status
 		FROM
 			statuses
-			INNER JOIN listingcontent
+			INNER JOIN streamcontent
 			USING (sid)
 		WHERE
-			listingcontent.lid = ?
-			AND listingcontent.position > ?
-		ORDER BY listingcontent.position
+			streamcontent.stid = ?
+			AND streamcontent.position > ?
+		ORDER BY streamcontent.position
 		;
 	`, stid, streamState.LastRead)
 	if err != nil {
@@ -452,9 +465,9 @@ func (st *Storage) LastPosition(ctx context.Context, stid int64, db SQLQueryable
 		SELECT
 			position
 		FROM
-			listingcontent
+			streamcontent
 		WHERE
-			lid = ?
+			stid = ?
 		ORDER BY position DESC
 		LIMIT 1
 	`, stid).Scan(&position)
@@ -480,11 +493,11 @@ func (st *Storage) StatusAt(ctx context.Context, stid int64, position int64) (*I
 			statuses.status
 		FROM
 			statuses
-			INNER JOIN listingcontent
+			INNER JOIN streamcontent
 			USING (sid)
 		WHERE
-			listingcontent.lid = ?
-			AND listingcontent.position = ?
+			streamcontent.stid = ?
+			AND streamcontent.position = ?
 		;
 	`, stid, position)
 
@@ -526,17 +539,17 @@ func (st *Storage) PickNext(ctx context.Context, stid int64) (*Item, error) {
 }
 
 func (st *Storage) pickNextInTxn(ctx context.Context, stid int64, txn *sql.Tx, streamState *StreamState) (*Item, error) {
-	// List all statuses which are not listed yet in "listingcontent" for that stream ID.
+	// List all statuses which are not listed yet in "streamcontent" for that stream ID.
 	rows, err := txn.QueryContext(ctx, `
 		SELECT
 			statuses.sid,
 			statuses.status
 		FROM
 			statuses
-			LEFT OUTER JOIN listingcontent
+			LEFT OUTER JOIN streamcontent
 			USING (sid)
 		WHERE
-			(listingcontent.lid IS NULL OR listingcontent.lid != ?)
+			(streamcontent.stid IS NULL OR streamcontent.stid != ?)
 		;
 	`, stid)
 	if err != nil {
@@ -605,7 +618,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, stid int64, txn *sql.Tx, s
 	}
 
 	// Insert the newly selected status in the stream.
-	stmt := `INSERT INTO listingcontent(lid, sid, position) VALUES(?, ?, ?);`
+	stmt := `INSERT INTO streamcontent(stid, sid, position) VALUES(?, ?, ?);`
 	_, err = txn.ExecContext(ctx, stmt, stid, selectedID, position)
 	if err != nil {
 		return nil, err
@@ -652,16 +665,16 @@ func (st *Storage) FetchBackward(ctx context.Context, stid int64, refPosition in
 	// Fetch what is currently available after refPosition
 	rows, err := st.DB.QueryContext(ctx, `
 		SELECT
-			listingcontent.position,
+			streamcontent.position,
 			statuses.status
 		FROM
 			statuses
-			INNER JOIN listingcontent
+			INNER JOIN streamcontent
 			USING (sid)
 		WHERE
-			listingcontent.lid = ?
-			AND listingcontent.position < ?
-		ORDER BY listingcontent.position DESC
+			streamcontent.stid = ?
+			AND streamcontent.position < ?
+		ORDER BY streamcontent.position DESC
 		LIMIT ?
 		;
 	`, stid, refPosition, maxCount)
@@ -735,16 +748,16 @@ func (st *Storage) FetchForward(ctx context.Context, stid int64, refPosition int
 	// Fetch what is currently available after refPosition
 	rows, err := st.DB.QueryContext(ctx, `
 		SELECT
-			listingcontent.position,
+			streamcontent.position,
 			statuses.status
 		FROM
 			statuses
-			INNER JOIN listingcontent
+			INNER JOIN streamcontent
 			USING (sid)
 		WHERE
-			listingcontent.lid = ?
-			AND listingcontent.position > ?
-		ORDER BY listingcontent.position
+			streamcontent.stid = ?
+			AND streamcontent.position > ?
+		ORDER BY streamcontent.position
 		LIMIT ?
 		;
 	`, stid, refPosition, maxCount)
