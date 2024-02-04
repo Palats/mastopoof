@@ -266,9 +266,9 @@ func (st *Storage) ClearAll(ctx context.Context) error {
 	return txn.Commit()
 }
 
-func (st *Storage) AuthInfo(ctx context.Context, db SQLQueryable) (*AuthInfo, error) {
+func (st *Storage) AuthInfo(ctx context.Context, db SQLQueryable, uid int64) (*AuthInfo, error) {
 	var content string
-	err := db.QueryRowContext(ctx, "SELECT content FROM authinfo").Scan(&content)
+	err := db.QueryRowContext(ctx, "SELECT content FROM authinfo WHERE uid=?", uid).Scan(&content)
 	if err == sql.ErrNoRows {
 		glog.Infof("no authinfo in storage")
 		return &AuthInfo{UID: 1}, nil

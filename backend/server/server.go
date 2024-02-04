@@ -13,16 +13,14 @@ import (
 )
 
 type Server struct {
-	st       *storage.Storage
-	authInfo *storage.AuthInfo
-	mux      *http.ServeMux
+	st  *storage.Storage
+	mux *http.ServeMux
 }
 
-func New(st *storage.Storage, authInfo *storage.AuthInfo) *Server {
+func New(st *storage.Storage) *Server {
 	s := &Server{
-		st:       st,
-		authInfo: authInfo,
-		mux:      http.NewServeMux(),
+		st:  st,
+		mux: http.NewServeMux(),
 	}
 	return s
 }

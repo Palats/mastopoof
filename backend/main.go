@@ -35,6 +35,7 @@ var (
 	clearApp   = flag.Bool("clear_app", false, "Force re-registration of the app against the Mastodon server")
 	clearAuth  = flag.Bool("clear_auth", false, "Force re-approval of auth; does not touch app registration")
 	port       = flag.Int("port", 8079, "Port to listen on for the 'serve' command")
+	userID     = flag.Int64("uid", 0, "User ID to use for commands. Default to use 1 for read-only commands.")
 	streamID   = flag.Int64("stream_id", 1, "Stream to use")
 )
 
@@ -71,7 +72,7 @@ func cmdInfo(ctx context.Context, st *storage.Storage) error {
 		return err
 	}
 	defer txn.Rollback()
-	ai, err := st.AuthInfo(ctx, txn)
+	ai, err := st.AuthInfo(ctx, txn, *userID)
 	if err != nil {
 		return err
 	}
@@ -96,7 +97,7 @@ func cmdAuth(ctx context.Context, st *storage.Storage) error {
 		return err
 	}
 	defer txn.Rollback()
-	ai, err := st.AuthInfo(ctx, txn)
+	ai, err := st.AuthInfo(ctx, txn, *userID)
 	if err != nil {
 		return err
 	}
@@ -295,10 +296,10 @@ func cmdFetch(ctx context.Context, st *storage.Storage, authInfo *storage.AuthIn
 	return txn.Commit()
 }
 
-func cmdServe(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
+func cmdServe(ctx context.Context, st *storage.Storage) error {
 	mux := http.NewServeMux()
 
-	s := server.New(st, authInfo)
+	s := server.New(st)
 
 	api := http.NewServeMux()
 	api.Handle(mastopoofconnect.NewMastopoofHandler(s))
@@ -482,7 +483,7 @@ func run(ctx context.Context) error {
 	}
 	showAccount := cmdMeDef.PersistentFlags().Bool("account", false, "Query and show account state from Mastodon server")
 	cmdMeDef.RunE = func(cmd *cobra.Command, args []string) error {
-		ai, err := st.AuthInfo(ctx, st.DB)
+		ai, err := st.AuthInfo(ctx, st.DB, *userID)
 		if err != nil {
 			return err
 		}
@@ -504,7 +505,7 @@ func run(ctx context.Context) error {
 		Short: "Fetch recent home content and add it to the DB.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.DB)
+			ai, err := st.AuthInfo(ctx, st.DB, *userID)
 			if err != nil {
 				return err
 			}
@@ -522,11 +523,7 @@ func run(ctx context.Context) error {
 		Short: "Run mastopoof backend server",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.DB)
-			if err != nil {
-				return err
-			}
-			return cmdServe(ctx, st, ai)
+			return cmdServe(ctx, st)
 
 		},
 	})
@@ -535,7 +532,7 @@ func run(ctx context.Context) error {
 		Short: "Get list of known statuses",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.DB)
+			ai, err := st.AuthInfo(ctx, st.DB, *userID)
 			if err != nil {
 				return err
 			}
@@ -546,7 +543,7 @@ func run(ctx context.Context) error {
 		Use:   "dump-status",
 		Short: "Display one status, identified by ID",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.DB)
+			ai, err := st.AuthInfo(ctx, st.DB, *userID)
 			if err != nil {
 				return err
 			}
@@ -558,7 +555,7 @@ func run(ctx context.Context) error {
 		Short: "Create a new empty stream.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.DB)
+			ai, err := st.AuthInfo(ctx, st.DB, *userID)
 			if err != nil {
 				return err
 			}
@@ -570,7 +567,7 @@ func run(ctx context.Context) error {
 		Short: "Add a status to the stream",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.DB)
+			ai, err := st.AuthInfo(ctx, st.DB, *userID)
 			if err != nil {
 				return err
 			}
@@ -582,7 +579,7 @@ func run(ctx context.Context) error {
 		Short: "Set the already-read pointer",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.DB)
+			ai, err := st.AuthInfo(ctx, st.DB, *userID)
 			if err != nil {
 				return err
 			}
@@ -601,7 +598,7 @@ func run(ctx context.Context) error {
 		Short: "List currently opened statuses (picked & not read)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.DB)
+			ai, err := st.AuthInfo(ctx, st.DB, *userID)
 			if err != nil {
 				return err
 			}
