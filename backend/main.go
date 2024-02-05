@@ -39,15 +39,15 @@ var (
 	streamID   = flag.Int64("stream_id", 1, "Stream to use")
 )
 
-func registerApp(ctx context.Context, ai *storage.AuthInfo) (*mastodon.Application, error) {
+func registerApp(ctx context.Context, as *storage.AccountState) (*mastodon.Application, error) {
 	app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
-		Server:     ai.ServerAddr,
+		Server:     as.ServerAddr,
 		ClientName: "mastopoof",
 		Scopes:     "read",
 		Website:    "https://github.com/Palats/mastopoof",
 	})
 	if err != nil {
-		return nil, fmt.Errorf("unable to register app on server %s: %w", ai.ServerAddr, err)
+		return nil, fmt.Errorf("unable to register app on server %s: %w", as.ServerAddr, err)
 	}
 	return app, nil
 }
@@ -72,19 +72,19 @@ func cmdInfo(ctx context.Context, st *storage.Storage) error {
 		return err
 	}
 	defer txn.Rollback()
-	ai, err := st.AuthInfo(ctx, txn, *userID)
+	as, err := st.AccountState(ctx, txn, *userID)
 	if err != nil {
 		return err
 	}
 
-	us, err := st.UserState(ctx, txn, ai.UID)
+	us, err := st.UserState(ctx, txn, *userID)
 	if err != nil {
 		return err
 	}
-	fmt.Println("Local account UID:", ai.UID)
-	fmt.Println("Server address:", ai.ServerAddr)
-	fmt.Println("Client ID:", ai.ClientID)
-	fmt.Println("AuthURI:", ai.AuthURI)
+	fmt.Println("Local account UID:", *userID)
+	fmt.Println("Server address:", as.ServerAddr)
+	fmt.Println("Client ID:", as.ClientID)
+	fmt.Println("AuthURI:", as.AuthURI)
 	fmt.Println("Last home status ID:", us.LastHomeStatusID)
 
 	// Should be readonly.
@@ -97,7 +97,7 @@ func cmdAuth(ctx context.Context, st *storage.Storage) error {
 		return err
 	}
 	defer txn.Rollback()
-	ai, err := st.AuthInfo(ctx, txn, *userID)
+	as, err := st.AccountState(ctx, txn, *userID)
 	if err != nil {
 		return err
 	}
@@ -110,44 +110,44 @@ func cmdAuth(ctx context.Context, st *storage.Storage) error {
 		return fmt.Errorf("server address %q must start with https://", addr)
 	}
 
-	if ai.ServerAddr == "" || *clearApp {
+	if as.ServerAddr == "" || *clearApp {
 		glog.Infof("setting server address")
 		if *serverAddr == "" {
 			return errors.New("please specify server name with --server")
 		}
-		ai.ServerAddr = *serverAddr
+		as.ServerAddr = *serverAddr
 
-		if err := st.SetAuthInfo(ctx, txn, ai); err != nil {
+		if err := st.SetAccountState(ctx, txn, as); err != nil {
 			return err
 		}
 	} else {
-		glog.Infof("server address: %v", ai.ServerAddr)
-		if addr != ai.ServerAddr {
-			return fmt.Errorf("server mismatch: %s vs %s; use --clear_app", ai.ServerAddr, addr)
+		glog.Infof("server address: %v", as.ServerAddr)
+		if addr != as.ServerAddr {
+			return fmt.Errorf("server mismatch: %s vs %s; use --clear_app", as.ServerAddr, addr)
 		}
 	}
 
-	if ai.ClientID == "" || *clearApp {
+	if as.ClientID == "" || *clearApp {
 		glog.Infof("registering app")
-		app, err := registerApp(ctx, ai)
+		app, err := registerApp(ctx, as)
 		if err != nil {
 			return err
 		}
-		ai.ClientID = app.ClientID
-		ai.ClientSecret = app.ClientSecret
-		ai.AuthURI = app.AuthURI
-		ai.RedirectURI = app.RedirectURI
+		as.ClientID = app.ClientID
+		as.ClientSecret = app.ClientSecret
+		as.AuthURI = app.AuthURI
+		as.RedirectURI = app.RedirectURI
 
-		if err := st.SetAuthInfo(ctx, txn, ai); err != nil {
+		if err := st.SetAccountState(ctx, txn, as); err != nil {
 			return err
 		}
 	} else {
 		glog.Infof("app already registered")
 	}
 
-	if ai.AccessToken == "" || *clearAuth || *clearApp {
+	if as.AccessToken == "" || *clearAuth || *clearApp {
 		glog.Infof("need user code")
-		fmt.Printf("Auth URL: %s\n", ai.AuthURI)
+		fmt.Printf("Auth URL: %s\n", as.AuthURI)
 
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Printf("Enter code:")
@@ -161,17 +161,17 @@ func cmdAuth(ctx context.Context, st *storage.Storage) error {
 		}
 
 		client := mastodon.NewClient(&mastodon.Config{
-			Server:       ai.ServerAddr,
-			ClientID:     ai.ClientID,
-			ClientSecret: ai.ClientSecret,
+			Server:       as.ServerAddr,
+			ClientID:     as.ClientID,
+			ClientSecret: as.ClientSecret,
 		})
-		err = client.AuthenticateToken(ctx, authCode, ai.RedirectURI)
+		err = client.AuthenticateToken(ctx, authCode, as.RedirectURI)
 		if err != nil {
-			return fmt.Errorf("unable to authenticate on server %s: %w", ai.ServerAddr, err)
+			return fmt.Errorf("unable to authenticate on server %s: %w", as.ServerAddr, err)
 		}
 
-		ai.AccessToken = client.Config.AccessToken
-		if err := st.SetAuthInfo(ctx, txn, ai); err != nil {
+		as.AccessToken = client.Config.AccessToken
+		if err := st.SetAccountState(ctx, txn, as); err != nil {
 			return err
 		}
 	} else {
@@ -190,7 +190,7 @@ func cmdClearStream(ctx context.Context, st *storage.Storage) error {
 	return st.ClearStream(ctx, stid)
 }
 
-func cmdMe(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo, client *mastodon.Client) error {
+func cmdMe(ctx context.Context, st *storage.Storage, client *mastodon.Client) error {
 	stid := *streamID
 
 	if client != nil {
@@ -220,14 +220,14 @@ func cmdMe(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo,
 	return nil
 }
 
-func cmdFetch(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo, client *mastodon.Client) error {
+func cmdFetch(ctx context.Context, st *storage.Storage, client *mastodon.Client) error {
 	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer txn.Rollback()
 
-	userState, err := st.UserState(ctx, txn, authInfo.UID)
+	userState, err := st.UserState(ctx, txn, *userID)
 	if err != nil {
 		return fmt.Errorf("unable to fetch user state: %w", err)
 	}
@@ -264,7 +264,7 @@ func cmdFetch(ctx context.Context, st *storage.Storage, authInfo *storage.AuthIn
 				return err
 			}
 			stmt := `INSERT INTO statuses(uid, uri, status) VALUES(?, ?, ?)`
-			_, err = txn.ExecContext(ctx, stmt, authInfo.UID, status.URI, jsonString)
+			_, err = txn.ExecContext(ctx, stmt, *userID, status.URI, jsonString)
 			if err != nil {
 				return err
 			}
@@ -314,8 +314,8 @@ func cmdServe(ctx context.Context, st *storage.Storage) error {
 	)
 }
 
-func cmdList(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
-	rows, err := st.DB.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
+func cmdList(ctx context.Context, st *storage.Storage) error {
+	rows, err := st.DB.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, *userID)
 	if err != nil {
 		return err
 	}
@@ -336,8 +336,8 @@ func cmdList(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInf
 	return nil
 }
 
-func cmdDumpStatus(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo, args []string) error {
-	rows, err := st.DB.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, authInfo.UID)
+func cmdDumpStatus(ctx context.Context, st *storage.Storage, args []string) error {
+	rows, err := st.DB.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, *userID)
 	if err != nil {
 		return err
 	}
@@ -361,8 +361,8 @@ func cmdDumpStatus(ctx context.Context, st *storage.Storage, authInfo *storage.A
 	return nil
 }
 
-func cmdNewStream(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
-	stid, err := st.NewStream(ctx, authInfo)
+func cmdNewStream(ctx context.Context, st *storage.Storage) error {
+	stid, err := st.NewStream(ctx, *userID)
 	if err != nil {
 		return err
 	}
@@ -376,7 +376,7 @@ func cmdNewStream(ctx context.Context, st *storage.Storage, authInfo *storage.Au
 	return nil
 }
 
-func cmdPickNext(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
+func cmdPickNext(ctx context.Context, st *storage.Storage) error {
 	stid := *streamID
 
 	ost, err := st.PickNext(ctx, stid)
@@ -387,7 +387,7 @@ func cmdPickNext(ctx context.Context, st *storage.Storage, authInfo *storage.Aut
 	return nil
 }
 
-func cmdSetRead(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo, position int64) error {
+func cmdSetRead(ctx context.Context, st *storage.Storage, position int64) error {
 	stid := *streamID
 
 	txn, err := st.DB.BeginTx(ctx, nil)
@@ -416,7 +416,7 @@ func cmdSetRead(ctx context.Context, st *storage.Storage, authInfo *storage.Auth
 	return txn.Commit()
 }
 
-func cmdShowOpened(ctx context.Context, st *storage.Storage, authInfo *storage.AuthInfo) error {
+func cmdShowOpened(ctx context.Context, st *storage.Storage) error {
 	opened, err := st.Opened(ctx, *streamID)
 	if err != nil {
 		return err
@@ -483,20 +483,20 @@ func run(ctx context.Context) error {
 	}
 	showAccount := cmdMeDef.PersistentFlags().Bool("account", false, "Query and show account state from Mastodon server")
 	cmdMeDef.RunE = func(cmd *cobra.Command, args []string) error {
-		ai, err := st.AuthInfo(ctx, st.DB, *userID)
+		as, err := st.AccountState(ctx, st.DB, *userID)
 		if err != nil {
 			return err
 		}
 		var client *mastodon.Client
 		if *showAccount {
 			client = mastodon.NewClient(&mastodon.Config{
-				Server:       ai.ServerAddr,
-				ClientID:     ai.ClientID,
-				ClientSecret: ai.ClientSecret,
-				AccessToken:  ai.AccessToken,
+				Server:       as.ServerAddr,
+				ClientID:     as.ClientID,
+				ClientSecret: as.ClientSecret,
+				AccessToken:  as.AccessToken,
 			})
 		}
-		return cmdMe(ctx, st, ai, client)
+		return cmdMe(ctx, st, client)
 	}
 	rootCmd.AddCommand(cmdMeDef)
 
@@ -505,17 +505,17 @@ func run(ctx context.Context) error {
 		Short: "Fetch recent home content and add it to the DB.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.DB, *userID)
+			as, err := st.AccountState(ctx, st.DB, *userID)
 			if err != nil {
 				return err
 			}
 			client := mastodon.NewClient(&mastodon.Config{
-				Server:       ai.ServerAddr,
-				ClientID:     ai.ClientID,
-				ClientSecret: ai.ClientSecret,
-				AccessToken:  ai.AccessToken,
+				Server:       as.ServerAddr,
+				ClientID:     as.ClientID,
+				ClientSecret: as.ClientSecret,
+				AccessToken:  as.AccessToken,
 			})
-			return cmdFetch(ctx, st, ai, client)
+			return cmdFetch(ctx, st, client)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
@@ -532,22 +532,14 @@ func run(ctx context.Context) error {
 		Short: "Get list of known statuses",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.DB, *userID)
-			if err != nil {
-				return err
-			}
-			return cmdList(ctx, st, ai)
+			return cmdList(ctx, st)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "dump-status",
 		Short: "Display one status, identified by ID",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.DB, *userID)
-			if err != nil {
-				return err
-			}
-			return cmdDumpStatus(ctx, st, ai, args)
+			return cmdDumpStatus(ctx, st, args)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
@@ -555,11 +547,7 @@ func run(ctx context.Context) error {
 		Short: "Create a new empty stream.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.DB, *userID)
-			if err != nil {
-				return err
-			}
-			return cmdNewStream(ctx, st, ai)
+			return cmdNewStream(ctx, st)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
@@ -567,11 +555,7 @@ func run(ctx context.Context) error {
 		Short: "Add a status to the stream",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.DB, *userID)
-			if err != nil {
-				return err
-			}
-			return cmdPickNext(ctx, st, ai)
+			return cmdPickNext(ctx, st)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
@@ -579,10 +563,6 @@ func run(ctx context.Context) error {
 		Short: "Set the already-read pointer",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.DB, *userID)
-			if err != nil {
-				return err
-			}
 			position := int64(-1)
 			if len(args) > 0 {
 				position, err = strconv.ParseInt(args[0], 10, 64)
@@ -590,7 +570,7 @@ func run(ctx context.Context) error {
 					return err
 				}
 			}
-			return cmdSetRead(ctx, st, ai, position)
+			return cmdSetRead(ctx, st, position)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
@@ -598,11 +578,7 @@ func run(ctx context.Context) error {
 		Short: "List currently opened statuses (picked & not read)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ai, err := st.AuthInfo(ctx, st.DB, *userID)
-			if err != nil {
-				return err
-			}
-			return cmdShowOpened(ctx, st, ai)
+			return cmdShowOpened(ctx, st)
 		},
 	})
 

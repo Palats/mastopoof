@@ -12,9 +12,12 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// AuthInfo represents information about a user authentification in the DB.
-type AuthInfo struct {
-	// Auth UID within storage.
+// AccountState represents information about a mastodon account in the DB.
+type AccountState struct {
+	// AccountState ASID within storage. Just an arbitrary number for primary key.
+	ASID int64 `json:"asid"`
+
+	// The user using this mastodon account.
 	UID int64 `json:"uid"`
 
 	ServerAddr   string `json:"server_addr"`
@@ -26,7 +29,7 @@ type AuthInfo struct {
 	AccessToken string `json:"access_token"`
 }
 
-// UserState is the state of a user, stored as JSON in the DB.
+// UserState is the state of a Mastopoof user, stored as JSON in the DB.
 type UserState struct {
 	// User ID.
 	UID int64 `json:"uid"`
@@ -83,7 +86,7 @@ func NewStorage(db *sql.DB) *Storage {
 	return &Storage{DB: db}
 }
 
-const schemaVersion = 6
+const schemaVersion = 7
 
 func (st *Storage) Init(ctx context.Context) error {
 	// Get version of the storage.
@@ -234,7 +237,27 @@ func (st *Storage) Init(ctx context.Context) error {
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 		}
+	}
 
+	if version < 7 {
+		// Rename 'authinfo' to 'accountstate'.
+		// Change key of accountstate to be an arbitrary key and backfill it.
+		sqlStmt := `
+			ALTER TABLE authinfo RENAME TO accountstate;
+			ALTER TABLE accountstate RENAME COLUMN uid TO asid;
+			ALTER TABLE accountstate ADD COLUMN uid TEXT;
+
+			UPDATE accountstate SET uid = 1;
+
+			UPDATE accountstate SET content = json_set(
+				accountstate.content,
+				"$.stid",
+				json_extract(accountstate.content, "$.uid")
+			);
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+		}
 	}
 
 	if _, err := txn.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion)); err != nil {
@@ -266,32 +289,32 @@ func (st *Storage) ClearAll(ctx context.Context) error {
 	return txn.Commit()
 }
 
-func (st *Storage) AuthInfo(ctx context.Context, db SQLQueryable, uid int64) (*AuthInfo, error) {
+func (st *Storage) AccountState(ctx context.Context, db SQLQueryable, uid int64) (*AccountState, error) {
 	var content string
-	err := db.QueryRowContext(ctx, "SELECT content FROM authinfo WHERE uid=?", uid).Scan(&content)
+	err := db.QueryRowContext(ctx, "SELECT content FROM accountstate WHERE uid=?", uid).Scan(&content)
 	if err == sql.ErrNoRows {
-		glog.Infof("no authinfo in storage")
-		return &AuthInfo{UID: 1}, nil
+		glog.Infof("no accountstate in storage")
+		return nil, fmt.Errorf("no account for user uid=%v", uid)
 	}
 	if err != nil {
 		return nil, err
 	}
 
-	ai := &AuthInfo{}
-	if err := json.Unmarshal([]byte(content), ai); err != nil {
-		return nil, fmt.Errorf("unable to decode authinfo content: %v", err)
+	as := &AccountState{}
+	if err := json.Unmarshal([]byte(content), as); err != nil {
+		return nil, fmt.Errorf("unable to decode accountstate content: %v", err)
 	}
-	return ai, nil
+	return as, nil
 }
 
-func (st *Storage) SetAuthInfo(ctx context.Context, db SQLQueryable, ai *AuthInfo) error {
-	content, err := json.Marshal(ai)
+func (st *Storage) SetAccountState(ctx context.Context, db SQLQueryable, as *AccountState) error {
+	content, err := json.Marshal(as)
 	if err != nil {
 		return err
 	}
 
-	stmt := `INSERT INTO authinfo(uid, content) VALUES(?, ?) ON CONFLICT(uid) DO UPDATE SET content = ?`
-	_, err = db.ExecContext(ctx, stmt, ai.UID, content, content)
+	stmt := `INSERT INTO accountstate(asid, content) VALUES(?, ?) ON CONFLICT(uid) DO UPDATE SET content = ?`
+	_, err = db.ExecContext(ctx, stmt, as.ASID, content, content)
 	if err != nil {
 		return err
 	}
@@ -329,7 +352,7 @@ func (st *Storage) SetUserState(ctx context.Context, db SQLQueryable, userState 
 }
 
 // NewStream creates a new stream for the given user and return the stream ID (stid).
-func (st *Storage) NewStream(ctx context.Context, authInfo *AuthInfo) (int64, error) {
+func (st *Storage) NewStream(ctx context.Context, userID int64) (int64, error) {
 	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -347,7 +370,7 @@ func (st *Storage) NewStream(ctx context.Context, authInfo *AuthInfo) (int64, er
 
 	stream := &StreamState{
 		StID: stid,
-		UID:  authInfo.UID,
+		UID:  userID,
 	}
 
 	if err := st.SetStreamState(ctx, txn, stream); err != nil {
