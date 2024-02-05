@@ -27,14 +27,15 @@ type AccountState struct {
 	RedirectURI  string `json:"redirect_uri"`
 
 	AccessToken string `json:"access_token"`
+
+	// Last home status ID fetched.
+	LastHomeStatusID mastodon.ID `json:"last_home_status_id"`
 }
 
 // UserState is the state of a Mastopoof user, stored as JSON in the DB.
 type UserState struct {
 	// User ID.
 	UID int64 `json:"uid"`
-	// Last home status ID fetched.
-	LastHomeStatusID mastodon.ID `json:"last_home_status_id"`
 }
 
 // StreamState is the state of a single stream, stored as JSON.
@@ -86,7 +87,7 @@ func NewStorage(db *sql.DB) *Storage {
 	return &Storage{DB: db}
 }
 
-const schemaVersion = 7
+const schemaVersion = 8
 
 func (st *Storage) Init(ctx context.Context) error {
 	// Get version of the storage.
@@ -251,8 +252,27 @@ func (st *Storage) Init(ctx context.Context) error {
 
 			UPDATE accountstate SET content = json_set(
 				accountstate.content,
-				"$.stid",
+				"$.asid",
 				json_extract(accountstate.content, "$.uid")
+			);
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+		}
+	}
+
+	if version < 8 {
+		// Move last_home_status_id from userstate to accountstate;
+		sqlStmt := `
+			UPDATE accountstate SET content = json_set(
+				accountstate.content,
+				"$.last_home_status_id",
+				(SELECT json_extract(userstate.state, "$.last_home_status_id") FROM userstate WHERE userstate.uid = accountstate.uid)
+			);
+
+			UPDATE userstate SET state = json_remove(
+				userstate.state,
+				"$.last_home_status_id"
 			);
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
@@ -313,7 +333,7 @@ func (st *Storage) SetAccountState(ctx context.Context, db SQLQueryable, as *Acc
 		return err
 	}
 
-	stmt := `INSERT INTO accountstate(asid, content) VALUES(?, ?) ON CONFLICT(uid) DO UPDATE SET content = ?`
+	stmt := `INSERT INTO accountstate(asid, content) VALUES(?, ?) ON CONFLICT(asid) DO UPDATE SET content = ?`
 	_, err = db.ExecContext(ctx, stmt, as.ASID, content, content)
 	if err != nil {
 		return err

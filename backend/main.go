@@ -77,15 +77,11 @@ func cmdInfo(ctx context.Context, st *storage.Storage) error {
 		return err
 	}
 
-	us, err := st.UserState(ctx, txn, *userID)
-	if err != nil {
-		return err
-	}
 	fmt.Println("Local account UID:", *userID)
 	fmt.Println("Server address:", as.ServerAddr)
 	fmt.Println("Client ID:", as.ClientID)
 	fmt.Println("AuthURI:", as.AuthURI)
-	fmt.Println("Last home status ID:", us.LastHomeStatusID)
+	fmt.Println("Last home status ID:", as.LastHomeStatusID)
 
 	// Should be readonly.
 	return txn.Commit()
@@ -220,17 +216,12 @@ func cmdMe(ctx context.Context, st *storage.Storage, client *mastodon.Client) er
 	return nil
 }
 
-func cmdFetch(ctx context.Context, st *storage.Storage, client *mastodon.Client) error {
+func cmdFetch(ctx context.Context, st *storage.Storage, accountState *storage.AccountState, client *mastodon.Client) error {
 	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer txn.Rollback()
-
-	userState, err := st.UserState(ctx, txn, *userID)
-	if err != nil {
-		return fmt.Errorf("unable to fetch user state: %w", err)
-	}
 
 	fetchCount := 0
 	// Do multiple fetching, until either up to date, or up to a boundary to avoid infinite loops by mistake.
@@ -245,7 +236,7 @@ func cmdFetch(ctx context.Context, st *storage.Storage, client *mastodon.Client)
 		// It seems that if MaxID and MinID are identical, it means the end has been reached and some result were given.
 		// And if there is no MaxID, the end has been reached.
 		pg := &mastodon.Pagination{
-			MinID: userState.LastHomeStatusID,
+			MinID: accountState.LastHomeStatusID,
 		}
 		glog.Infof("Fetching from %s", pg.MinID)
 		timeline, err := client.GetTimelineHome(ctx, pg)
@@ -255,8 +246,8 @@ func cmdFetch(ctx context.Context, st *storage.Storage, client *mastodon.Client)
 		glog.Infof("Found %d new status on home timeline", len(timeline))
 
 		for _, status := range timeline {
-			if storage.IDNewer(status.ID, userState.LastHomeStatusID) {
-				userState.LastHomeStatusID = status.ID
+			if storage.IDNewer(status.ID, accountState.LastHomeStatusID) {
+				accountState.LastHomeStatusID = status.ID
 			}
 
 			jsonString, err := json.Marshal(status)
@@ -272,7 +263,7 @@ func cmdFetch(ctx context.Context, st *storage.Storage, client *mastodon.Client)
 
 		fetchCount++
 		// Pagination got updated.
-		if pg.MinID != userState.LastHomeStatusID {
+		if pg.MinID != accountState.LastHomeStatusID {
 			// Either there is a mismatch in the data or no `Link` was returned
 			// - in either case, we don't know enough to safely continue.
 			glog.Infof("no returned MinID / ID mismatch, stopping fetch")
@@ -289,7 +280,7 @@ func cmdFetch(ctx context.Context, st *storage.Storage, client *mastodon.Client)
 		}
 	}
 
-	if err := st.SetUserState(ctx, txn, userState); err != nil {
+	if err := st.SetAccountState(ctx, txn, accountState); err != nil {
 		return err
 	}
 
@@ -515,7 +506,7 @@ func run(ctx context.Context) error {
 				ClientSecret: as.ClientSecret,
 				AccessToken:  as.AccessToken,
 			})
-			return cmdFetch(ctx, st, client)
+			return cmdFetch(ctx, st, as, client)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
