@@ -12,7 +12,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/alexedwards/scs/v2"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/golang/glog"
 	"github.com/mattn/go-mastodon"
@@ -288,9 +290,12 @@ func cmdFetch(ctx context.Context, st *storage.Storage, accountState *storage.Ac
 }
 
 func cmdServe(ctx context.Context, st *storage.Storage) error {
+	sessionManager := scs.New()
+	sessionManager.Lifetime = 24 * time.Hour
+
 	mux := http.NewServeMux()
 
-	s := server.New(st)
+	s := server.New(st, sessionManager)
 
 	api := http.NewServeMux()
 	api.Handle(mastopoofconnect.NewMastopoofHandler(s))
@@ -301,7 +306,7 @@ func cmdServe(ctx context.Context, st *storage.Storage) error {
 
 	return http.ListenAndServe(addr,
 		// Use h2c so we can serve HTTP/2 without TLS.
-		h2c.NewHandler(mux, &http2.Server{}),
+		h2c.NewHandler(sessionManager.LoadAndSave(mux), &http2.Server{}),
 	)
 }
 

@@ -8,19 +8,23 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/Palats/mastopoof/backend/storage"
+	"github.com/alexedwards/scs/v2"
+	"github.com/golang/glog"
 
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 )
 
 type Server struct {
-	st  *storage.Storage
-	mux *http.ServeMux
+	st             *storage.Storage
+	mux            *http.ServeMux
+	sessionManager *scs.SessionManager
 }
 
-func New(st *storage.Storage) *Server {
+func New(st *storage.Storage, sm *scs.SessionManager) *Server {
 	s := &Server{
-		st:  st,
-		mux: http.NewServeMux(),
+		st:             st,
+		sessionManager: sm,
+		mux:            http.NewServeMux(),
 	}
 	return s
 }
@@ -33,6 +37,10 @@ func (s *Server) Ping(ctx context.Context, req *connect.Request[pb.PingRequest])
 }
 
 func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {
+	smInt := s.sessionManager.GetInt(ctx, "plop")
+	glog.Infof("sessionManager:plop: %v", smInt)
+	s.sessionManager.Put(ctx, "plop", smInt+1)
+
 	stid := int64(1)
 	resp := &pb.FetchResponse{}
 
