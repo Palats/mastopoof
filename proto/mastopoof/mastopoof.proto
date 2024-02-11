@@ -5,6 +5,11 @@ package mastopoof;
 service Mastopoof {
     rpc Ping(PingRequest) returns (PingResponse);
 
+    // Information about the logged in user.
+    rpc UserInfo(UserInfoRequest) returns (UserInfoResponse);
+
+    rpc Login(LoginRequest) returns (LoginResponse);
+
     // Fetch statuses.
     rpc Fetch(FetchRequest) returns (FetchResponse);
     // Set the position of the read-marker.
@@ -18,6 +23,15 @@ message PingRequest {
 message PingResponse {
     string msg = 2;
 }
+
+message UserInfoRequest {}
+message UserInfoResponse {
+    // Stream ID.
+    int64 stid = 1;
+}
+
+message LoginRequest {}
+message LoginResponse {}
 
 // An item in the stream - i.e., a status with some metadata.
 message Item {

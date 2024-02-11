@@ -9,7 +9,6 @@ import (
 	"connectrpc.com/connect"
 	"github.com/Palats/mastopoof/backend/storage"
 	"github.com/alexedwards/scs/v2"
-	"github.com/golang/glog"
 
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 )
@@ -29,6 +28,14 @@ func New(st *storage.Storage, sm *scs.SessionManager) *Server {
 	return s
 }
 
+func (s *Server) isLogged(ctx context.Context) error {
+	userID := s.sessionManager.GetString(ctx, "userid")
+	if userID == "" {
+		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("oh noes"))
+	}
+	return nil
+}
+
 func (s *Server) Ping(ctx context.Context, req *connect.Request[pb.PingRequest]) (*connect.Response[pb.PingResponse], error) {
 	resp := connect.NewResponse(&pb.PingResponse{
 		Msg: fmt.Sprintf("Got: %v", req.Msg),
@@ -36,11 +43,24 @@ func (s *Server) Ping(ctx context.Context, req *connect.Request[pb.PingRequest])
 	return resp, nil
 }
 
-func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {
-	smInt := s.sessionManager.GetInt(ctx, "plop")
-	glog.Infof("sessionManager:plop: %v", smInt)
-	s.sessionManager.Put(ctx, "plop", smInt+1)
+func (s *Server) UserInfo(ctx context.Context, req *connect.Request[pb.UserInfoRequest]) (*connect.Response[pb.UserInfoResponse], error) {
+	if err := s.isLogged(ctx); err != nil {
+		return nil, err
+	}
+	resp := connect.NewResponse(&pb.UserInfoResponse{})
+	return resp, nil
+}
 
+func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest]) (*connect.Response[pb.LoginResponse], error) {
+	err := s.sessionManager.RenewToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to renew token: %w", err)
+	}
+	s.sessionManager.Put(ctx, "userid", "autologin")
+	return connect.NewResponse(&pb.LoginResponse{}), nil
+}
+
+func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {
 	stid := int64(1)
 	resp := &pb.FetchResponse{}
 

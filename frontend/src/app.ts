@@ -49,7 +49,12 @@ export class AppRoot extends LitElement {
   private forwardPosition: number = 0;
   private forwardState: pb.FetchResponse_State = pb.FetchResponse_State.UNKNOWN;
 
-  private isInitialLoading = true;
+  // Undefined == not verified yet; false == not logged; true == logged.
+  @state() private loginStatus?: boolean;
+  // Set when logged in.
+  private userInfo?: pb.UserInfoResponse;
+  // Set to false when the first fetch of status (after auth) is done.
+  private isInitialFetch = true;
 
   private observer?: IntersectionObserver;
 
@@ -78,12 +83,23 @@ export class AppRoot extends LitElement {
       this.remainingPool = evt.curr.remaining;
     }) as EventListener);
 
-    this.loadNext();
+    this.initialLoading()
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this.observer?.disconnect();
+  }
+
+  async initialLoading() {
+    const userInfo = await backend.userInfo();
+    if (userInfo === null) {
+      this.loginStatus = false;
+      return;
+    }
+    this.userInfo = userInfo;
+    this.loginStatus = true;
+    this.loadNext();
   }
 
   // Called when intersections of statuses changes - i.e., that
@@ -170,7 +186,7 @@ export class AppRoot extends LitElement {
       });
     }
     // Always indicate that initial loading is done - this is a latch anyway.
-    this.isInitialLoading = false;
+    this.isInitialFetch = false;
     this.requestUpdate();
   }
 
@@ -202,7 +218,18 @@ export class AppRoot extends LitElement {
     return content;
   }
 
+  async doLogin() {
+    await backend.login();
+    this.initialLoading();
+  }
+
   render() {
+    if (this.loginStatus === undefined) {
+      return html`Loading...`;
+    }
+    if (this.loginStatus !== true) {
+      return html`<button @click=${this.doLogin}>login</button>`;
+    }
     return html`
       <div class="page">
         <div class="middlepane">
@@ -212,7 +239,7 @@ export class AppRoot extends LitElement {
             </div>
           </div>
           <div class="content">
-            ${this.isInitialLoading ? html`<div class="contentitem"><div class="centered">Loading...</div></div>` : html``}
+            ${this.isInitialFetch ? html`<div class="contentitem"><div class="centered">Loading...</div></div>` : html``}
             <div class="noanchor contentitem streambeginning">${this.backwardState === pb.FetchResponse_State.DONE ? html`
               <div class="centered">Beginning of stream.</div>
             `: html`

@@ -1,5 +1,5 @@
 // Manages the connection from the browser to the Go server.
-import { createPromiseClient, PromiseClient } from "@connectrpc/connect";
+import { ConnectError, createPromiseClient, PromiseClient, Code } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import { Mastopoof } from "mastopoof-proto/gen/mastopoof/mastopoof_connect";
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
@@ -95,5 +95,21 @@ export class Backend {
         this.onStreamUpdate.dispatchEvent(evt);
 
         return resp;
+    }
+
+    public async userInfo(): Promise<pb.UserInfoResponse | null> {
+        try {
+            return await this.client.userInfo({});
+        } catch (err) {
+            const connectErr = ConnectError.from(err);
+            if (connectErr.code === Code.PermissionDenied) {
+                return null;
+            }
+            throw err;
+        }
+    }
+
+    public async login(): Promise<pb.LoginResponse> {
+        return await this.client.login({});
     }
 }
