@@ -134,4 +134,14 @@ export class Backend {
             throw err;
         }
     }
+
+    public async logout() {
+        let evt = new LoginUpdateEvent("login-update");
+        evt.state = LoginState.LOADING;
+        this.onEvent.dispatchEvent(evt);
+        await this.client.logout({});
+        evt = new LoginUpdateEvent("login-update");
+        evt.state = LoginState.NOT_LOGGED;
+        this.onEvent.dispatchEvent(evt);
+    }
 }

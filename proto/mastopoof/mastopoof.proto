@@ -6,6 +6,7 @@ service Mastopoof {
     rpc Ping(PingRequest) returns (PingResponse);
 
     rpc Login(LoginRequest) returns (LoginResponse);
+    rpc Logout(LogoutRequest) returns (LogoutResponse);
 
     // Fetch statuses.
     rpc Fetch(FetchRequest) returns (FetchResponse);
@@ -33,6 +34,9 @@ message LoginRequest {
 message LoginResponse {
     UserInfo user_info = 1;
 }
+
+message LogoutRequest{}
+message LogoutResponse{}
 
 // An item in the stream - i.e., a status with some metadata.
 message Item {

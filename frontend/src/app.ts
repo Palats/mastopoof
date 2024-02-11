@@ -214,7 +214,7 @@ export class AppRoot extends LitElement {
     }
 
     if (this.lastLoginUpdate.state === LoginState.NOT_LOGGED) {
-      return html`<button @click=${() => backend.login({ tmpStid: BigInt(1) })}>login</button>`;
+      return html`<mast-login></mast-login>`;
     }
     return html`
       <div class="page">
@@ -222,6 +222,7 @@ export class AppRoot extends LitElement {
           <div class="header">
             <div class="headercontent">
               Mastopoof
+              <button @click=${() => backend.logout()}>Logout</button>
             </div>
           </div>
           <div class="content">
@@ -519,7 +520,7 @@ declare global {
 @customElement('mast-login')
 export class MastLogin extends LitElement {
   render() {
-    return html`login`;
+    return html`<button @click=${() => backend.login({ tmpStid: BigInt(1) })}>login</button>`;
   }
 
   static styles = [commonCSS, css``];

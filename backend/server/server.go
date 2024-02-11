@@ -64,6 +64,15 @@ func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest
 	}), nil
 }
 
+func (s *Server) Logout(ctx context.Context, req *connect.Request[pb.LogoutRequest]) (*connect.Response[pb.LogoutResponse], error) {
+	s.sessionManager.Remove(ctx, "userid")
+	err := s.sessionManager.RenewToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to renew token: %w", err)
+	}
+	return connect.NewResponse(&pb.LogoutResponse{}), nil
+}
+
 func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {
 	stid := int64(1)
 	resp := &pb.FetchResponse{}
