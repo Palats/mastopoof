@@ -18,6 +18,11 @@ export class StreamUpdateEvent extends Event {
     curr: StreamInfo = {};
 }
 
+export class LoginUpdateEvent extends Event {
+    state: LoginState = LoginState.LOADING;
+    userInfo?: pb.UserInfo;
+}
+
 export interface StreamInfo {
     // The last-read status position, from this frontend perspective - i.e.,
     // including local updates which might not have been propagated to the
@@ -29,11 +34,21 @@ export interface StreamInfo {
     remaining?: number;
 }
 
+export enum LoginState {
+    // Currently trying to log-in
+    LOADING = 1,
+    // Successful login.
+    LOGGED = 2,
+    // Unsuccessful login.
+    NOT_LOGGED = 3,
+}
+
 export class Backend {
     private streamInfo: StreamInfo = {};
 
-    // Fired when last-read is changed. Gives a LastReadEvent event.
-    public onStreamUpdate: EventTarget;
+    // Events:
+    //  'stream-update': Fired when last-read is changed. Gives a StreamUpdateEvent event.
+    public onEvent: EventTarget;
 
     private lastReadDirty = false;
     private lastReadQueued = false;
@@ -46,7 +61,7 @@ export class Backend {
         });
 
         this.client = createPromiseClient(Mastopoof, transport);
-        this.onStreamUpdate = new EventTarget();
+        this.onEvent = new EventTarget();
     }
 
     // Update the last-read position on the server. It will be rate limited,
@@ -62,7 +77,7 @@ export class Backend {
         const evt = new StreamUpdateEvent("stream-update");
         evt.prev = old;
         evt.curr = { ... this.streamInfo };
-        this.onStreamUpdate.dispatchEvent(evt);
+        this.onEvent.dispatchEvent(evt);
     }
 
     // Internal method used in rate-limiting updates of last-read marker.
@@ -92,24 +107,31 @@ export class Backend {
         const evt = new StreamUpdateEvent("stream-update");
         evt.prev = old;
         evt.curr = { ... this.streamInfo };
-        this.onStreamUpdate.dispatchEvent(evt);
+        this.onEvent.dispatchEvent(evt);
 
         return resp;
     }
 
-    public async userInfo(): Promise<pb.UserInfoResponse | null> {
+    public async login(request: protobuf.PartialMessage<pb.LoginRequest>) {
+        const evt = new LoginUpdateEvent("login-update");
+        evt.state = LoginState.LOADING;
+        this.onEvent.dispatchEvent(evt);
+
         try {
-            return await this.client.userInfo({});
+            const resp = await this.client.login(request);
+            const evt = new LoginUpdateEvent("login-update");
+            evt.state = LoginState.LOGGED;
+            evt.userInfo = resp.userInfo;
+            this.onEvent.dispatchEvent(evt);
         } catch (err) {
             const connectErr = ConnectError.from(err);
             if (connectErr.code === Code.PermissionDenied) {
+                const evt = new LoginUpdateEvent("login-update");
+                evt.state = LoginState.NOT_LOGGED;
+                this.onEvent.dispatchEvent(evt);
                 return null;
             }
             throw err;
         }
-    }
-
-    public async login(): Promise<pb.LoginResponse> {
-        return await this.client.login({});
     }
 }

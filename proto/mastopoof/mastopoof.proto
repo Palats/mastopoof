@@ -5,9 +5,6 @@ package mastopoof;
 service Mastopoof {
     rpc Ping(PingRequest) returns (PingResponse);
 
-    // Information about the logged in user.
-    rpc UserInfo(UserInfoRequest) returns (UserInfoResponse);
-
     rpc Login(LoginRequest) returns (LoginResponse);
 
     // Fetch statuses.
@@ -24,14 +21,18 @@ message PingResponse {
     string msg = 2;
 }
 
-message UserInfoRequest {}
-message UserInfoResponse {
-    // Stream ID.
-    int64 stid = 1;
+message UserInfo {
+    // Default stream ID for that user.
+    int64 default_stid = 1;
 }
 
-message LoginRequest {}
-message LoginResponse {}
+message LoginRequest {
+    int64 tmp_stid = 1;
+}
+
+message LoginResponse {
+    UserInfo user_info = 1;
+}
 
 // An item in the stream - i.e., a status with some metadata.
 message Item {

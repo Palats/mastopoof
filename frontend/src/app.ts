@@ -5,10 +5,7 @@ import { repeat } from 'lit/directives/repeat.js';
 import { ref } from 'lit/directives/ref.js';
 
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
-import { Backend, StreamUpdateEvent } from "./backend";
-
-// Import the element registration.
-import '@lit-labs/virtualizer';
+import { Backend, StreamUpdateEvent, LoginUpdateEvent, LoginState } from "./backend";
 
 import normalizeCSSstr from "./normalize.css?inline";
 import baseCSSstr from "./base.css?inline";
@@ -49,15 +46,12 @@ export class AppRoot extends LitElement {
   private forwardPosition: number = 0;
   private forwardState: pb.FetchResponse_State = pb.FetchResponse_State.UNKNOWN;
 
-  // Undefined == not verified yet; false == not logged; true == logged.
-  @state() private loginStatus?: boolean;
-  // Set when logged in.
-  private userInfo?: pb.UserInfoResponse;
   // Set to false when the first fetch of status (after auth) is done.
   private isInitialFetch = true;
 
   private observer?: IntersectionObserver;
 
+  @state() private lastLoginUpdate?: LoginUpdateEvent;
   @state() private lastRead?: number;
   @state() private lastPosition?: number;
   @state() private remainingPool?: number;
@@ -77,13 +71,19 @@ export class AppRoot extends LitElement {
       history.scrollRestoration = "manual";
     }
 
-    backend.onStreamUpdate.addEventListener("stream-update", ((evt: StreamUpdateEvent) => {
+    backend.onEvent.addEventListener("login-update", ((evt: LoginUpdateEvent) => {
+      if (evt.state === LoginState.LOGGED && this.lastLoginUpdate?.state !== LoginState.LOGGED) {
+        this.loadNext();
+      }
+      this.lastLoginUpdate = evt;
+    }) as EventListener);
+    backend.onEvent.addEventListener("stream-update", ((evt: StreamUpdateEvent) => {
       this.lastRead = evt.curr.lastRead;
       this.lastPosition = evt.curr.lastPosition;
       this.remainingPool = evt.curr.remaining;
     }) as EventListener);
 
-    this.initialLoading()
+    backend.login({});
   }
 
   disconnectedCallback() {
@@ -91,16 +91,6 @@ export class AppRoot extends LitElement {
     this.observer?.disconnect();
   }
 
-  async initialLoading() {
-    const userInfo = await backend.userInfo();
-    if (userInfo === null) {
-      this.loginStatus = false;
-      return;
-    }
-    this.userInfo = userInfo;
-    this.loginStatus = true;
-    this.loadNext();
-  }
 
   // Called when intersections of statuses changes - i.e., that
   // a status becomes visible / invisible.
@@ -218,17 +208,13 @@ export class AppRoot extends LitElement {
     return content;
   }
 
-  async doLogin() {
-    await backend.login();
-    this.initialLoading();
-  }
-
   render() {
-    if (this.loginStatus === undefined) {
+    if (!this.lastLoginUpdate || this.lastLoginUpdate.state === LoginState.LOADING) {
       return html`Loading...`;
     }
-    if (this.loginStatus !== true) {
-      return html`<button @click=${this.doLogin}>login</button>`;
+
+    if (this.lastLoginUpdate.state === LoginState.NOT_LOGGED) {
+      return html`<button @click=${() => backend.login({ tmpStid: BigInt(1) })}>login</button>`;
     }
     return html`
       <div class="page">
@@ -526,5 +512,21 @@ export class MastStatus extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     'mast-status': MastStatus
+  }
+}
+
+// Login screen
+@customElement('mast-login')
+export class MastLogin extends LitElement {
+  render() {
+    return html`login`;
+  }
+
+  static styles = [commonCSS, css``];
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'mast-login': MastLogin
   }
 }

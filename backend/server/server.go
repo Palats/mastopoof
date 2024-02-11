@@ -43,21 +43,25 @@ func (s *Server) Ping(ctx context.Context, req *connect.Request[pb.PingRequest])
 	return resp, nil
 }
 
-func (s *Server) UserInfo(ctx context.Context, req *connect.Request[pb.UserInfoRequest]) (*connect.Response[pb.UserInfoResponse], error) {
-	if err := s.isLogged(ctx); err != nil {
-		return nil, err
-	}
-	resp := connect.NewResponse(&pb.UserInfoResponse{})
-	return resp, nil
-}
-
 func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest]) (*connect.Response[pb.LoginResponse], error) {
 	err := s.sessionManager.RenewToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to renew token: %w", err)
 	}
-	s.sessionManager.Put(ctx, "userid", "autologin")
-	return connect.NewResponse(&pb.LoginResponse{}), nil
+
+	stid := req.Msg.GetTmpStid()
+
+	if stid == 0 {
+		// Trying to login only based on existing session.
+		if err := s.isLogged(ctx); err != nil {
+			return nil, err
+		}
+	} else {
+		s.sessionManager.Put(ctx, "userid", "autologin")
+	}
+	return connect.NewResponse(&pb.LoginResponse{
+		UserInfo: &pb.UserInfo{DefaultStid: 1},
+	}), nil
 }
 
 func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {
