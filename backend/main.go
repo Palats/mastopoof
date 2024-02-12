@@ -41,19 +41,6 @@ var (
 	streamID   = flag.Int64("stream_id", 1, "Stream to use")
 )
 
-func registerApp(ctx context.Context, as *storage.AccountState) (*mastodon.Application, error) {
-	app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
-		Server:     as.ServerAddr,
-		ClientName: "mastopoof",
-		Scopes:     "read",
-		Website:    "https://github.com/Palats/mastopoof",
-	})
-	if err != nil {
-		return nil, fmt.Errorf("unable to register app on server %s: %w", as.ServerAddr, err)
-	}
-	return app, nil
-}
-
 func getStorage(ctx context.Context) (*storage.Storage, *sql.DB, error) {
 	filename := "./mastopoof.db"
 	db, err := sql.Open("sqlite3", filename)
@@ -74,15 +61,14 @@ func cmdInfo(ctx context.Context, st *storage.Storage) error {
 		return err
 	}
 	defer txn.Rollback()
-	as, err := st.AccountState(ctx, txn, *userID)
+
+	as, err := st.AccountStateByUID(ctx, txn, *userID)
 	if err != nil {
 		return err
 	}
 
 	fmt.Println("Local account UID:", *userID)
 	fmt.Println("Server address:", as.ServerAddr)
-	fmt.Println("Client ID:", as.ClientID)
-	fmt.Println("AuthURI:", as.AuthURI)
 	fmt.Println("Last home status ID:", as.LastHomeStatusID)
 
 	// Should be readonly.
@@ -95,11 +81,20 @@ func cmdAuth(ctx context.Context, st *storage.Storage) error {
 		return err
 	}
 	defer txn.Rollback()
-	as, err := st.AccountState(ctx, txn, *userID)
-	if err != nil {
+
+	// User state
+	us, err := st.UserState(ctx, txn, *userID)
+	if errors.Is(err, storage.ErrNotFound) {
+		us, err = st.CreateUserState(ctx, txn)
+		if err != nil {
+			return err
+		}
+	} else if err != nil {
 		return err
 	}
 
+	// Server state
+	// TODO: make it possible to read existing server name when re-authenticating.
 	addr := *serverAddr
 	if addr == "" {
 		return errors.New("missing --server")
@@ -108,44 +103,54 @@ func cmdAuth(ctx context.Context, st *storage.Storage) error {
 		return fmt.Errorf("server address %q must start with https://", addr)
 	}
 
-	if as.ServerAddr == "" || *clearApp {
-		glog.Infof("setting server address")
-		if *serverAddr == "" {
-			return errors.New("please specify server name with --server")
-		}
-		as.ServerAddr = *serverAddr
-
-		if err := st.SetAccountState(ctx, txn, as); err != nil {
-			return err
-		}
-	} else {
-		glog.Infof("server address: %v", as.ServerAddr)
-		if addr != as.ServerAddr {
-			return fmt.Errorf("server mismatch: %s vs %s; use --clear_app", as.ServerAddr, addr)
-		}
-	}
-
-	if as.ClientID == "" || *clearApp {
-		glog.Infof("registering app")
-		app, err := registerApp(ctx, as)
+	ss, err := st.ServerState(ctx, txn, addr)
+	if errors.Is(err, storage.ErrNotFound) {
+		ss, err = st.CreateServerState(ctx, txn, addr)
 		if err != nil {
 			return err
 		}
-		as.ClientID = app.ClientID
-		as.ClientSecret = app.ClientSecret
-		as.AuthURI = app.AuthURI
-		as.RedirectURI = app.RedirectURI
-
-		if err := st.SetAccountState(ctx, txn, as); err != nil {
-			return err
-		}
-	} else {
-		glog.Infof("app already registered")
+	} else if err != nil {
+		return err
 	}
 
+	// Account (Mastodon) state
+	as, err := st.AccountStateByUID(ctx, txn, us.UID)
+	if errors.Is(err, storage.ErrNotFound) {
+		as, err = st.CreateAccountState(ctx, txn, us.UID, ss.ServerAddr)
+		if err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+
+	// First, make sure that mastopoof is registered on the server.
+	if ss.ClientID == "" || *clearApp {
+		glog.Infof("registering app")
+		app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
+			Server:     ss.ServerAddr,
+			ClientName: "mastopoof",
+			Scopes:     "read",
+			Website:    "https://github.com/Palats/mastopoof",
+		})
+		if err != nil {
+			return fmt.Errorf("unable to register app on server %s: %w", ss.ServerAddr, err)
+		}
+		ss.ClientID = app.ClientID
+		ss.ClientSecret = app.ClientSecret
+		ss.AuthURI = app.AuthURI
+		ss.RedirectURI = app.RedirectURI
+
+		if err := st.SetServerState(ctx, txn, ss); err != nil {
+			return err
+		}
+	}
+
+	// Then, get a user token.
 	if as.AccessToken == "" || *clearAuth || *clearApp {
 		glog.Infof("need user code")
-		fmt.Printf("Auth URL: %s\n", as.AuthURI)
+
+		fmt.Printf("Auth URL: %s\n", ss.AuthURI)
 
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Printf("Enter code:")
@@ -159,11 +164,11 @@ func cmdAuth(ctx context.Context, st *storage.Storage) error {
 		}
 
 		client := mastodon.NewClient(&mastodon.Config{
-			Server:       as.ServerAddr,
-			ClientID:     as.ClientID,
-			ClientSecret: as.ClientSecret,
+			Server:       ss.ServerAddr,
+			ClientID:     ss.ClientID,
+			ClientSecret: ss.ClientSecret,
 		})
-		err = client.AuthenticateToken(ctx, authCode, as.RedirectURI)
+		err = client.AuthenticateToken(ctx, authCode, ss.RedirectURI)
 		if err != nil {
 			return fmt.Errorf("unable to authenticate on server %s: %w", as.ServerAddr, err)
 		}
@@ -479,16 +484,20 @@ func run(ctx context.Context) error {
 	}
 	showAccount := cmdMeDef.PersistentFlags().Bool("account", false, "Query and show account state from Mastodon server")
 	cmdMeDef.RunE = func(cmd *cobra.Command, args []string) error {
-		as, err := st.AccountState(ctx, st.DB, *userID)
+		as, err := st.AccountStateByUID(ctx, st.DB, *userID)
+		if err != nil {
+			return err
+		}
+		ss, err := st.ServerState(ctx, st.DB, as.ServerAddr)
 		if err != nil {
 			return err
 		}
 		var client *mastodon.Client
 		if *showAccount {
 			client = mastodon.NewClient(&mastodon.Config{
-				Server:       as.ServerAddr,
-				ClientID:     as.ClientID,
-				ClientSecret: as.ClientSecret,
+				Server:       ss.ServerAddr,
+				ClientID:     ss.ClientID,
+				ClientSecret: ss.ClientSecret,
 				AccessToken:  as.AccessToken,
 			})
 		}
@@ -501,14 +510,18 @@ func run(ctx context.Context) error {
 		Short: "Fetch recent home content and add it to the DB.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			as, err := st.AccountState(ctx, st.DB, *userID)
+			as, err := st.AccountStateByUID(ctx, st.DB, *userID)
+			if err != nil {
+				return err
+			}
+			ss, err := st.ServerState(ctx, st.DB, as.ServerAddr)
 			if err != nil {
 				return err
 			}
 			client := mastodon.NewClient(&mastodon.Config{
-				Server:       as.ServerAddr,
-				ClientID:     as.ClientID,
-				ClientSecret: as.ClientSecret,
+				Server:       ss.ServerAddr,
+				ClientID:     ss.ClientID,
+				ClientSecret: ss.ClientSecret,
 				AccessToken:  as.AccessToken,
 			})
 			return cmdFetch(ctx, st, as, client)

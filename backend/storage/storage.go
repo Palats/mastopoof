@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/golang/glog"
@@ -11,6 +12,16 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
+// ServerState contains information about a server - most notably, its app registration.
+type ServerState struct {
+	ServerAddr string `json:"server_addr"`
+
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+	AuthURI      string `json:"auth_uri"`
+	RedirectURI  string `json:"redirect_uri"`
+}
 
 // AccountState represents information about a mastodon account in the DB.
 type AccountState struct {
@@ -20,11 +31,7 @@ type AccountState struct {
 	// The user using this mastodon account.
 	UID int64 `json:"uid"`
 
-	ServerAddr   string `json:"server_addr"`
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-	AuthURI      string `json:"auth_uri"`
-	RedirectURI  string `json:"redirect_uri"`
+	ServerAddr string `json:"server_addr"`
 
 	AccessToken string `json:"access_token"`
 
@@ -59,6 +66,8 @@ type SQLQueryable interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
+var ErrNotFound = errors.New("not found")
+
 func IDNewer(id1 mastodon.ID, id2 mastodon.ID) bool {
 	// From Mastodon docs https://docs.joinmastodon.org/api/guidelines/#id :
 	//  - Sort by size. Newer statuses will have longer IDs.
@@ -87,7 +96,7 @@ func NewStorage(db *sql.DB) *Storage {
 	return &Storage{DB: db}
 }
 
-const schemaVersion = 8
+const schemaVersion = 9
 
 func (st *Storage) Init(ctx context.Context) error {
 	// Get version of the storage.
@@ -280,6 +289,44 @@ func (st *Storage) Init(ctx context.Context) error {
 		}
 	}
 
+	if version < 9 {
+		// Split server info.
+		//  Add  serverstate (server_addr, {server_addr, client_id, client_secret, auth_uri, redirect_uri})
+		//  Delete accountstate  {client_id, client_secret, auth_uri, redirect_uri}
+		sqlStmt := `
+			CREATE TABLE serverstate (
+				-- server address
+				server_addr STRING NOT NULL,
+				-- JSON marshalled ServerState
+				state TEXT NOT NULL
+			);
+
+			INSERT INTO serverstate (server_addr, state)
+				SELECT
+					json_extract(accountstate.content, "$.server_addr"),
+					json_object(
+						"server_addr", json_extract(accountstate.content, "$.server_addr"),
+						"client_id", json_extract(accountstate.content, "$.client_id"),
+						"client_secret", json_extract(accountstate.content, "$.client_secret"),
+						"auth_uri", json_extract(accountstate.content, "$.auth_uri"),
+						"redirect_uri", json_extract(accountstate.content, "$.redirect_uri")
+					)
+				FROM
+					accountstate;
+
+			UPDATE accountstate SET content = json_remove(
+				accountstate.content,
+				"$.client_id",
+				"$.client_secret",
+				"$.auth_uri",
+				"$.redirect_uri"
+			);
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+		}
+	}
+
 	if _, err := txn.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion)); err != nil {
 		return fmt.Errorf("unable to set user_version: %w", err)
 	}
@@ -309,12 +356,85 @@ func (st *Storage) ClearAll(ctx context.Context) error {
 	return txn.Commit()
 }
 
-func (st *Storage) AccountState(ctx context.Context, db SQLQueryable, uid int64) (*AccountState, error) {
+// CreateServerState creates a server with the given address.
+func (st *Storage) CreateServerState(ctx context.Context, db SQLQueryable, serverAddr string) (*ServerState, error) {
+	ss := &ServerState{
+		ServerAddr: serverAddr,
+	}
+
+	// Do not use SetServerState(), as it will not fail if that already exists.
+	state, err := json.Marshal(ss)
+	if err != nil {
+		return nil, err
+	}
+
+	stmt := `INSERT INTO serverstate(server_addr, state) VALUES(?, ?)`
+	_, err = db.ExecContext(ctx, stmt, ss.ServerAddr, state)
+	if err != nil {
+		return nil, err
+	}
+	return ss, nil
+}
+
+// ServerState returns the current ServerState for a given, well, server.
+// Returns wrapped ErrNotFound if no entry exists.
+func (st *Storage) ServerState(ctx context.Context, db SQLQueryable, serverAddr string) (*ServerState, error) {
+	var state string
+	err := db.QueryRowContext(ctx, "SELECT state FROM serverstate WHERE server_addr=?", serverAddr).Scan(&state)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("no state for server_addr=%s: %w", serverAddr, ErrNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	as := &ServerState{}
+	if err := json.Unmarshal([]byte(state), as); err != nil {
+		return nil, fmt.Errorf("unable to decode serverstate content: %v", err)
+	}
+	return as, nil
+}
+
+func (st *Storage) SetServerState(ctx context.Context, db SQLQueryable, ss *ServerState) error {
+	state, err := json.Marshal(ss)
+	if err != nil {
+		return err
+	}
+
+	stmt := `INSERT INTO serverstate(server_addr, state) VALUES(?, ?) ON CONFLICT(server_addr) DO UPDATE SET state = ?`
+	_, err = db.ExecContext(ctx, stmt, ss.ServerAddr, state, state)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// CreateAccountState creates a new account for the given UID and assign it an ASID.
+func (st *Storage) CreateAccountState(ctx context.Context, db SQLQueryable, uid int64, serverAddr string) (*AccountState, error) {
+	var asid int64
+	err := db.QueryRowContext(ctx, "SELECT MAX(asid) FROM accountstate").Scan(&asid)
+	if err == sql.ErrNoRows {
+		// DB is empty, consider previous asid is zero, to get first real entry at 1.
+		asid = 0
+	} else if err != nil {
+		return nil, err
+	}
+
+	as := &AccountState{
+		ASID:       asid + 1,
+		UID:        uid,
+		ServerAddr: serverAddr,
+	}
+	return as, st.SetAccountState(ctx, db, as)
+}
+
+// AccountStateByUID gets a the mastodon account of a mastopoof user identified by its UID.
+// Returns wrapped ErrNotFound if no entry exists.
+func (st *Storage) AccountStateByUID(ctx context.Context, db SQLQueryable, uid int64) (*AccountState, error) {
 	var content string
 	err := db.QueryRowContext(ctx, "SELECT content FROM accountstate WHERE uid=?", uid).Scan(&content)
 	if err == sql.ErrNoRows {
-		glog.Infof("no accountstate in storage")
-		return nil, fmt.Errorf("no account for user uid=%v", uid)
+		return nil, fmt.Errorf("no mastodon account for uid=%v: %w", uid, ErrNotFound)
 	}
 	if err != nil {
 		return nil, err
@@ -341,11 +461,30 @@ func (st *Storage) SetAccountState(ctx context.Context, db SQLQueryable, as *Acc
 	return nil
 }
 
+// CreateUserState creates a new account and assign it a UID.
+func (st *Storage) CreateUserState(ctx context.Context, db SQLQueryable) (*UserState, error) {
+	var uid int64
+	err := db.QueryRowContext(ctx, "SELECT MAX(uid) FROM userstate").Scan(&uid)
+	if err == sql.ErrNoRows {
+		// DB is empty, consider previous uid is zero, to get first real entry at 1.
+		uid = 0
+	} else if err != nil {
+		return nil, err
+	}
+
+	userState := &UserState{
+		UID: uid + 1,
+	}
+	return userState, st.SetUserState(ctx, db, userState)
+}
+
+// UserState returns information about a given mastopoof user.
+// Returns wrapped ErrNotFound if no entry exists.
 func (st *Storage) UserState(ctx context.Context, db SQLQueryable, uid int64) (*UserState, error) {
 	var jsonString string
 	err := db.QueryRowContext(ctx, "SELECT state FROM userstate WHERE uid = ?", uid).Scan(&jsonString)
 	if err == sql.ErrNoRows {
-		return &UserState{UID: uid}, nil
+		return nil, fmt.Errorf("no user for uid=%v: %w", uid, ErrNotFound)
 	}
 	if err != nil {
 		return nil, err
