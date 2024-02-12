@@ -93,19 +93,18 @@ func cmdAuth(ctx context.Context, st *storage.Storage) error {
 		return err
 	}
 
-	// Server state
-	// TODO: make it possible to read existing server name when re-authenticating.
-	addr := *serverAddr
-	if addr == "" {
-		return errors.New("missing --server")
-	}
-	if !strings.HasPrefix(addr, "https://") {
-		return fmt.Errorf("server address %q must start with https://", addr)
-	}
-
-	ss, err := st.ServerState(ctx, txn, addr)
+	// Account (Mastodon) state
+	as, err := st.AccountStateByUID(ctx, txn, us.UID)
 	if errors.Is(err, storage.ErrNotFound) {
-		ss, err = st.CreateServerState(ctx, txn, addr)
+		addr := *serverAddr
+		if addr == "" {
+			return errors.New("missing --server")
+		}
+		if !strings.HasPrefix(addr, "https://") {
+			return fmt.Errorf("server address %q must start with https://", addr)
+		}
+
+		as, err = st.CreateAccountState(ctx, txn, us.UID, addr)
 		if err != nil {
 			return err
 		}
@@ -113,10 +112,15 @@ func cmdAuth(ctx context.Context, st *storage.Storage) error {
 		return err
 	}
 
-	// Account (Mastodon) state
-	as, err := st.AccountStateByUID(ctx, txn, us.UID)
+	// Do some double check to avoid flags misunderstanding.
+	if *serverAddr != "" && as.ServerAddr != *serverAddr {
+		return fmt.Errorf("This user (uid=%v) has an account with server_addr=%q, while a flag is set to %q", us.UID, as.ServerAddr, *serverAddr)
+	}
+
+	// Server state
+	ss, err := st.ServerState(ctx, txn, as.ServerAddr)
 	if errors.Is(err, storage.ErrNotFound) {
-		as, err = st.CreateAccountState(ctx, txn, us.UID, ss.ServerAddr)
+		ss, err = st.CreateServerState(ctx, txn, as.ServerAddr)
 		if err != nil {
 			return err
 		}
