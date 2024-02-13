@@ -144,4 +144,9 @@ export class Backend {
         evt.state = LoginState.NOT_LOGGED;
         this.onEvent.dispatchEvent(evt);
     }
+
+    public async authorize(serverAddr: string): Promise<string> {
+        const resp = await this.client.authorize({ serverAddr: serverAddr });
+        return resp.authorizeAddr;
+    }
 }

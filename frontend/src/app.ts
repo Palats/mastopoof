@@ -2,7 +2,7 @@ import { LitElement, css, html, nothing, TemplateResult, unsafeCSS } from 'lit'
 import { customElement, state, property } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { repeat } from 'lit/directives/repeat.js';
-import { ref } from 'lit/directives/ref.js';
+import { Ref, createRef, ref } from 'lit/directives/ref.js';
 
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import { Backend, StreamUpdateEvent, LoginUpdateEvent, LoginState } from "./backend";
@@ -519,8 +519,29 @@ declare global {
 // Login screen
 @customElement('mast-login')
 export class MastLogin extends LitElement {
+
+  private serverAddrRef: Ref<HTMLInputElement> = createRef();
+
+  async startLogin() {
+    const serverAddr = this.serverAddrRef.value?.value;
+    if (!serverAddr) {
+      return;
+    }
+    const authURI = await backend.authorize(serverAddr);
+    console.log("authURI", authURI);
+  }
+
   render() {
-    return html`<button @click=${() => backend.login({ tmpStid: BigInt(1) })}>login</button>`;
+    return html`
+      <div>
+        <button @click=${() => backend.login({ tmpStid: BigInt(1) })}>Bypass login</button>
+      </div>
+      <div>
+        <label for="server-addr">Mastodon server address (must start with https)</label>
+        <input type="url" id="server-addr" ${ref(this.serverAddrRef)} value="https://mastodon.social" required autofocus></input>
+        <button @click=${this.startLogin}>Auth</button>
+      </div>
+    `;
   }
 
   static styles = [commonCSS, css``];

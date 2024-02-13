@@ -401,8 +401,9 @@ func (st *Storage) SetServerState(ctx context.Context, db SQLQueryable, ss *Serv
 		return err
 	}
 
-	stmt := `INSERT INTO serverstate(server_addr, state) VALUES(?, ?) ON CONFLICT(server_addr) DO UPDATE SET state = ?`
-	_, err = db.ExecContext(ctx, stmt, ss.ServerAddr, state, state)
+	// TODO: Fix schema to have a primary key / unique on `server_addr` maybe.
+	stmt := `UPDATE serverstate SET state = ? WHERE server_addr = ?`
+	_, err = db.ExecContext(ctx, stmt, state, ss.ServerAddr)
 	if err != nil {
 		return err
 	}
@@ -453,6 +454,7 @@ func (st *Storage) SetAccountState(ctx context.Context, db SQLQueryable, as *Acc
 		return err
 	}
 
+	// TODO: make SetAccountState support only update and verify primary key existin for ON CONFLICT.
 	stmt := `INSERT INTO accountstate(asid, content) VALUES(?, ?) ON CONFLICT(asid) DO UPDATE SET content = ?`
 	_, err = db.ExecContext(ctx, stmt, as.ASID, content, content)
 	if err != nil {

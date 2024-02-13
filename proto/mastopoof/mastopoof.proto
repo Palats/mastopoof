@@ -8,6 +8,10 @@ service Mastopoof {
     rpc Login(LoginRequest) returns (LoginResponse);
     rpc Logout(LogoutRequest) returns (LogoutResponse);
 
+    // Support for Mastodon oauth flow.
+    rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
+    rpc Token(TokenRequest) returns (TokenResponse);
+
     // Fetch statuses.
     rpc Fetch(FetchRequest) returns (FetchResponse);
     // Set the position of the read-marker.
@@ -37,6 +41,27 @@ message LoginResponse {
 
 message LogoutRequest{}
 message LogoutResponse{}
+
+message AuthorizeRequest {
+    // The mastodon server address the user wants to use.
+    // Typically should start with `https://`
+    string server_addr = 1;
+}
+message AuthorizeResponse {
+    // The address for asking the user authorization.
+    // That's the `/oauth/authorize` end point to use on the mastodon server.
+    string authorize_addr = 1;
+}
+
+message TokenRequest {
+    // The authorization code obtained from the authorize request sent to the Mastodon server.
+    string auth_code = 1;
+}
+
+message TokenResponse {
+    // If successful, it means that we're logged in.
+    UserInfo user_info = 1;
+}
 
 // An item in the stream - i.e., a status with some metadata.
 message Item {

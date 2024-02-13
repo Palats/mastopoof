@@ -3,12 +3,16 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"connectrpc.com/connect"
 	"github.com/Palats/mastopoof/backend/storage"
 	"github.com/alexedwards/scs/v2"
+	"github.com/golang/glog"
+	"github.com/mattn/go-mastodon"
 
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 )
@@ -71,6 +75,67 @@ func (s *Server) Logout(ctx context.Context, req *connect.Request[pb.LogoutReque
 		return nil, fmt.Errorf("unable to renew token: %w", err)
 	}
 	return connect.NewResponse(&pb.LogoutResponse{}), nil
+}
+
+func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.AuthorizeRequest]) (*connect.Response[pb.AuthorizeResponse], error) {
+	serverAddr := req.Msg.ServerAddr
+	if !strings.HasPrefix(serverAddr, "https://") {
+		return nil, fmt.Errorf("Mastodon server address should start with https:// ; got: %q", serverAddr)
+	}
+
+	// TODO: split transactions to avoid remote requests in the middle.
+	txn, err := s.st.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer txn.Rollback()
+
+	ss, err := s.st.ServerState(ctx, txn, serverAddr)
+	if errors.Is(err, storage.ErrNotFound) {
+		glog.Infof("Creating server state for %q", serverAddr)
+		ss, err = s.st.CreateServerState(ctx, txn, serverAddr)
+		if err != nil {
+			return nil, err
+		}
+	} else if err != nil {
+		return nil, err
+	}
+
+	if ss.AuthURI == "" {
+		// TODO: rate limiting to avoid abuse.
+		// TODO: garbage collection of unused ones.
+		glog.Infof("Registering app on server %q", serverAddr)
+		app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
+			Server:       ss.ServerAddr,
+			ClientName:   "mastopoof",
+			Scopes:       "read",
+			Website:      "https://github.com/Palats/mastopoof",
+			RedirectURIs: "urn:ietf:wg:oauth:2.0:oob",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("unable to register app on server %s: %w", ss.ServerAddr, err)
+		}
+		ss.ClientID = app.ClientID
+		ss.ClientSecret = app.ClientSecret
+		ss.AuthURI = app.AuthURI
+		ss.RedirectURI = app.RedirectURI
+
+		if err := s.st.SetServerState(ctx, txn, ss); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := txn.Commit(); err != nil {
+		return nil, err
+	}
+
+	return connect.NewResponse(&pb.AuthorizeResponse{
+		AuthorizeAddr: ss.AuthURI,
+	}), nil
+}
+
+func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest]) (*connect.Response[pb.TokenResponse], error) {
+	return connect.NewResponse(&pb.TokenResponse{}), nil
 }
 
 func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {
