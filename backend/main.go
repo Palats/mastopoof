@@ -104,7 +104,8 @@ func cmdAuth(ctx context.Context, st *storage.Storage) error {
 			return fmt.Errorf("server address %q must start with https://", addr)
 		}
 
-		as, err = st.CreateAccountState(ctx, txn, us.UID, addr)
+		// TODO: Add account ID
+		as, err = st.CreateAccountState(ctx, txn, us.UID, addr, "")
 		if err != nil {
 			return err
 		}
@@ -367,7 +368,8 @@ func cmdDumpStatus(ctx context.Context, st *storage.Storage, args []string) erro
 }
 
 func cmdNewStream(ctx context.Context, st *storage.Storage) error {
-	stid, err := st.NewStream(ctx, *userID)
+	// TODO: have a transaction here
+	stid, err := st.CreateStreamState(ctx, st.DB, *userID)
 	if err != nil {
 		return err
 	}

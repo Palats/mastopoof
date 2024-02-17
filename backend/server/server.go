@@ -101,6 +101,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 		return nil, err
 	}
 
+	// If the server has no registration info, do it now.
 	if ss.AuthURI == "" {
 		// TODO: rate limiting to avoid abuse.
 		// TODO: garbage collection of unused ones.
@@ -135,7 +136,100 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 }
 
 func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest]) (*connect.Response[pb.TokenResponse], error) {
-	return connect.NewResponse(&pb.TokenResponse{}), nil
+	// TODO: sanitization of server addr to be factorized with Authorize.
+	serverAddr := req.Msg.ServerAddr
+	if !strings.HasPrefix(serverAddr, "https://") {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("Mastodon server address should start with https:// ; got: %q", serverAddr))
+	}
+	authCode := req.Msg.AuthCode
+	if authCode == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("missing authcode"))
+	}
+
+	// TODO: split transactions to avoid remote requests in the middle.
+	txn, err := s.st.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer txn.Rollback()
+
+	serverState, err := s.st.ServerState(ctx, txn, serverAddr)
+	if err != nil {
+		// Do not create the server - it should have been created on a previous step. If it is not there,
+		// it is odd, so error out.
+		return nil, err
+	}
+
+	// TODO: Re-use mastodon clients.
+	client := mastodon.NewClient(&mastodon.Config{
+		Server:       serverState.ServerAddr,
+		ClientID:     serverState.ClientID,
+		ClientSecret: serverState.ClientSecret,
+	})
+	err = client.AuthenticateToken(ctx, authCode, serverState.RedirectURI)
+	if err != nil {
+		return nil, fmt.Errorf("unable to authenticate on server %s: %w", serverState.ServerAddr, err)
+	}
+
+	// Now get info about the mastodon mastodonAccount so we can match it
+	// to a local mastodonAccount.
+	mastodonAccount, err := client.GetAccountCurrentUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+	accountID := mastodonAccount.ID
+	if accountID == "" {
+		return nil, errors.New("missing account ID")
+	}
+
+	// Find the account state (Mastodon).
+	accountState, err := s.st.AccountStateByAccountID(ctx, txn, serverAddr, string(accountID))
+	if errors.Is(err, storage.ErrNotFound) {
+		// No mastodon account - and the way to find actual user is through the mastodon
+		// account, so it means we need to create a user and then we can create
+		// the mastodon account state.
+		userState, err := s.st.CreateUserState(ctx, txn)
+		if err != nil {
+			return nil, err
+		}
+		// And then create the mastodon account state.
+		accountState, err = s.st.CreateAccountState(ctx, txn, userState.UID, serverAddr, string(accountID))
+		if err != nil {
+			return nil, err
+		}
+
+		// Also, create a stream.
+		stID, err := s.st.CreateStreamState(ctx, txn, userState.UID)
+		if err != nil {
+			return nil, err
+		}
+		userState.DefaultStID = stID
+		if err := s.st.SetUserState(ctx, txn, userState); err != nil {
+			return nil, err
+		}
+	} else if err != nil {
+		return nil, err
+	}
+
+	// Get the userState
+	// TODO: don't re-read it if it was just created
+	userState, err := s.st.UserState(ctx, txn, accountState.UID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Now, let's write the access token we got in the account state.
+	accountState.AccessToken = client.Config.AccessToken
+	if err := s.st.SetAccountState(ctx, txn, accountState); err != nil {
+		return nil, err
+	}
+
+	if err := txn.Commit(); err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&pb.TokenResponse{
+		UserInfo: &pb.UserInfo{DefaultStid: userState.DefaultStID},
+	}), nil
 }
 
 func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {

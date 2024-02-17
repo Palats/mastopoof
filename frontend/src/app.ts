@@ -520,26 +520,68 @@ declare global {
 @customElement('mast-login')
 export class MastLogin extends LitElement {
 
+  @state() private authURI: string = "";
+  // Server address as used to get the authURI.
+  @state() private serverAddr: string = "";
+
   private serverAddrRef: Ref<HTMLInputElement> = createRef();
+  private authCodeRef: Ref<HTMLInputElement> = createRef();
 
   async startLogin() {
     const serverAddr = this.serverAddrRef.value?.value;
     if (!serverAddr) {
       return;
     }
-    const authURI = await backend.authorize(serverAddr);
-    console.log("authURI", authURI);
+    this.authURI = await backend.authorize(serverAddr);
+    this.serverAddr = serverAddr;
+    console.log("authURI", this.authURI);
+  }
+
+  async doLogin() {
+    const authCode = this.authCodeRef.value?.value;
+    if (!authCode) {
+      // TODO: surface error
+      console.error("invalid authorization code");
+      return;
+    }
+    const userInfo = await backend.token(this.serverAddr, authCode);
+
+    console.log("stream ID", userInfo);
+  }
+
+  plop() {
+    const h = "https://mastodon.social/oauth/authorize?client_id=DyVcnzEg57mBgiv1h1-I2nwqhyXs9kTcZigSW_AHekk&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&response_type=code&scope=read";
+    window.open(h, "Auth");
+    /*if (window.focus) {
+      newWindow.focus();
+    } */
   }
 
   render() {
+    if (!this.authURI) {
+      return html`
+        <div>
+          <button @click=${() => backend.login({ tmpStid: BigInt(1) })}>Bypass login</button>
+        </div>
+        <div>
+          <label for="server-addr">Mastodon server address (must start with https)</label>
+          <input type="url" id="server-addr" ${ref(this.serverAddrRef)} value="https://mastodon.social" required autofocus></input>
+          <button @click=${this.startLogin}>Auth</button>
+        </div>
+        <div>
+          <button @click=${this.plop}>Plop</button>
+        </div>
+      `;
+    }
+
     return html`
       <div>
-        <button @click=${() => backend.login({ tmpStid: BigInt(1) })}>Bypass login</button>
+        <button @click="${this.plop}">Open Mastodon Auth</button>
       </div>
       <div>
-        <label for="server-addr">Mastodon server address (must start with https)</label>
-        <input type="url" id="server-addr" ${ref(this.serverAddrRef)} value="https://mastodon.social" required autofocus></input>
-        <button @click=${this.startLogin}>Auth</button>
+        <label for="auth-code">Authorization code</label>
+        <input type="text" id="auth-code" ${ref(this.authCodeRef)} required autofocus></input>
+        <button @click=${this.doLogin}>Auth</button>
       </div>
     `;
   }

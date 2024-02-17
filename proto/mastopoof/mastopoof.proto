@@ -54,8 +54,13 @@ message AuthorizeResponse {
 }
 
 message TokenRequest {
+    // The mastodon server address the user wants to use.
+    // Typically should start with `https://`
+    // Must be the same as the one provided before to Authorize.
+    string server_addr = 1;
+
     // The authorization code obtained from the authorize request sent to the Mastodon server.
-    string auth_code = 1;
+    string auth_code = 2;
 }
 
 message TokenResponse {

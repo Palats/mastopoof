@@ -28,13 +28,15 @@ type AccountState struct {
 	// AccountState ASID within storage. Just an arbitrary number for primary key.
 	ASID int64 `json:"asid"`
 
-	// The user using this mastodon account.
-	UID int64 `json:"uid"`
-
+	// The Mastodon server this account is part of.
 	ServerAddr string `json:"server_addr"`
+	// The Mastodon account ID on the server.
+	AccountID string `json:"account_id"`
 
 	AccessToken string `json:"access_token"`
 
+	// The user using this mastodon account.
+	UID int64 `json:"uid"`
 	// Last home status ID fetched.
 	LastHomeStatusID mastodon.ID `json:"last_home_status_id"`
 }
@@ -43,6 +45,9 @@ type AccountState struct {
 type UserState struct {
 	// User ID.
 	UID int64 `json:"uid"`
+
+	// Default stream of that user.
+	DefaultStID int64 `json:"default_stid"`
 }
 
 // StreamState is the state of a single stream, stored as JSON.
@@ -411,7 +416,7 @@ func (st *Storage) SetServerState(ctx context.Context, db SQLQueryable, ss *Serv
 }
 
 // CreateAccountState creates a new account for the given UID and assign it an ASID.
-func (st *Storage) CreateAccountState(ctx context.Context, db SQLQueryable, uid int64, serverAddr string) (*AccountState, error) {
+func (st *Storage) CreateAccountState(ctx context.Context, db SQLQueryable, uid int64, serverAddr string, accountID string) (*AccountState, error) {
 	var asid int64
 	err := db.QueryRowContext(ctx, "SELECT MAX(asid) FROM accountstate").Scan(&asid)
 	if err == sql.ErrNoRows {
@@ -425,6 +430,7 @@ func (st *Storage) CreateAccountState(ctx context.Context, db SQLQueryable, uid 
 		ASID:       asid + 1,
 		UID:        uid,
 		ServerAddr: serverAddr,
+		AccountID:  accountID,
 	}
 	return as, st.SetAccountState(ctx, db, as)
 }
@@ -436,6 +442,31 @@ func (st *Storage) AccountStateByUID(ctx context.Context, db SQLQueryable, uid i
 	err := db.QueryRowContext(ctx, "SELECT content FROM accountstate WHERE uid=?", uid).Scan(&content)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("no mastodon account for uid=%v: %w", uid, ErrNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	as := &AccountState{}
+	if err := json.Unmarshal([]byte(content), as); err != nil {
+		return nil, fmt.Errorf("unable to decode accountstate content: %v", err)
+	}
+	return as, nil
+}
+
+// AccountStateByAccountID gets a the mastodon account based on server address and account ID on that server.
+// Returns wrapped ErrNotFound if no entry exists.
+func (st *Storage) AccountStateByAccountID(ctx context.Context, db SQLQueryable, serverAddr string, accountID string) (*AccountState, error) {
+	var content string
+	err := db.QueryRowContext(ctx, `
+		SELECT content
+		FROM accountstate
+		WHERE
+			json_extract(content, "$.server_addr") = ?
+			AND json_extract(content, "$.account_id") = ?
+	`, serverAddr, accountID).Scan(&content)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("no mastodon account for server=%q, account id=%v: %w", serverAddr, accountID, ErrNotFound)
 	}
 	if err != nil {
 		return nil, err
@@ -512,16 +543,11 @@ func (st *Storage) SetUserState(ctx context.Context, db SQLQueryable, userState 
 	return nil
 }
 
-// NewStream creates a new stream for the given user and return the stream ID (stid).
-func (st *Storage) NewStream(ctx context.Context, userID int64) (int64, error) {
-	txn, err := st.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer txn.Rollback()
-
+// CreateStreamState creates a new stream for the given user and return the stream ID (stid).
+// TODO: return the stream state object.
+func (st *Storage) CreateStreamState(ctx context.Context, db SQLQueryable, userID int64) (int64, error) {
 	var stid int64
-	err = txn.QueryRowContext(ctx, "SELECT stid FROM streamstate ORDER BY stid LIMIT 1").Scan(&stid)
+	err := db.QueryRowContext(ctx, "SELECT stid FROM streamstate ORDER BY stid LIMIT 1").Scan(&stid)
 	if err != nil && err != sql.ErrNoRows {
 		return 0, err
 	}
@@ -534,11 +560,11 @@ func (st *Storage) NewStream(ctx context.Context, userID int64) (int64, error) {
 		UID:  userID,
 	}
 
-	if err := st.SetStreamState(ctx, txn, stream); err != nil {
+	if err := st.SetStreamState(ctx, db, stream); err != nil {
 		return 0, err
 	}
 
-	return stid, txn.Commit()
+	return stid, nil
 }
 
 func (st *Storage) StreamState(ctx context.Context, db SQLQueryable, stid int64) (*StreamState, error) {
