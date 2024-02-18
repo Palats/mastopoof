@@ -20,13 +20,15 @@ import (
 type Server struct {
 	st             *storage.Storage
 	mux            *http.ServeMux
+	autoLogin      int64
 	sessionManager *scs.SessionManager
 }
 
-func New(st *storage.Storage, sm *scs.SessionManager) *Server {
+func New(st *storage.Storage, sm *scs.SessionManager, autoLogin int64) *Server {
 	s := &Server{
 		st:             st,
 		sessionManager: sm,
+		autoLogin:      autoLogin,
 		mux:            http.NewServeMux(),
 	}
 	return s
@@ -44,6 +46,11 @@ func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest
 	err := s.sessionManager.RenewToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to renew token: %w", err)
+	}
+
+	if s.autoLogin > 0 {
+		// TODO: factorize login setup.
+		s.sessionManager.Put(ctx, "userid", s.autoLogin)
 	}
 
 	// Trying to login only based on existing session.

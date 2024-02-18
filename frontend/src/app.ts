@@ -17,6 +17,54 @@ const backend = new Backend();
 
 const commonCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
 
+@customElement('app-root')
+export class AppRoot extends LitElement {
+  @state() private lastLoginUpdate?: LoginUpdateEvent;
+
+  constructor() {
+    super();
+    backend.onEvent.addEventListener("login-update", ((evt: LoginUpdateEvent) => {
+      if (evt.state === LoginState.LOGGED && this.lastLoginUpdate?.state !== LoginState.LOGGED) {
+        console.log("userinfo", evt.userInfo);
+        // this.loadNext();
+      }
+      this.lastLoginUpdate = evt;
+    }) as EventListener);
+
+    // Determine if we're already logged in.
+    backend.login();
+  }
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    // Prevent browser to automatically scroll to random places on load - it
+    // does not work well given that the list of elements might have changed.
+    if (history.scrollRestoration) {
+      history.scrollRestoration = "manual";
+    }
+  }
+
+  render() {
+    if (!this.lastLoginUpdate || this.lastLoginUpdate.state === LoginState.LOADING) {
+      return html`Loading...`;
+    }
+
+    if (this.lastLoginUpdate.state === LoginState.NOT_LOGGED) {
+      return html`<mast-login></mast-login>`;
+    }
+    return html`<mast-stream></mast-stream>`;
+  }
+
+  static styles = [commonCSS, css``];
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'app-root': AppRoot
+  }
+}
+
+
 // StatusItem represents the state in the UI of a given status.
 interface StatusItem {
   // Position in the stream in the backend.
@@ -32,12 +80,8 @@ interface StatusItem {
   disappeared: boolean;
 }
 
-// https://adrianfaciu.dev/posts/observables-litelement/
-// https://github.com/lit/lit/tree/main/packages/labs/virtualizer#readme
-// https://stackoverflow.com/questions/60678734/insert-elements-on-top-of-something-without-changing-visible-scrolled-content
-
-@customElement('app-root')
-export class AppRoot extends LitElement {
+@customElement('mast-stream')
+export class MastStream extends LitElement {
   private items: StatusItem[] = [];
   private perEltItem = new Map<Element, StatusItem>();
 
@@ -51,7 +95,6 @@ export class AppRoot extends LitElement {
 
   private observer?: IntersectionObserver;
 
-  @state() private lastLoginUpdate?: LoginUpdateEvent;
   @state() private lastRead?: number;
   @state() private lastPosition?: number;
   @state() private remainingPool?: number;
@@ -65,34 +108,20 @@ export class AppRoot extends LitElement {
       threshold: 0.0,
     });
 
-    // Prevent browser to automatically scroll to random places on load - it
-    // does not work well given that the list of elements might have changed.
-    if (history.scrollRestoration) {
-      history.scrollRestoration = "manual";
-    }
-
-    backend.onEvent.addEventListener("login-update", ((evt: LoginUpdateEvent) => {
-      if (evt.state === LoginState.LOGGED && this.lastLoginUpdate?.state !== LoginState.LOGGED) {
-        console.log("userinfo", evt.userInfo);
-        this.loadNext();
-      }
-      this.lastLoginUpdate = evt;
-    }) as EventListener);
     backend.onEvent.addEventListener("stream-update", ((evt: StreamUpdateEvent) => {
       this.lastRead = evt.curr.lastRead;
       this.lastPosition = evt.curr.lastPosition;
       this.remainingPool = evt.curr.remaining;
     }) as EventListener);
 
-    // Determine if we're already logged in.
-    backend.login();
+    // Trigger loading of content.
+    this.loadNext();
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this.observer?.disconnect();
   }
-
 
   // Called when intersections of statuses changes - i.e., that
   // a status becomes visible / invisible.
@@ -203,7 +232,7 @@ export class AppRoot extends LitElement {
 
   renderStatus(item: StatusItem): TemplateResult[] {
     const content: TemplateResult[] = [];
-    content.push(html`<mast-status class="statustrack contentitem" ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .app=${this as any} .item=${item as any}></mast-status>`);
+    content.push(html`<mast-status class="statustrack contentitem" ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .item=${item as any}></mast-status>`);
     if (item.position == this.lastRead) {
       content.push(html`<div class="lastread contentitem">Last read</div>`);
     }
@@ -211,13 +240,6 @@ export class AppRoot extends LitElement {
   }
 
   render() {
-    if (!this.lastLoginUpdate || this.lastLoginUpdate.state === LoginState.LOADING) {
-      return html`Loading...`;
-    }
-
-    if (this.lastLoginUpdate.state === LoginState.NOT_LOGGED) {
-      return html`<mast-login></mast-login>`;
-    }
     return html`
       <div class="page">
         <div class="middlepane">
@@ -365,7 +387,7 @@ export class AppRoot extends LitElement {
 
 declare global {
   interface HTMLElementTagNameMap {
-    'app-root': AppRoot
+    'mast-stream': MastStream
   }
 }
 
@@ -374,14 +396,11 @@ export class MastStatus extends LitElement {
   @property({ attribute: false })
   item?: StatusItem;
 
-  @property({ attribute: false })
-  app?: AppRoot;
-
   @state()
   private accessor showRaw = false;
 
   markUnread() {
-    if (!this.app || !this.item) {
+    if (!this.item) {
       console.error("missing connection");
       return;
     }

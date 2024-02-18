@@ -37,7 +37,7 @@ var (
 	clearApp   = flag.Bool("clear_app", false, "Force re-registration of the app against the Mastodon server")
 	clearAuth  = flag.Bool("clear_auth", false, "Force re-approval of auth; does not touch app registration")
 	port       = flag.Int("port", 8079, "Port to listen on for the 'serve' command")
-	userID     = flag.Int64("uid", 0, "User ID to use for commands. Default to use 1 for read-only commands.")
+	userID     = flag.Int64("uid", 0, "User ID to use for commands. With 'serve', will auto login that user.")
 	streamID   = flag.Int64("stream_id", 1, "Stream to use")
 )
 
@@ -296,13 +296,13 @@ func cmdFetch(ctx context.Context, st *storage.Storage, accountState *storage.Ac
 	return txn.Commit()
 }
 
-func cmdServe(ctx context.Context, st *storage.Storage) error {
+func cmdServe(ctx context.Context, st *storage.Storage, autoLogin int64) error {
 	sessionManager := scs.New()
 	sessionManager.Lifetime = 24 * time.Hour
 
 	mux := http.NewServeMux()
 
-	s := server.New(st, sessionManager)
+	s := server.New(st, sessionManager, autoLogin)
 
 	api := http.NewServeMux()
 	api.Handle(mastopoofconnect.NewMastopoofHandler(s))
@@ -506,15 +506,16 @@ func run(ctx context.Context) error {
 			return cmdFetch(ctx, st, as, client)
 		},
 	})
+
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "serve",
 		Short: "Run mastopoof backend server",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdServe(ctx, st)
-
+			return cmdServe(ctx, st, *userID)
 		},
 	})
+
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "list",
 		Short: "Get list of known statuses",

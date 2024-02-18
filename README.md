@@ -132,4 +132,10 @@ are added.
 
 Also listing == stream.
 
+#### Links
+
+On infinite scrolling:
+ - https://adrianfaciu.dev/posts/observables-litelement/
+ - https://github.com/lit/lit/tree/main/packages/labs/virtualizer#readme
+ - https://stackoverflow.com/questions/60678734/insert-elements-on-top-of-something-without-changing-visible-scrolled-content
 
