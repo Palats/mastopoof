@@ -343,24 +343,6 @@ func (st *Storage) Init(ctx context.Context) error {
 	return nil
 }
 
-// ClearAll clears the database beside authentication.
-func (st *Storage) ClearAll(ctx context.Context) error {
-	txn, err := st.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("unable to clean DB state: %w", err)
-	}
-	defer txn.Rollback()
-
-	if _, err := txn.ExecContext(ctx, `DELETE FROM userstate;`); err != nil {
-		return fmt.Errorf("unable to delete userstate: %w", err)
-	}
-	if _, err := txn.ExecContext(ctx, `DELETE FROM statuses;`); err != nil {
-		return fmt.Errorf("unable to delete statuses: %w", err)
-	}
-
-	return txn.Commit()
-}
-
 // CreateServerState creates a server with the given address.
 func (st *Storage) CreateServerState(ctx context.Context, db SQLQueryable, serverAddr string) (*ServerState, error) {
 	ss := &ServerState{

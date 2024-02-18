@@ -3,8 +3,6 @@ syntax = "proto3";
 package mastopoof;
 
 service Mastopoof {
-    rpc Ping(PingRequest) returns (PingResponse);
-
     // Check if the user is already authenticated.
     rpc Login(LoginRequest) returns (LoginResponse);
 

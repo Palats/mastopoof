@@ -40,13 +40,6 @@ func (s *Server) isLogged(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) Ping(ctx context.Context, req *connect.Request[pb.PingRequest]) (*connect.Response[pb.PingResponse], error) {
-	resp := connect.NewResponse(&pb.PingResponse{
-		Msg: fmt.Sprintf("Got: %v", req.Msg),
-	})
-	return resp, nil
-}
-
 func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest]) (*connect.Response[pb.LoginResponse], error) {
 	err := s.sessionManager.RenewToken(ctx)
 	if err != nil {

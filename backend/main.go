@@ -76,6 +76,7 @@ func cmdInfo(ctx context.Context, st *storage.Storage) error {
 }
 
 func cmdAuth(ctx context.Context, st *storage.Storage) error {
+	// TODO: rewrite using server RPC
 	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -187,10 +188,6 @@ func cmdAuth(ctx context.Context, st *storage.Storage) error {
 	}
 
 	return txn.Commit()
-}
-
-func cmdClearAll(ctx context.Context, st *storage.Storage) error {
-	return st.ClearAll(ctx)
 }
 
 func cmdClearStream(ctx context.Context, st *storage.Storage) error {
@@ -367,22 +364,6 @@ func cmdDumpStatus(ctx context.Context, st *storage.Storage, args []string) erro
 	return nil
 }
 
-func cmdNewStream(ctx context.Context, st *storage.Storage) error {
-	// TODO: have a transaction here
-	stid, err := st.CreateStreamState(ctx, st.DB, *userID)
-	if err != nil {
-		return err
-	}
-
-	// And now, re-read it to output it.
-	stream, err := st.StreamState(ctx, st.DB, stid)
-	if err != nil {
-		return err
-	}
-	spew.Dump(stream)
-	return nil
-}
-
 func cmdPickNext(ctx context.Context, st *storage.Storage) error {
 	stid := *streamID
 
@@ -467,14 +448,6 @@ func run(ctx context.Context) error {
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
-		Use:   "clear-all",
-		Short: "Nuke all state in the DB, except for auth against Mastodon server.",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdClearAll(ctx, st)
-		},
-	})
-	rootCmd.AddCommand(&cobra.Command{
 		Use:   "clear-stream",
 		Short: "Remove all statuses from the stream, as if nothing was ever looked at.",
 		Args:  cobra.NoArgs,
@@ -555,14 +528,6 @@ func run(ctx context.Context) error {
 		Short: "Display one status, identified by ID",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmdDumpStatus(ctx, st, args)
-		},
-	})
-	rootCmd.AddCommand(&cobra.Command{
-		Use:   "new-stream",
-		Short: "Create a new empty stream.",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdNewStream(ctx, st)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{

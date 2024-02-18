@@ -7,7 +7,7 @@ A Mastodon client
 - Run `npm install` in `frontend/` and in `proto/`
 - Run `npm run gen` to regenerate protobuf modules
 
-## Backend
+### Backend
 Authentication is kept in the DB.
 
 Initial auth:
@@ -28,7 +28,7 @@ Server:
 go run main.go --alsologtostderr serve
 ```
 
-## Frontend
+### Frontend
 
 Initial setup:
 
@@ -42,7 +42,7 @@ Run:
 npm run dev
 ```
 
-## Comms
+### Comms
 
 Usage of:
  - https://buf.build/ for protobuf management
@@ -60,7 +60,52 @@ Example call:
 curl --header 'Content-Type: application/json' --data '{"msg": "plop"}' http://localhost:8079/_rpc/mastopoof.Mastopoof/Ping
 ```
 
-## Notes
+## Structure
+
+### Database
+
+- serverstate
+   - Per mastodon server info.
+   - key: server_addr
+   - Keyed by mastodon server address
+   - Not linked to a specific account (neither mastodon nor mastopoof)
+- accountstate
+   - Mastodon account state.
+   - key: asid (AccountStateID)  [unique integer]
+   - Keyed by mastodon server address + account ID on the mastodon server
+   - Attached to a given user (UID)
+- userstate
+   - Mastopoof user
+   - key: uid [unique integer]
+   - Has default stream ID
+- streamstate
+   - A configured stream of statuses.
+   - key: stid [unique integer]
+   - For now: a single stream per mastopoof user.
+- streamcontent
+   - Position of statuses in a stream
+   - In practice: (stid, sid) -> position
+- statuses
+   - Content of statuses fetched from Mastodon
+   - key: sid [unique integer]
+   - Also attached to a specific UID
+
+
+### Auth
+
+ - On load: issue [Mastopoof.Login] to see if frontend is logged in (aka, cookie)
+
+#### Full login flow
+ - FE gets mastodon server address
+ - FE -> BE [Mastopoof.Authorize] ; server addr
+ - BE: register app on server, gets auth URI
+ - BE->FE: auth uri
+ - FE: go on auth uri and get auth code
+ - FE->BE [Mastopoof.Token] ; auth code
+ - BE: get token from server, create user if needed.
+ - BE->FE : Set cookie, send back user info (default stream ID)
+
+### Notes
 
 Goal is to present a stream of statuses to the user. The stream, once revealed,
 is fixed - i.e., for a given user, there is a list of status that have been
