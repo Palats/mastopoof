@@ -73,6 +73,7 @@ export class AppRoot extends LitElement {
 
     backend.onEvent.addEventListener("login-update", ((evt: LoginUpdateEvent) => {
       if (evt.state === LoginState.LOGGED && this.lastLoginUpdate?.state !== LoginState.LOGGED) {
+        console.log("userinfo", evt.userInfo);
         this.loadNext();
       }
       this.lastLoginUpdate = evt;
@@ -83,7 +84,8 @@ export class AppRoot extends LitElement {
       this.remainingPool = evt.curr.remaining;
     }) as EventListener);
 
-    backend.login({});
+    // Determine if we're already logged in.
+    backend.login();
   }
 
   disconnectedCallback() {
@@ -549,9 +551,8 @@ export class MastLogin extends LitElement {
     console.log("stream ID", userInfo);
   }
 
-  plop() {
-    const h = "https://mastodon.social/oauth/authorize?client_id=DyVcnzEg57mBgiv1h1-I2nwqhyXs9kTcZigSW_AHekk&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&response_type=code&scope=read";
-    window.open(h, "Auth");
+  openMastodonAuth() {
+    window.open(this.authURI, "Auth");
     /*if (window.focus) {
       newWindow.focus();
     } */
@@ -561,22 +562,16 @@ export class MastLogin extends LitElement {
     if (!this.authURI) {
       return html`
         <div>
-          <button @click=${() => backend.login({ tmpStid: BigInt(1) })}>Bypass login</button>
-        </div>
-        <div>
           <label for="server-addr">Mastodon server address (must start with https)</label>
           <input type="url" id="server-addr" ${ref(this.serverAddrRef)} value="https://mastodon.social" required autofocus></input>
           <button @click=${this.startLogin}>Auth</button>
-        </div>
-        <div>
-          <button @click=${this.plop}>Plop</button>
         </div>
       `;
     }
 
     return html`
       <div>
-        <button @click="${this.plop}">Open Mastodon Auth</button>
+        <button @click="${this.openMastodonAuth}">Open Mastodon Auth</button>
       </div>
       <div>
         <label for="auth-code">Authorization code</label>

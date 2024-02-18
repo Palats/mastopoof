@@ -5,7 +5,9 @@ package mastopoof;
 service Mastopoof {
     rpc Ping(PingRequest) returns (PingResponse);
 
+    // Check if the user is already authenticated.
     rpc Login(LoginRequest) returns (LoginResponse);
+
     rpc Logout(LogoutRequest) returns (LogoutResponse);
 
     // Support for Mastodon oauth flow.
@@ -31,11 +33,10 @@ message UserInfo {
     int64 default_stid = 1;
 }
 
-message LoginRequest {
-    int64 tmp_stid = 1;
-}
+message LoginRequest {}
 
 message LoginResponse {
+    // Empty if user is not logged in.
     UserInfo user_info = 1;
 }
 

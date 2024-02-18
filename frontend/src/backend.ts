@@ -112,17 +112,24 @@ export class Backend {
         return resp;
     }
 
-    public async login(request: protobuf.PartialMessage<pb.LoginRequest>) {
+    public async login() {
         const evt = new LoginUpdateEvent("login-update");
         evt.state = LoginState.LOADING;
         this.onEvent.dispatchEvent(evt);
 
         try {
-            const resp = await this.client.login(request);
-            const evt = new LoginUpdateEvent("login-update");
-            evt.state = LoginState.LOGGED;
-            evt.userInfo = resp.userInfo;
-            this.onEvent.dispatchEvent(evt);
+            const resp = await this.client.login({});
+            if (resp.userInfo) {
+                const evt = new LoginUpdateEvent("login-update");
+                evt.state = LoginState.LOGGED;
+                evt.userInfo = resp.userInfo;
+                this.onEvent.dispatchEvent(evt);
+            } else {
+                const evt = new LoginUpdateEvent("login-update");
+                evt.state = LoginState.NOT_LOGGED;
+                this.onEvent.dispatchEvent(evt);
+            }
+
         } catch (err) {
             const connectErr = ConnectError.from(err);
             if (connectErr.code === Code.PermissionDenied) {

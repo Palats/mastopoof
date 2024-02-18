@@ -33,8 +33,8 @@ func New(st *storage.Storage, sm *scs.SessionManager) *Server {
 }
 
 func (s *Server) isLogged(ctx context.Context) error {
-	userID := s.sessionManager.GetString(ctx, "userid")
-	if userID == "" {
+	userID := s.sessionManager.GetInt64(ctx, "userid")
+	if userID == 0 {
 		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("oh noes"))
 	}
 	return nil
@@ -53,18 +53,21 @@ func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest
 		return nil, fmt.Errorf("unable to renew token: %w", err)
 	}
 
-	stid := req.Msg.GetTmpStid()
-
-	if stid == 0 {
-		// Trying to login only based on existing session.
-		if err := s.isLogged(ctx); err != nil {
-			return nil, err
-		}
-	} else {
-		s.sessionManager.Put(ctx, "userid", "autologin")
+	// Trying to login only based on existing session.
+	if err := s.isLogged(ctx); err != nil {
+		// Not logged - do not return an error, but just no information.
+		return connect.NewResponse(&pb.LoginResponse{}), nil
 	}
+
+	uid := s.sessionManager.GetInt64(ctx, "userid")
+
+	userState, err := s.st.UserState(ctx, s.st.DB, uid)
+	if err != nil {
+		return nil, err
+	}
+
 	return connect.NewResponse(&pb.LoginResponse{
-		UserInfo: &pb.UserInfo{DefaultStid: 1},
+		UserInfo: &pb.UserInfo{DefaultStid: userState.DefaultStID},
 	}), nil
 }
 
@@ -227,6 +230,14 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	if err := txn.Commit(); err != nil {
 		return nil, err
 	}
+
+	// And mark the session as logged in.
+	err = s.sessionManager.RenewToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to renew token: %w", err)
+	}
+	s.sessionManager.Put(ctx, "userid", userState.UID)
+
 	return connect.NewResponse(&pb.TokenResponse{
 		UserInfo: &pb.UserInfo{DefaultStid: userState.DefaultStID},
 	}), nil
