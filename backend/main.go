@@ -39,10 +39,10 @@ var (
 	port       = flag.Int("port", 8079, "Port to listen on for the 'serve' command")
 	userID     = flag.Int64("uid", 0, "User ID to use for commands. With 'serve', will auto login that user.")
 	streamID   = flag.Int64("stream_id", 1, "Stream to use")
+	dbFilename = flag.String("db", "./mastopoof.db", "SQLite file")
 )
 
-func getStorage(ctx context.Context) (*storage.Storage, *sql.DB, error) {
-	filename := "./mastopoof.db"
+func getStorage(ctx context.Context, filename string) (*storage.Storage, *sql.DB, error) {
 	db, err := sql.Open("sqlite3", filename)
 	if err != nil {
 		return nil, nil, fmt.Errorf("unable to open storage %s: %w", filename, err)
@@ -419,7 +419,7 @@ func cmdShowOpened(ctx context.Context, st *storage.Storage) error {
 }
 
 func run(ctx context.Context) error {
-	st, db, err := getStorage(ctx)
+	st, db, err := getStorage(ctx, *dbFilename)
 	if err != nil {
 		return err
 	}
