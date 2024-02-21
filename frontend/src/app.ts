@@ -447,15 +447,19 @@ export class MastStatus extends LitElement {
           ${attachments}
         </div>
         <div class="tools bg-blue-400 text-light">
-          <button><span class="material-symbols-outlined" title="Favorite">star</span></button>
-          <button><span class="material-symbols-outlined" title="Boost">repeat</span></button>
-          <button><span class="material-symbols-outlined" title="Reply...">reply</span></button>
-          <button @click="${() => { this.showRaw = !this.showRaw }}" title="Show raw status">
-            <span class="material-symbols-outlined">${this.showRaw ? 'collapse_all' : 'expand_all'}</span>
-          </button>
-          <button @click="${() => this.markUnread()}" title="Mark as unread and move read-marker above">
-            <span class="material-symbols-outlined">mark_as_unread</span>
-          </button>
+          <div class="tools-left">
+            <button><span class="material-symbols-outlined" title="Favorite">star</span></button>
+            <button><span class="material-symbols-outlined" title="Boost">repeat</span></button>
+            <button><span class="material-symbols-outlined" title="Reply...">reply</span></button>
+          </div>
+          <div>
+            <button @click="${() => this.markUnread()}" title="Mark as unread and move read-marker above">
+              <span class="material-symbols-outlined">mark_as_unread</span>
+            </button>
+            <button @click="${() => { this.showRaw = !this.showRaw }}" title="Show raw status">
+              <span class="material-symbols-outlined">${this.showRaw ? 'collapse_all' : 'expand_all'}</span>
+            </button>
+          </div>
         </div>
         ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(this.item.status, null, "  ")}</pre>` : nothing}
       </div>
@@ -525,6 +529,7 @@ export class MastStatus extends LitElement {
     .tools {
       display: flex;
       align-items: center;
+      justify-content: space-between;
       padding: 0.2rem;
       margin-top: 0.2rem;
     }

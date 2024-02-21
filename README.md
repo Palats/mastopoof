@@ -139,3 +139,5 @@ On infinite scrolling:
  - https://github.com/lit/lit/tree/main/packages/labs/virtualizer#readme
  - https://stackoverflow.com/questions/60678734/insert-elements-on-top-of-something-without-changing-visible-scrolled-content
 
+Favicos sources:
+ - https://commons.wikimedia.org/wiki/File:Duck-293474_white_background.jpg
