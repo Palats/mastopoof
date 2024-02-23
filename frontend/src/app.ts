@@ -245,8 +245,13 @@ export class MastStream extends LitElement {
         <div class="middlepane">
           <div class="header">
             <div class="headercontent">
-              Mastopoof
-              <button @click=${() => backend.logout()}>Logout</button>
+              <div>
+                <button style="font-size: 24px"><span class="material-symbols-outlined" title="More...">menu</span></button>
+                Mastopoof - Stream
+              </div>
+              <div>
+                <button @click=${() => backend.logout()}>Logout</button>
+            </div>
             </div>
           </div>
           <div class="content">
@@ -318,11 +323,14 @@ export class MastStream extends LitElement {
     */
     .headercontent {
       background-color: #f7fdff;
-      border-style: solid;
-      border-radius: .3rem;
-      border-width: .1rem;
       padding: 0.5rem;
-      margin: .1rem;
+
+      border-bottom-style: double;
+      border-bottom-width: .2rem;
+
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
 
     .footer {
@@ -337,12 +345,10 @@ export class MastStream extends LitElement {
       grid-template-rows: 1fr;
     }
     .footercontent {
-      background-color: #c99272;
-      border-style: solid;
-      border-radius: .3rem;
-      border-width: .1rem;
+      background-color: #f7fdff;
+      border-top-style: double;
+      border-top-width: .2rem;
       padding: 0.5rem;
-      margin: .1rem;
     }
 
     .content {
@@ -447,7 +453,7 @@ export class MastStatus extends LitElement {
           ${attachments}
         </div>
         <div class="tools bg-blue-400 text-light">
-          <div class="tools-left">
+          <div>
             <button><span class="material-symbols-outlined" title="Favorite">star</span></button>
             <button><span class="material-symbols-outlined" title="Boost">repeat</span></button>
             <button><span class="material-symbols-outlined" title="Reply...">reply</span></button>
@@ -471,7 +477,7 @@ export class MastStatus extends LitElement {
       border-style: solid;
       border-radius: .3rem;
       border-width: .1rem;
-      margin: 0.1rem;
+      margin-bottom: 0.1rem;
       padding: 0;
       background-color: #ffffff;
 
