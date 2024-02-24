@@ -14,8 +14,20 @@
     background-color: #CC2936;
 }
 
+.bg-blue-50 {
+    background-color: #e0fff3;
+}
+
 .bg-blue-100 {
     background-color: #B5FFE1;
+}
+
+.bg-blue-200 {
+    background-color: #88F7D4;
+}
+
+.bg-blue-300 {
+    background-color: #a1bcdf;
 }
 
 .bg-blue-400 {
@@ -56,4 +68,15 @@ button {
     direction: ltr;
 
     vertical-align: text-bottom;
+}
+
+.noanchor {
+    overflow-anchor: none;
+}
+
+.centered {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
 }

@@ -234,7 +234,7 @@ export class MastStream extends LitElement {
     const content: TemplateResult[] = [];
     content.push(html`<mast-status class="statustrack contentitem" ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .item=${item as any}></mast-status>`);
     if (item.position == this.lastRead) {
-      content.push(html`<div class="lastread contentitem">Last read</div>`);
+      content.push(html`<div class="lastread contentitem centered">You were here.</div>`);
     }
     return content;
   }
@@ -256,19 +256,27 @@ export class MastStream extends LitElement {
           </div>
           <div class="content">
             ${this.isInitialFetch ? html`<div class="contentitem"><div class="centered">Loading...</div></div>` : html``}
-            <div class="noanchor contentitem streambeginning">${this.backwardState === pb.FetchResponse_State.DONE ? html`
-              <div class="centered">Beginning of stream.</div>
+            <div class="noanchor contentitem stream-beginning bg-blue-300 centered">${this.backwardState === pb.FetchResponse_State.DONE ? html`
+              <div>Beginning of stream.</div>
             `: html`
-              <button @click=${this.loadPrevious}>Load earlier statuses</button></div>
+              <button @click=${this.loadPrevious}>
+                <span class="material-symbols-outlined">arrow_upward</span>
+                Load earlier statuses
+                <span class="material-symbols-outlined">arrow_upward</span>
+              </button>
             `}
             </div>
 
             ${repeat(this.items, item => item.position, (item, _) => this.renderStatus(item))}
 
-            <div class="noanchor contentitem streamend"><div class="centered">${this.forwardState === pb.FetchResponse_State.DONE ? html`
+            <div class="noanchor contentitem bg-blue-300 stream-end"><div class="centered">${this.forwardState === pb.FetchResponse_State.DONE ? html`
               Nothing more right now. <button @click=${this.loadNext}>Try again</button>
             `: html`
-              <button @click=${this.loadNext}>Load more statuses</button></div>
+              <button @click=${this.loadNext}>
+                <span class="material-symbols-outlined">arrow_downward</span>
+                Load more statuses
+                <span class="material-symbols-outlined">arrow_downward</span>
+              </button>
             `}
             </div></div>
           </div>
@@ -301,7 +309,7 @@ export class MastStream extends LitElement {
     }
 
     .middlepane {
-      min-width: 600px;
+      min-width: 100px;
       width: 600px;
     }
 
@@ -364,29 +372,19 @@ export class MastStream extends LitElement {
 
     mast-status {
       width: 100%;
+      margin-bottom: 0.1rem;
     }
 
-    .streambeginning {
-      background-color: #a1bcdf;
+    .stream-beginning {
+      margin-bottom: 0.1rem;
     }
 
-    .streamend {
-      background-color: #a1bcdf;
-    }
+    .stream-end { }
 
     .lastread {
       background-color: #dfa1a1;
-    }
-
-    .noanchor {
-      overflow-anchor: none;
-    }
-
-    .centered {
-      display: flex;
-      flex-direction: row;
-      justify-content: center;
-      align-items: center;
+      margin-bottom: 0.1rem;
+      font-style: italic;
     }
   `];
 }
@@ -436,16 +434,16 @@ export class MastStatus extends LitElement {
 
     return html`
       <div class="status bg-blue-800">
-        ${isReblog ? html`
-          <div class="reblog bg-red-400 text-light">
-            <img class="avatar" src=${account.avatar} alt="avatar of ${account.display_name}"></img>
-            reblog by ${account.display_name}
-          </div>
-        `: nothing}
         <div class="account bg-blue-100">
-          <img class="avatar" src=${s.account.avatar} alt="avatar of ${s.account.display_name}"></img>
+          <img class="avatar" src=${s.account.avatar}></img>
           ${s.account.display_name} &lt;${s.account.acct}&gt;
         </div>
+        ${isReblog ? html`
+          <div class="reblog bg-blue-50">
+            <img class="avatar" src=${account.avatar}></img>
+            Reblog by ${account.display_name} &lt;${account.acct}&gt;
+          </div>
+        `: nothing}
         <div class="content">
           ${unsafeHTML(s.content)}
         </div>
@@ -477,7 +475,6 @@ export class MastStatus extends LitElement {
       border-style: solid;
       border-radius: .3rem;
       border-width: .1rem;
-      margin-bottom: 0.1rem;
       padding: 0;
       background-color: #ffffff;
 
@@ -500,6 +497,8 @@ export class MastStatus extends LitElement {
       display: flex;
       align-items: center;
       padding: 0.2rem;
+      font-size: 0.8rem;
+      font-style: italic;
     }
 
     .avatar {
@@ -508,11 +507,14 @@ export class MastStatus extends LitElement {
     }
 
     .account .avatar {
+      width: 32px;
       max-height: 32px;
+      min-height: 32px;
     }
 
     .reblog .avatar {
       max-height: 20px;
+      min-height: 20px;
     }
 
     .content {
