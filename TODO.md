@@ -6,6 +6,7 @@
  - Fix spacing with a common value (.1rem -> xx px, css class)
  - Design auth pages
  - Display emojis [e.g., in account info, there is a "emojis" field]
+ - Sanitize html from statuses
 
 ### UI features
  - Automated loading as scrolling

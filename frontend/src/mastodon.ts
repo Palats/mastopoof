@@ -51,7 +51,31 @@ export interface Account {
     display_name: string;
     note: string;
     avatar: string;
-    avatar_static: string;
+    avatar_static?: string;
+    header: string;
+    header_static?: string;
+    locked: boolean;
+    fields?: AccountField[];
+    emojis?: CustomEmoji[];
+    bot?: boolean;
+    group?: boolean;
+    discoverable?: boolean | null;
+    noindex?: boolean | null;
+    moved?: Account | null;
+    suspended?: boolean;
+    limited?: boolean;
+    created_at: string;
+    last_status_at?: string | null;
+    statuses_count: number;
+    followers_count: number;
+    following_count: number;
+}
+
+// https://docs.joinmastodon.org/entities/Account/#Field
+export interface AccountField {
+    name: string;
+    value: string;
+    verified_at?: string | null;
 }
 
 // https://docs.joinmastodon.org/entities/MediaAttachment/
@@ -67,7 +91,15 @@ export interface MediaAttachment {
 }
 
 // https://docs.joinmastodon.org/entities/CustomEmoji/
-export interface CustomEmoji { }
+export interface CustomEmoji {
+    shortcode: string;
+    url: string;
+    static_url: string;
+    visible_in_picker: boolean;
+    // Docs do not mark it as optional, but in practice
+    // is not always present.
+    category?: string;
+}
 
 // https://docs.joinmastodon.org/entities/Poll/
 export interface Poll { }
@@ -97,6 +129,12 @@ export function newFakeStatus(content?: string): Status {
             note: "Fake user",
             avatar: "http://www.gravatar.com/avatar/?d=mp",
             avatar_static: "http://www.gravatar.com/avatar/?d=mp",
+            header: '', // Invalid
+            locked: false,
+            created_at: new Date().toISOString(),
+            statuses_count: 1,
+            followers_count: 1,
+            following_count: 1,
         },
         created_at: new Date().toISOString(),
         content: content,

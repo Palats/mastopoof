@@ -80,3 +80,8 @@ button {
     justify-content: center;
     align-items: center;
 }
+
+.emoji {
+    max-width: 16px;
+    max-height: 16px;
+}

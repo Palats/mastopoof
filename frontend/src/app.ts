@@ -412,6 +412,33 @@ function qualifiedAccount(account: mastodon.Account): string {
   return `${account.username}@${u.hostname}`;
 }
 
+function expandEmojis(msg: string, emojis?: mastodon.CustomEmoji[]): TemplateResult {
+  if (!emojis) {
+    return html`${msg}`;
+  }
+
+  const perCode = new Map<string, mastodon.CustomEmoji>();
+  for (const emoji of emojis) {
+    perCode.set(emoji.shortcode, emoji);
+  }
+
+  const parts = msg.split(/:([^:]+):/);
+  const result: TemplateResult[] = [];
+  for (let i = 0; i < parts.length; i += 2) {
+    result.push(html`${parts[i]}`);
+    if (i + 1 < parts.length) {
+      const code = parts[i + 1];
+      const emoji = perCode.get(code);
+      if (emoji) {
+        result.push(html`<img class="emoji" src="${emoji.url}" alt="emoji: ${emoji.shortcode}"></img>`);
+      } else {
+        result.push(html`:${code}:`);
+      }
+    }
+  }
+  return html`${result}`;
+}
+
 @customElement('mast-status')
 export class MastStatus extends LitElement {
   @property({ attribute: false })
@@ -454,14 +481,14 @@ export class MastStatus extends LitElement {
         <div class="account bg-blue-100">
           <span class="centered">
             <img class="avatar" src=${s.account.avatar}></img>
-            ${s.account.display_name} &lt;${qualifiedAccount(s.account)}&gt;
+            ${expandEmojis(s.account.display_name, s.account.emojis)} &lt;${qualifiedAccount(s.account)}&gt;
           </span>
           <a href=${s.url!} target="_blank"><span class="material-symbols-outlined" title="Open status on original server">open_in_new</span></a>
         </div>
         ${isReblog ? html`
           <div class="reblog bg-blue-50">
             <img class="avatar" src=${account.avatar}></img>
-            Reblog by ${account.display_name} &lt;${qualifiedAccount(account)}&gt;
+            Reblog by ${expandEmojis(account.display_name, account.emojis)} &lt;${qualifiedAccount(account)}&gt;
           </div>
         `: nothing}
         <div class="content">
