@@ -395,6 +395,23 @@ declare global {
   }
 }
 
+function qualifiedAccount(account: mastodon.Account): string {
+  if (account.acct !== account.username) {
+    return account.acct;
+  }
+
+  // This is a short account name - i.e., probably on the same server as the
+  // Mastodon user which fetched it.
+  // In theory, should probably get the server name from the backend. In practice,
+  // let's just look up the rest of the account info.
+  if (!account.url.endsWith(`/@${account.username}`)) {
+    // Not the expected format, return just something.
+    return account.acct;
+  }
+  const u = new URL(account.url);
+  return `${account.username}@${u.hostname}`;
+}
+
 @customElement('mast-status')
 export class MastStatus extends LitElement {
   @property({ attribute: false })
@@ -436,12 +453,12 @@ export class MastStatus extends LitElement {
       <div class="status bg-blue-800">
         <div class="account bg-blue-100">
           <img class="avatar" src=${s.account.avatar}></img>
-          ${s.account.display_name} &lt;${s.account.acct}&gt;
+          ${s.account.display_name} &lt;${qualifiedAccount(s.account)}&gt;
         </div>
         ${isReblog ? html`
           <div class="reblog bg-blue-50">
             <img class="avatar" src=${account.avatar}></img>
-            Reblog by ${account.display_name} &lt;${account.acct}&gt;
+            Reblog by ${account.display_name} &lt;${qualifiedAccount(account)}&gt;
           </div>
         `: nothing}
         <div class="content">
