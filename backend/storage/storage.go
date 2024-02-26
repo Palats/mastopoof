@@ -32,6 +32,8 @@ type AccountState struct {
 	ServerAddr string `json:"server_addr"`
 	// The Mastodon account ID on the server.
 	AccountID string `json:"account_id"`
+	// The Mastodon username
+	Username string `json:"username"`
 
 	AccessToken string `json:"access_token"`
 
@@ -444,7 +446,7 @@ func (st *Storage) SetServerState(ctx context.Context, db SQLQueryable, ss *Serv
 }
 
 // CreateAccountState creates a new account for the given UID and assign it an ASID.
-func (st *Storage) CreateAccountState(ctx context.Context, db SQLQueryable, uid int64, serverAddr string, accountID string) (*AccountState, error) {
+func (st *Storage) CreateAccountState(ctx context.Context, db SQLQueryable, uid int64, serverAddr string, accountID string, username string) (*AccountState, error) {
 	var asid int64
 	err := db.QueryRowContext(ctx, "SELECT MAX(asid) FROM accountstate").Scan(&asid)
 	if err == sql.ErrNoRows {
@@ -459,6 +461,7 @@ func (st *Storage) CreateAccountState(ctx context.Context, db SQLQueryable, uid 
 		UID:        uid,
 		ServerAddr: serverAddr,
 		AccountID:  accountID,
+		Username:   username,
 	}
 	return as, st.SetAccountState(ctx, db, as)
 }

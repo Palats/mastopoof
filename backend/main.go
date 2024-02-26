@@ -61,9 +61,10 @@ func cmdUsers(ctx context.Context, st *storage.Storage) error {
 		return err
 	}
 	for _, userEntry := range userList {
-		fmt.Printf("uid=%d,asid=%d: id=%s server=%s stream=%d\n",
+		fmt.Printf("uid=%d,asid=%d: username=%s id=%s server=%s stream=%d\n",
 			userEntry.UserState.UID,
 			userEntry.AccountState.ASID,
+			userEntry.AccountState.Username,
 			userEntry.AccountState.AccountID,
 			userEntry.AccountState.ServerAddr,
 			userEntry.UserState.DefaultStID)
@@ -121,8 +122,8 @@ func cmdAuth(ctx context.Context, st *storage.Storage) error {
 			return fmt.Errorf("server address %q must start with https://", addr)
 		}
 
-		// TODO: Add account ID
-		as, err = st.CreateAccountState(ctx, txn, us.UID, addr, "")
+		// TODO: Add account ID, username
+		as, err = st.CreateAccountState(ctx, txn, us.UID, addr, "", "")
 		if err != nil {
 			return err
 		}

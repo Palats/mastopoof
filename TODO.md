@@ -31,7 +31,6 @@
 ### Backend
 - Actually load the right stream instead of always stream 1.
 - Add storage for session tokens
-- Keep track of the actual username somewhere
 
 ### Others
  - Tests
@@ -44,3 +43,4 @@
  - Access to original post on server
  - Display emojis [e.g., in account info, there is a "emojis" field]
  - List users
+ - Keep track of the actual username somewhere

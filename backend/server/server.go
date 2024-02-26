@@ -184,6 +184,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	if accountID == "" {
 		return nil, errors.New("missing account ID")
 	}
+	username := mastodonAccount.Username
 
 	// Find the account state (Mastodon).
 	accountState, err := s.st.AccountStateByAccountID(ctx, txn, serverAddr, string(accountID))
@@ -196,7 +197,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 			return nil, err
 		}
 		// And then create the mastodon account state.
-		accountState, err = s.st.CreateAccountState(ctx, txn, userState.UID, serverAddr, string(accountID))
+		accountState, err = s.st.CreateAccountState(ctx, txn, userState.UID, serverAddr, string(accountID), string(username))
 		if err != nil {
 			return nil, err
 		}
