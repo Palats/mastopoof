@@ -68,6 +68,7 @@ type StreamState struct {
 
 type SQLQueryable interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
@@ -341,6 +342,51 @@ func (st *Storage) Init(ctx context.Context) error {
 		return fmt.Errorf("unable to update DB schema: %w", err)
 	}
 	return nil
+}
+
+type ListUserEntry struct {
+	UserState    *UserState
+	AccountState *AccountState
+}
+
+func (st *Storage) ListUsers(ctx context.Context, db SQLQueryable) ([]*ListUserEntry, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT
+			uid
+		FROM
+			userstate
+		;
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := []*ListUserEntry{}
+	for rows.Next() {
+		var uid int64
+		if err := rows.Scan(&uid); err != nil {
+			return nil, err
+		}
+
+		userState, err := st.UserState(ctx, db, uid)
+		if err != nil {
+			return nil, err
+		}
+
+		accountState, err := st.AccountStateByUID(ctx, db, uid)
+		if err != nil {
+			return nil, err
+		}
+
+		resp = append(resp, &ListUserEntry{
+			UserState:    userState,
+			AccountState: accountState,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 // CreateServerState creates a server with the given address.

@@ -55,6 +55,22 @@ func getStorage(ctx context.Context, filename string) (*storage.Storage, *sql.DB
 	return st, db, nil
 }
 
+func cmdUsers(ctx context.Context, st *storage.Storage) error {
+	userList, err := st.ListUsers(ctx, st.DB)
+	if err != nil {
+		return err
+	}
+	for _, userEntry := range userList {
+		fmt.Printf("uid=%d,asid=%d: id=%s server=%s stream=%d\n",
+			userEntry.UserState.UID,
+			userEntry.AccountState.ASID,
+			userEntry.AccountState.AccountID,
+			userEntry.AccountState.ServerAddr,
+			userEntry.UserState.DefaultStID)
+	}
+	return nil
+}
+
 func cmdInfo(ctx context.Context, st *storage.Storage) error {
 	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -430,6 +446,15 @@ func run(ctx context.Context) error {
 		Short: "Mastopoof is a Mastodon client",
 		Long:  `More about Mastopoof`,
 	}
+
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "users",
+		Short: "List users",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmdUsers(ctx, st)
+		},
+	})
 
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "info",
