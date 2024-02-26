@@ -452,8 +452,11 @@ export class MastStatus extends LitElement {
     return html`
       <div class="status bg-blue-800">
         <div class="account bg-blue-100">
-          <img class="avatar" src=${s.account.avatar}></img>
-          ${s.account.display_name} &lt;${qualifiedAccount(s.account)}&gt;
+          <span class="centered">
+            <img class="avatar" src=${s.account.avatar}></img>
+            ${s.account.display_name} &lt;${qualifiedAccount(s.account)}&gt;
+          </span>
+          <a href=${s.url!} target="_blank"><span class="material-symbols-outlined" title="Open status on original server">open_in_new</span></a>
         </div>
         ${isReblog ? html`
           <div class="reblog bg-blue-50">
@@ -508,6 +511,7 @@ export class MastStatus extends LitElement {
       display: flex;
       align-items: center;
       padding: 0.2rem;
+      justify-content: space-between;
     }
 
     .reblog {

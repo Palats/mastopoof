@@ -8,18 +8,20 @@
  - Display emojis [e.g., in account info, there is a "emojis" field]
 
 ### UI features
- - Access to original post on server
  - Automated loading as scrolling
  - Maybe a drop down menu for extra per-post actions
  - Adjust “already read” position on load
  - Support ignoring some status
     - What do they become in the stream?
- - Replace local name by fully qualified (‘arstechnica’ -> ‘arctechnica@mastodon.social’)
  - Link to user profile
  - Fetching from Mastodon from the UI
+ - Display the time of posts
 
 ### Frontend
  - Split each element class
+
+### Backend
+ - Remove redundant reblogs
 
 ### Others
  - Auth & fetch from CLI
@@ -29,3 +31,5 @@
 ### Done
  - header/footer are confusing compared to the posts
  - Separate usual buttons on post from the rest
+ - Replace local name by fully qualified (‘arstechnica’ -> ‘arctechnica@mastodon.social’)
+ - Access to original post on server
