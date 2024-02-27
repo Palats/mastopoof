@@ -29,7 +29,6 @@
 - Auth & fetch from CLI
 
 ### Backend
-- Actually load the right stream instead of always stream 1.
 - Add storage for session tokens
 
 ### Others
@@ -44,3 +43,5 @@
  - Display emojis [e.g., in account info, there is a "emojis" field]
  - List users
  - Keep track of the actual username somewhere
+ - RPCs security
+ - Actually load the right stream instead of always stream 1.

@@ -42,6 +42,20 @@ func (s *Server) isLogged(ctx context.Context) error {
 	return nil
 }
 
+// verifyStdID checks that the logged in user is allowed access to that
+// stream.
+func (s *Server) verifyStID(ctx context.Context, stid int64) error {
+	userID := s.sessionManager.GetInt64(ctx, "userid")
+	userState, err := s.st.UserState(ctx, s.st.DB, userID)
+	if err != nil {
+		return err
+	}
+	if userState.DefaultStID != stid {
+		return connect.NewError(connect.CodePermissionDenied, errors.New("stream access denied"))
+	}
+	return nil
+}
+
 func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest]) (*connect.Response[pb.LoginResponse], error) {
 	err := s.sessionManager.RenewToken(ctx)
 	if err != nil {
@@ -245,7 +259,11 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 }
 
 func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {
-	stid := int64(1)
+	stid := req.Msg.Stid
+	if err := s.verifyStID(ctx, stid); err != nil {
+		return nil, err
+	}
+
 	resp := &pb.FetchResponse{}
 
 	var err error
@@ -300,7 +318,10 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 }
 
 func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadRequest]) (*connect.Response[pb.SetReadResponse], error) {
-	stid := int64(1)
+	stid := req.Msg.Stid
+	if err := s.verifyStID(ctx, stid); err != nil {
+		return nil, err
+	}
 
 	streamState, err := s.st.StreamState(ctx, s.st.DB, stid)
 	if err != nil {

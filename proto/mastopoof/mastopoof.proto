@@ -94,6 +94,9 @@ message FetchRequest {
     // Cannot be zero for BACKWARD.
     // If zero for FORWARD, gives statuses around last_read.
     int64 position = 2;
+
+    // The stream to fetch from.
+    int64 stid = 3;
 }
 
 message FetchResponse {
@@ -134,6 +137,9 @@ message FetchResponse {
 message SetReadRequest {
     // Position to set the last_read to.
     int64 last_read = 1;
+
+    // The stream to set the read marker to.
+    int64 stid = 2;
 }
 
 message SetReadResponse {}

@@ -26,7 +26,6 @@ export class AppRoot extends LitElement {
     backend.onEvent.addEventListener("login-update", ((evt: LoginUpdateEvent) => {
       if (evt.state === LoginState.LOGGED && this.lastLoginUpdate?.state !== LoginState.LOGGED) {
         console.log("userinfo", evt.userInfo);
-        // this.loadNext();
       }
       this.lastLoginUpdate = evt;
     }) as EventListener);
@@ -52,7 +51,11 @@ export class AppRoot extends LitElement {
     if (this.lastLoginUpdate.state === LoginState.NOT_LOGGED) {
       return html`<mast-login></mast-login>`;
     }
-    return html`<mast-stream></mast-stream>`;
+    const stid = this.lastLoginUpdate.userInfo?.defaultStid;
+    if (!stid) {
+      throw new Error("missing stid");
+    }
+    return html`<mast-stream .stid=${Number(stid)}></mast-stream>`;
   }
 
   static styles = [commonCSS, css``];
@@ -82,6 +85,10 @@ interface StatusItem {
 
 @customElement('mast-stream')
 export class MastStream extends LitElement {
+  // Which stream to display.
+  // TODO: support changing it.
+  @property({ attribute: false }) stid?: number;
+
   private items: StatusItem[] = [];
   private perEltItem = new Map<Element, StatusItem>();
 
@@ -149,13 +156,20 @@ export class MastStream extends LitElement {
       position = item.position;
     }
     if (this.lastRead !== undefined && position > this.lastRead) {
-      backend.setLastRead(position);
+      if (!this.stid) {
+        throw new Error("missing stid");
+      }
+      backend.setLastRead(this.stid, position);
     }
   }
 
   // Load earlier statuses.
   async loadPrevious() {
-    const resp = await backend.fetch({ position: BigInt(this.backwardPosition), direction: pb.FetchRequest_Direction.BACKWARD })
+    const stid = this.stid;
+    if (!stid) {
+      throw new Error("missing stream id");
+    }
+    const resp = await backend.fetch({ stid: BigInt(stid), position: BigInt(this.backwardPosition), direction: pb.FetchRequest_Direction.BACKWARD })
 
     if (resp.backwardPosition > 0) {
       this.backwardPosition = Number(resp.backwardPosition);
@@ -184,7 +198,12 @@ export class MastStream extends LitElement {
 
   // Load newer statuses.
   async loadNext() {
-    const resp = await backend.fetch({ position: BigInt(this.forwardPosition), direction: pb.FetchRequest_Direction.FORWARD })
+    const stid = this.stid;
+    if (!stid) {
+      throw new Error("missing stream id");
+    }
+
+    const resp = await backend.fetch({ stid: BigInt(stid), position: BigInt(this.forwardPosition), direction: pb.FetchRequest_Direction.FORWARD })
 
     if (resp.backwardPosition > 0 && this.backwardState === pb.FetchResponse_State.UNKNOWN) {
       this.backwardPosition = Number(resp.backwardPosition);
@@ -232,7 +251,7 @@ export class MastStream extends LitElement {
 
   renderStatus(item: StatusItem): TemplateResult[] {
     const content: TemplateResult[] = [];
-    content.push(html`<mast-status class="statustrack contentitem" ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .item=${item as any}></mast-status>`);
+    content.push(html`<mast-status class="statustrack contentitem" ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .stid=${this.stid} .item=${item as any}></mast-status>`);
     if (item.position == this.lastRead) {
       content.push(html`<div class="lastread contentitem centered">You were here.</div>`);
     }
@@ -379,8 +398,6 @@ export class MastStream extends LitElement {
       margin-bottom: 0.1rem;
     }
 
-    .stream-end { }
-
     .lastread {
       background-color: #dfa1a1;
       margin-bottom: 0.1rem;
@@ -444,6 +461,9 @@ export class MastStatus extends LitElement {
   @property({ attribute: false })
   item?: StatusItem;
 
+  @property({ attribute: false })
+  stid?: number;
+
   @state()
   private accessor showRaw = false;
 
@@ -452,8 +472,11 @@ export class MastStatus extends LitElement {
       console.error("missing connection");
       return;
     }
+    if (!this.stid) {
+      throw new Error("missing stream id");
+    }
     // Not sure if doing computation on "position" is fine, but... well.
-    backend.setLastRead(this.item?.position - 1);
+    backend.setLastRead(this.stid, this.item?.position - 1);
   }
 
   render() {

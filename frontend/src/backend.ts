@@ -24,6 +24,9 @@ export class LoginUpdateEvent extends Event {
 }
 
 export interface StreamInfo {
+    // The stream ID.
+    // TODO: make it possible to change it while running.
+    stid?: number;
     // The last-read status position, from this frontend perspective - i.e.,
     // including local updates which might not have been propagated to the
     // server.
@@ -66,9 +69,10 @@ export class Backend {
 
     // Update the last-read position on the server. It will be rate limited,
     // so not all call might be immediately effective. It will always use the last value.
-    public setLastRead(position: number) {
+    public setLastRead(stid: number, position: number) {
         const old = { ... this.streamInfo };
         this.streamInfo.lastRead = position;
+        this.streamInfo.stid = stid;
         this.lastReadDirty = true;
         if (!this.lastReadQueued) {
             this.lastReadQueued = true;
@@ -90,7 +94,7 @@ export class Backend {
         console.log("last read to", this.streamInfo.lastRead);
         // this.lastRead is always not-undefined at this point, as the method is
         // only called after `setLastRead` which does not allow for it.
-        const promise = this.client.setRead({ lastRead: BigInt(this.streamInfo.lastRead!) });
+        const promise = this.client.setRead({ stid: BigInt(this.streamInfo.stid!), lastRead: BigInt(this.streamInfo.lastRead!) });
         this.lastReadDirty = false;
         await promise;
 
