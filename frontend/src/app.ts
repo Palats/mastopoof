@@ -649,9 +649,7 @@ export class MastLogin extends LitElement {
       console.error("invalid authorization code");
       return;
     }
-    const userInfo = await backend.token(this.serverAddr, authCode);
-
-    console.log("stream ID", userInfo);
+    await backend.token(this.serverAddr, authCode);
   }
 
   openMastodonAuth() {

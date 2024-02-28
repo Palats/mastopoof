@@ -29,7 +29,6 @@
 - Auth & fetch from CLI
 
 ### Backend
-- Add storage for session tokens
 
 ### Others
  - Tests
@@ -45,3 +44,4 @@
  - Keep track of the actual username somewhere
  - RPCs security
  - Actually load the right stream instead of always stream 1.
+ - Add storage for session tokens

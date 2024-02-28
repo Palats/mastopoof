@@ -161,14 +161,14 @@ export class Backend {
         return resp.authorizeAddr;
     }
 
-    public async token(serverAddr: string, authCode: string): Promise<pb.UserInfo> {
+    public async token(serverAddr: string, authCode: string) {
         const resp = await this.client.token({ serverAddr: serverAddr, authCode: authCode });
         if (!resp.userInfo) {
             throw "oops";
         }
         let evt = new LoginUpdateEvent("login-update");
         evt.state = LoginState.LOGGED;
+        evt.userInfo = resp.userInfo;
         this.onEvent.dispatchEvent(evt);
-        return resp.userInfo;
     }
 }
