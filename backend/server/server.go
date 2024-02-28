@@ -124,11 +124,14 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 		// TODO: garbage collection of unused ones.
 		glog.Infof("Registering app on server %q", serverAddr)
 		app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
-			Server:       ss.ServerAddr,
-			ClientName:   "mastopoof",
-			Scopes:       "read",
-			Website:      "https://github.com/Palats/mastopoof",
-			RedirectURIs: "urn:ietf:wg:oauth:2.0:oob",
+			Server:     ss.ServerAddr,
+			ClientName: "mastopoof",
+			Scopes:     "read",
+			Website:    "https://github.com/Palats/mastopoof",
+			RedirectURIs: strings.Join([]string{
+				"urn:ietf:wg:oauth:2.0:oob",
+				// "http://localhost:5173",
+			}, "\n"),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("unable to register app on server %s: %w", ss.ServerAddr, err)

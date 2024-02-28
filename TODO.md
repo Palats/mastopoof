@@ -29,6 +29,7 @@
 - Auth & fetch from CLI
 
 ### Backend
+- Reuse mastodon clients
 
 ### Others
  - Tests

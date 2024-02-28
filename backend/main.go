@@ -1,15 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -35,8 +32,6 @@ var _ = spew.Sdump("")
 
 var (
 	serverAddr = flag.String("server", "", "Mastodon server to track. Only needed when authenticating.")
-	clearApp   = flag.Bool("clear_app", false, "Force re-registration of the app against the Mastodon server")
-	clearAuth  = flag.Bool("clear_auth", false, "Force re-approval of auth; does not touch app registration")
 	port       = flag.Int("port", 8079, "Port to listen on for the 'serve' command")
 	userID     = flag.Int64("uid", 0, "User ID to use for commands. With 'serve', will auto login that user.")
 	streamID   = flag.Int64("stream_id", 1, "Stream to use")
@@ -90,121 +85,6 @@ func cmdInfo(ctx context.Context, st *storage.Storage) error {
 	fmt.Println("Last home status ID:", as.LastHomeStatusID)
 
 	// Should be readonly.
-	return txn.Commit()
-}
-
-func cmdAuth(ctx context.Context, st *storage.Storage) error {
-	// TODO: rewrite using server RPC
-	txn, err := st.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer txn.Rollback()
-
-	// User state
-	us, err := st.UserState(ctx, txn, *userID)
-	if errors.Is(err, storage.ErrNotFound) {
-		us, err = st.CreateUserState(ctx, txn)
-		if err != nil {
-			return err
-		}
-	} else if err != nil {
-		return err
-	}
-
-	// Account (Mastodon) state
-	as, err := st.AccountStateByUID(ctx, txn, us.UID)
-	if errors.Is(err, storage.ErrNotFound) {
-		addr := *serverAddr
-		if addr == "" {
-			return errors.New("missing --server")
-		}
-		if !strings.HasPrefix(addr, "https://") {
-			return fmt.Errorf("server address %q must start with https://", addr)
-		}
-
-		// TODO: Add account ID, username
-		as, err = st.CreateAccountState(ctx, txn, us.UID, addr, "", "")
-		if err != nil {
-			return err
-		}
-	} else if err != nil {
-		return err
-	}
-
-	// Do some double check to avoid flags misunderstanding.
-	if *serverAddr != "" && as.ServerAddr != *serverAddr {
-		return fmt.Errorf("This user (uid=%v) has an account with server_addr=%q, while a flag is set to %q", us.UID, as.ServerAddr, *serverAddr)
-	}
-
-	// Server state
-	ss, err := st.ServerState(ctx, txn, as.ServerAddr)
-	if errors.Is(err, storage.ErrNotFound) {
-		ss, err = st.CreateServerState(ctx, txn, as.ServerAddr)
-		if err != nil {
-			return err
-		}
-	} else if err != nil {
-		return err
-	}
-
-	// First, make sure that mastopoof is registered on the server.
-	if ss.ClientID == "" || *clearApp {
-		glog.Infof("registering app")
-		app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
-			Server:     ss.ServerAddr,
-			ClientName: "mastopoof",
-			Scopes:     "read",
-			Website:    "https://github.com/Palats/mastopoof",
-		})
-		if err != nil {
-			return fmt.Errorf("unable to register app on server %s: %w", ss.ServerAddr, err)
-		}
-		ss.ClientID = app.ClientID
-		ss.ClientSecret = app.ClientSecret
-		ss.AuthURI = app.AuthURI
-		ss.RedirectURI = app.RedirectURI
-
-		if err := st.SetServerState(ctx, txn, ss); err != nil {
-			return err
-		}
-	}
-
-	// Then, get a user token.
-	if as.AccessToken == "" || *clearAuth || *clearApp {
-		glog.Infof("need user code")
-
-		fmt.Printf("Auth URL: %s\n", ss.AuthURI)
-
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Printf("Enter code:")
-		authCode, err := reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("unable to read stdin: %w", err)
-		}
-		authCode = strings.TrimSpace(authCode)
-		if authCode == "" {
-			return errors.New("empty code, aborting")
-		}
-
-		client := mastodon.NewClient(&mastodon.Config{
-			Server:       ss.ServerAddr,
-			ClientID:     ss.ClientID,
-			ClientSecret: ss.ClientSecret,
-		})
-		err = client.AuthenticateToken(ctx, authCode, ss.RedirectURI)
-		if err != nil {
-			return fmt.Errorf("unable to authenticate on server %s: %w", as.ServerAddr, err)
-		}
-
-		as.AccessToken = client.Config.AccessToken
-		if err := st.SetAccountState(ctx, txn, as); err != nil {
-			return err
-		}
-	} else {
-		fmt.Println("Already authentified.")
-	}
-
 	return txn.Commit()
 }
 
@@ -314,7 +194,7 @@ func cmdFetch(ctx context.Context, st *storage.Storage, accountState *storage.Ac
 	return txn.Commit()
 }
 
-func cmdServe(ctx context.Context, st *storage.Storage, autoLogin int64) error {
+func cmdServe(_ context.Context, st *storage.Storage, autoLogin int64) error {
 	sessionManager := scs.New()
 	sessionManager.Store = sqlite3store.New(st.DB)
 	sessionManager.Lifetime = 90 * 24 * time.Hour
@@ -468,14 +348,6 @@ func run(ctx context.Context) error {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmdInfo(ctx, st)
-		},
-	})
-	rootCmd.AddCommand(&cobra.Command{
-		Use:   "auth",
-		Short: "Authenticate against server",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdAuth(ctx, st)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
