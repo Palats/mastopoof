@@ -104,7 +104,7 @@ func NewStorage(db *sql.DB) *Storage {
 	return &Storage{DB: db}
 }
 
-const schemaVersion = 9
+const schemaVersion = 10
 
 func (st *Storage) Init(ctx context.Context) error {
 	// Get version of the storage.
@@ -329,6 +329,22 @@ func (st *Storage) Init(ctx context.Context) error {
 				"$.auth_uri",
 				"$.redirect_uri"
 			);
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+		}
+	}
+
+	if version < 10 {
+		// Add session persistence
+		sqlStmt := `
+			CREATE TABLE sessions (
+				token TEXT PRIMARY KEY,
+				data BLOB NOT NULL,
+				expiry REAL NOT NULL
+			);
+
+			CREATE INDEX sessions_expiry_idx ON sessions(expiry);
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)

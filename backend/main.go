@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alexedwards/scs/sqlite3store"
 	"github.com/alexedwards/scs/v2"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/golang/glog"
@@ -315,7 +316,11 @@ func cmdFetch(ctx context.Context, st *storage.Storage, accountState *storage.Ac
 
 func cmdServe(ctx context.Context, st *storage.Storage, autoLogin int64) error {
 	sessionManager := scs.New()
-	sessionManager.Lifetime = 24 * time.Hour
+	sessionManager.Store = sqlite3store.New(st.DB)
+	sessionManager.Lifetime = 90 * 24 * time.Hour
+	sessionManager.Cookie.Name = "mastopoof"
+	sessionManager.Cookie.SameSite = http.SameSiteStrictMode
+	sessionManager.Cookie.Secure = true
 
 	mux := http.NewServeMux()
 
