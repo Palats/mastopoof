@@ -351,6 +351,14 @@ func run(ctx context.Context) error {
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
+		Use:   "clear-app",
+		Short: "Remove app registrations from local DB, forcing Mastopoof to recreate them when needed.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return st.ClearApp(ctx)
+		},
+	})
+	rootCmd.AddCommand(&cobra.Command{
 		Use:   "clear-stream",
 		Short: "Remove all statuses from the stream, as if nothing was ever looked at.",
 		Args:  cobra.NoArgs,

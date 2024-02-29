@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -16,6 +17,17 @@ import (
 
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 )
+
+// redirectURIs is the list of URIs to list when registering the app on a
+// Mastodon server.
+var redirectURIs = []string{
+	"urn:ietf:wg:oauth:2.0:oob",
+	"http://localhost:5173",
+}
+
+// defaultRedirectURI is the URI to use in practice when going through the login
+// flow. It must be part of the list provided in `redirectURIs`.
+var defaultRedirectURI = redirectURIs[0]
 
 type Server struct {
 	st             *storage.Storage
@@ -122,16 +134,14 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 	if ss.AuthURI == "" {
 		// TODO: rate limiting to avoid abuse.
 		// TODO: garbage collection of unused ones.
+		// TODO: update redirect URIs as needed.
 		glog.Infof("Registering app on server %q", serverAddr)
 		app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
-			Server:     ss.ServerAddr,
-			ClientName: "mastopoof",
-			Scopes:     "read",
-			Website:    "https://github.com/Palats/mastopoof",
-			RedirectURIs: strings.Join([]string{
-				"urn:ietf:wg:oauth:2.0:oob",
-				// "http://localhost:5173",
-			}, "\n"),
+			Server:       ss.ServerAddr,
+			ClientName:   "mastopoof",
+			Scopes:       "read",
+			Website:      "https://github.com/Palats/mastopoof",
+			RedirectURIs: strings.Join(redirectURIs, "\n"),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("unable to register app on server %s: %w", ss.ServerAddr, err)
@@ -150,8 +160,18 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 		return nil, err
 	}
 
+	// Create my own auth URI to only have a specific redirect_uri.
+	addr, err := url.Parse(ss.ServerAddr)
+	addr.Path = "/oauth/authorize"
+	q := addr.Query()
+	q.Add("response_type", "code")
+	q.Add("client_id", ss.ClientID)
+	q.Add("redirect_uri", defaultRedirectURI)
+	q.Add("scope", "read")
+	addr.RawQuery = q.Encode()
+
 	return connect.NewResponse(&pb.AuthorizeResponse{
-		AuthorizeAddr: ss.AuthURI,
+		AuthorizeAddr: addr.String(),
 	}), nil
 }
 
@@ -186,7 +206,8 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 		ClientID:     serverState.ClientID,
 		ClientSecret: serverState.ClientSecret,
 	})
-	err = client.AuthenticateToken(ctx, authCode, serverState.RedirectURI)
+
+	err = client.AuthenticateToken(ctx, authCode, defaultRedirectURI)
 	if err != nil {
 		return nil, fmt.Errorf("unable to authenticate on server %s: %w", serverState.ServerAddr, err)
 	}

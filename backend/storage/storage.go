@@ -644,6 +644,20 @@ func (st *Storage) SetStreamState(ctx context.Context, db SQLQueryable, streamSt
 	return nil
 }
 
+func (st *Storage) ClearApp(ctx context.Context) error {
+	txn, err := st.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer txn.Rollback()
+
+	// Remove everything from the stream.
+	if _, err := txn.ExecContext(ctx, `DELETE FROM serverstate`); err != nil {
+		return err
+	}
+	return txn.Commit()
+}
+
 func (st *Storage) ClearStream(ctx context.Context, stid int64) error {
 	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
