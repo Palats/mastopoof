@@ -1,15 +1,13 @@
 ### UI style
  - Better title menu & logout button
- - Better “state of what’s remaining”
  - Design auth pages
  - Sanitize html from statuses
+ - Fix width on narrow screen on status with long URLs
 
 ### UI features
  - Automated loading as scrolling
  - Maybe a drop down menu for extra per-post actions
  - Adjust “already read” position on load
- - Support ignoring some status
-    - What do they become in the stream?
  - Link to user profile
  - Fetching from Mastodon from the UI
  - Display the time of posts
@@ -18,10 +16,11 @@
 ### Frontend
  - Split each element class
 
-
 ### Status Ordering
  - Remove redundant reblogs
  - Prioritize specific users
+- Support ignoring some status
+    - What do they become in the stream?
 
 ### CLI
 - Auth & fetch from CLI
@@ -48,3 +47,4 @@
  - Allow for redirect-style auth
  - Fix spacing with a common value (.1rem -> xx px, css class)
  - Fix serverstate updating
+ - Better “state of what’s remaining”

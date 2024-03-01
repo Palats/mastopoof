@@ -77,7 +77,9 @@ interface StatusItem {
 
   // HTML element used to represent this status.
   elt?: Element;
-  // Was the status visible fully on the screen at some point?
+  // Is the status currently partially visible?
+  isVisible: boolean;
+  // Was the status visible (partially or fully) on the screen at some point?
   wasSeen: boolean;
   // Did the element moved from fully visible to completely invisible?
   disappeared: boolean;
@@ -102,8 +104,16 @@ export class MastStream extends LitElement {
 
   private observer?: IntersectionObserver;
 
+  // Status with the highest position value which is partially visible on the
+  // screen.
+  @state() private lastVisiblePosition?: number;
+
+  // Last read item position in this stream.
   @state() private lastRead?: number;
+  // Position of the last status currently sorted into the stream.
   @state() private lastPosition?: number;
+  // Number of statuses still in the pool but not yet assigned to the stream /
+  // discarded.
   @state() private remainingPool?: number;
 
   connectedCallback(): void {
@@ -136,6 +146,7 @@ export class MastStream extends LitElement {
     for (const entry of entries) {
       const targetItem = this.perEltItem.get(entry.target);
       if (targetItem) {
+        targetItem.isVisible = entry.isIntersecting;
         if (entry.isIntersecting) {
           targetItem.wasSeen = true;
           targetItem.disappeared = false;
@@ -147,19 +158,37 @@ export class MastStream extends LitElement {
       }
     }
 
-    // Found until which item things have disappeared.
-    let position = 0;
+    // TODO: do not rescan everything on each events, as high item count will
+    // make things slow.
+
+    // Find the boundaries of which statuses are visible.
+    let lastVisiblePosition: number | undefined = undefined;
+    let firstVisiblePosition: number | undefined = undefined;
+    for (const item of this.items) {
+      if (item.isVisible) {
+        if (firstVisiblePosition === undefined) {
+          firstVisiblePosition = item.position;
+        } else {
+          lastVisiblePosition = item.position;
+        }
+      }
+    }
+    this.lastVisiblePosition = lastVisiblePosition;
+
+    // Scan items to see which one have disappeared - i.e., are above the current
+    // view and can be marked as seen.
+    let disappearedPosition = 0;
     for (const item of this.items) {
       if (!item.disappeared) {
         break;
       }
-      position = item.position;
+      disappearedPosition = item.position;
     }
-    if (this.lastRead !== undefined && position > this.lastRead) {
+    if (this.lastRead !== undefined && disappearedPosition > this.lastRead) {
       if (!this.stid) {
         throw new Error("missing stid");
       }
-      backend.setLastRead(this.stid, position);
+      backend.setLastRead(this.stid, disappearedPosition);
     }
   }
 
@@ -188,6 +217,7 @@ export class MastStream extends LitElement {
       newItems.push({
         status: status,
         position: position,
+        isVisible: false,
         wasSeen: false,
         disappeared: false,
       });
@@ -221,6 +251,7 @@ export class MastStream extends LitElement {
       this.items.push({
         status: status,
         position: position,
+        isVisible: false,
         wasSeen: false,
         disappeared: false,
       });
@@ -259,6 +290,21 @@ export class MastStream extends LitElement {
   }
 
   render() {
+    let remaining = html`No available info`;
+    if (this.lastPosition !== undefined && this.lastVisiblePosition !== undefined && this.remainingPool !== undefined) {
+      // We've got:
+      //   - visible statuses which are already on stream but not yet on screen/loaded.
+      //   - statuses still in pool and not yet sorted in stream.
+      const count = this.remainingPool + this.lastPosition - this.lastVisiblePosition;
+      if (count == 0) {
+        remaining = html`End of stream`;
+      } else if (count == 1) {
+        remaining = html`1 remaining status`;
+      } else {
+        remaining = html`${count} remaining statuses`;
+      }
+    }
+
     return html`
       <div class="page">
         <div class="middlepane">
@@ -300,8 +346,8 @@ export class MastStream extends LitElement {
             </div></div>
           </div>
           <div class="footer">
-            <div class="footercontent">
-              Not yet in stream: ${this.remainingPool} (lastpos=${this.lastPosition})
+            <div class="footercontent centered">
+              ${remaining}
             </div>
           </div>
         </div>
