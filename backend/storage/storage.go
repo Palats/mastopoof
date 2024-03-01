@@ -456,8 +456,8 @@ func (st *Storage) SetServerState(ctx context.Context, db SQLQueryable, ss *Serv
 	}
 
 	// TODO: Fix schema to have a primary key / unique on `server_addr` maybe.
-	stmt := `UPDATE serverstate SET state = ? WHERE server_addr = ?`
-	_, err = db.ExecContext(ctx, stmt, state, ss.ServerAddr)
+	stmt := `UPDATE serverstate SET state = ? WHERE server_addr = ? AND json_extract(state, '$.redirect_uri')=?`
+	_, err = db.ExecContext(ctx, stmt, state, ss.ServerAddr, ss.RedirectURI)
 	if err != nil {
 		return err
 	}

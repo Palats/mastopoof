@@ -1,5 +1,3 @@
-
-
 ### UI style
  - Better title menu & logout button
  - Better “state of what’s remaining”
@@ -32,7 +30,6 @@
 - Stop hardcoding localhost:5173
 - Reuse mastodon clients
 
-
 ### Others
  - Tests
 
@@ -50,3 +47,4 @@
  - Add storage for session tokens
  - Allow for redirect-style auth
  - Fix spacing with a common value (.1rem -> xx px, css class)
+ - Fix serverstate updating
