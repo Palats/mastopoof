@@ -3,7 +3,6 @@
 ### UI style
  - Better title menu & logout button
  - Better “state of what’s remaining”
- - Fix spacing with a common value (.1rem -> xx px, css class)
  - Design auth pages
  - Sanitize html from statuses
 
@@ -50,3 +49,4 @@
  - Actually load the right stream instead of always stream 1.
  - Add storage for session tokens
  - Allow for redirect-style auth
+ - Fix spacing with a common value (.1rem -> xx px, css class)

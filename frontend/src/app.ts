@@ -350,10 +350,10 @@ export class MastStream extends LitElement {
     */
     .headercontent {
       background-color: #f7fdff;
-      padding: 0.5rem;
+      padding: 8px;
 
       border-bottom-style: double;
-      border-bottom-width: .2rem;
+      border-bottom-width: 3px;
 
       display: flex;
       align-items: center;
@@ -374,8 +374,8 @@ export class MastStream extends LitElement {
     .footercontent {
       background-color: #f7fdff;
       border-top-style: double;
-      border-top-width: .2rem;
-      padding: 0.5rem;
+      border-top-width: 3px;
+      padding: 8px;
     }
 
     .content {
@@ -391,16 +391,16 @@ export class MastStream extends LitElement {
 
     mast-status {
       width: 100%;
-      margin-bottom: 0.1rem;
+      margin-bottom: 1px;
     }
 
     .stream-beginning {
-      margin-bottom: 0.1rem;
+      margin-bottom: 1px;
     }
 
     .lastread {
       background-color: #dfa1a1;
-      margin-bottom: 0.1rem;
+      margin-bottom: 1px;
       font-style: italic;
     }
   `];
@@ -543,8 +543,8 @@ export class MastStatus extends LitElement {
   static styles = [commonCSS, css`
     .status {
       border-style: solid;
-      border-radius: .3rem;
-      border-width: .1rem;
+      border-radius: 4px;
+      border-width: 1px;
       padding: 0;
       background-color: #ffffff;
 
@@ -560,21 +560,21 @@ export class MastStatus extends LitElement {
     .account {
       display: flex;
       align-items: center;
-      padding: 0.2rem;
+      padding: 3px;
       justify-content: space-between;
     }
 
     .reblog {
       display: flex;
       align-items: center;
-      padding: 0.2rem;
+      padding: 2px;
       font-size: 0.8rem;
       font-style: italic;
     }
 
     .avatar {
       width: auto;
-      padding-right: 0.2rem;
+      padding-right: 3px;
     }
 
     .account .avatar {
@@ -589,7 +589,7 @@ export class MastStatus extends LitElement {
     }
 
     .content {
-      padding: 0.2rem;
+      padding: 4px;
     }
 
     .attachments {
@@ -609,8 +609,8 @@ export class MastStatus extends LitElement {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0.2rem;
-      margin-top: 0.2rem;
+      padding: 2px;
+      margin-top: 2px;
     }
   `];
 }
