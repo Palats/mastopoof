@@ -16,6 +16,7 @@
  - Link to user profile
  - Fetching from Mastodon from the UI
  - Display the time of posts
+ - Have proper auth UI for copy/pasting code vs automatic redirect.
 
 ### Frontend
  - Split each element class
@@ -29,7 +30,9 @@
 - Auth & fetch from CLI
 
 ### Backend
+- Stop hardcoding localhost:5173
 - Reuse mastodon clients
+
 
 ### Others
  - Tests
@@ -46,3 +49,4 @@
  - RPCs security
  - Actually load the right stream instead of always stream 1.
  - Add storage for session tokens
+ - Allow for redirect-style auth

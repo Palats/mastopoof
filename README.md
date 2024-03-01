@@ -67,7 +67,7 @@ curl --header 'Content-Type: application/json' --data '{"msg": "plop"}' http://l
 - serverstate
    - Per mastodon server info.
    - key: server_addr
-   - Keyed by mastodon server address
+   - Keyed by mastodon server address + redirect URI
    - Not linked to a specific account (neither mastodon nor mastopoof)
 - accountstate
    - Mastodon account state.

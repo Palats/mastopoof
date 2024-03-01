@@ -408,9 +408,10 @@ func (st *Storage) ListUsers(ctx context.Context, db SQLQueryable) ([]*ListUserE
 }
 
 // CreateServerState creates a server with the given address.
-func (st *Storage) CreateServerState(ctx context.Context, db SQLQueryable, serverAddr string) (*ServerState, error) {
+func (st *Storage) CreateServerState(ctx context.Context, db SQLQueryable, serverAddr string, redirectURI string) (*ServerState, error) {
 	ss := &ServerState{
-		ServerAddr: serverAddr,
+		ServerAddr:  serverAddr,
+		RedirectURI: redirectURI,
 	}
 
 	// Do not use SetServerState(), as it will not fail if that already exists.
@@ -429,11 +430,13 @@ func (st *Storage) CreateServerState(ctx context.Context, db SQLQueryable, serve
 
 // ServerState returns the current ServerState for a given, well, server.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) ServerState(ctx context.Context, db SQLQueryable, serverAddr string) (*ServerState, error) {
+func (st *Storage) ServerState(ctx context.Context, db SQLQueryable, serverAddr string, redirectURI string) (*ServerState, error) {
 	var state string
-	err := db.QueryRowContext(ctx, "SELECT state FROM serverstate WHERE server_addr=?", serverAddr).Scan(&state)
+	err := db.QueryRowContext(ctx,
+		"SELECT state FROM serverstate WHERE server_addr=? AND json_extract(state, '$.redirect_uri')=?",
+		serverAddr, redirectURI).Scan(&state)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("no state for server_addr=%s: %w", serverAddr, ErrNotFound)
+		return nil, fmt.Errorf("no state for server_addr=%s, redirect_uri=%s: %w", serverAddr, redirectURI, ErrNotFound)
 	}
 	if err != nil {
 		return nil, err

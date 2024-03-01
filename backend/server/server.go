@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -18,30 +17,21 @@ import (
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 )
 
-// redirectURIs is the list of URIs to list when registering the app on a
-// Mastodon server.
-var redirectURIs = []string{
-	"urn:ietf:wg:oauth:2.0:oob",
-	"http://localhost:5173",
-}
-
-// defaultRedirectURI is the URI to use in practice when going through the login
-// flow. It must be part of the list provided in `redirectURIs`.
-var defaultRedirectURI = redirectURIs[0]
-
 type Server struct {
 	st             *storage.Storage
 	mux            *http.ServeMux
 	autoLogin      int64
 	sessionManager *scs.SessionManager
+	getRedirectURI func(string) string
 }
 
-func New(st *storage.Storage, sm *scs.SessionManager, autoLogin int64) *Server {
+func New(st *storage.Storage, sm *scs.SessionManager, autoLogin int64, getRedirectURI func(string) string) *Server {
 	s := &Server{
 		st:             st,
 		sessionManager: sm,
 		autoLogin:      autoLogin,
 		mux:            http.NewServeMux(),
+		getRedirectURI: getRedirectURI,
 	}
 	return s
 }
@@ -111,6 +101,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 	if !strings.HasPrefix(serverAddr, "https://") {
 		return nil, fmt.Errorf("Mastodon server address should start with https:// ; got: %q", serverAddr)
 	}
+	redirectURI := s.getRedirectURI(serverAddr)
 
 	// TODO: split transactions to avoid remote requests in the middle.
 	txn, err := s.st.DB.BeginTx(ctx, nil)
@@ -119,10 +110,10 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 	}
 	defer txn.Rollback()
 
-	ss, err := s.st.ServerState(ctx, txn, serverAddr)
+	ss, err := s.st.ServerState(ctx, txn, serverAddr, redirectURI)
 	if errors.Is(err, storage.ErrNotFound) {
 		glog.Infof("Creating server state for %q", serverAddr)
-		ss, err = s.st.CreateServerState(ctx, txn, serverAddr)
+		ss, err = s.st.CreateServerState(ctx, txn, serverAddr, redirectURI)
 		if err != nil {
 			return nil, err
 		}
@@ -141,7 +132,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 			ClientName:   "mastopoof",
 			Scopes:       "read",
 			Website:      "https://github.com/Palats/mastopoof",
-			RedirectURIs: strings.Join(redirectURIs, "\n"),
+			RedirectURIs: redirectURI,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("unable to register app on server %s: %w", ss.ServerAddr, err)
@@ -149,7 +140,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 		ss.ClientID = app.ClientID
 		ss.ClientSecret = app.ClientSecret
 		ss.AuthURI = app.AuthURI
-		ss.RedirectURI = app.RedirectURI
+		ss.RedirectURI = redirectURI
 
 		if err := s.st.SetServerState(ctx, txn, ss); err != nil {
 			return nil, err
@@ -160,18 +151,8 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 		return nil, err
 	}
 
-	// Create my own auth URI to only have a specific redirect_uri.
-	addr, err := url.Parse(ss.ServerAddr)
-	addr.Path = "/oauth/authorize"
-	q := addr.Query()
-	q.Add("response_type", "code")
-	q.Add("client_id", ss.ClientID)
-	q.Add("redirect_uri", defaultRedirectURI)
-	q.Add("scope", "read")
-	addr.RawQuery = q.Encode()
-
 	return connect.NewResponse(&pb.AuthorizeResponse{
-		AuthorizeAddr: addr.String(),
+		AuthorizeAddr: ss.AuthURI,
 	}), nil
 }
 
@@ -181,6 +162,8 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	if !strings.HasPrefix(serverAddr, "https://") {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("Mastodon server address should start with https:// ; got: %q", serverAddr))
 	}
+	redirectURI := s.getRedirectURI(serverAddr)
+
 	authCode := req.Msg.AuthCode
 	if authCode == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("missing authcode"))
@@ -193,7 +176,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	}
 	defer txn.Rollback()
 
-	serverState, err := s.st.ServerState(ctx, txn, serverAddr)
+	serverState, err := s.st.ServerState(ctx, txn, serverAddr, redirectURI)
 	if err != nil {
 		// Do not create the server - it should have been created on a previous step. If it is not there,
 		// it is odd, so error out.
@@ -207,7 +190,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 		ClientSecret: serverState.ClientSecret,
 	})
 
-	err = client.AuthenticateToken(ctx, authCode, defaultRedirectURI)
+	err = client.AuthenticateToken(ctx, authCode, redirectURI)
 	if err != nil {
 		return nil, fmt.Errorf("unable to authenticate on server %s: %w", serverState.ServerAddr, err)
 	}

@@ -7,10 +7,12 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/alexedwards/scs/sqlite3store"
 	"github.com/alexedwards/scs/v2"
 	"github.com/davecgh/go-spew/spew"
@@ -23,6 +25,8 @@ import (
 
 	"github.com/Palats/mastopoof/backend/server"
 	"github.com/Palats/mastopoof/backend/storage"
+
+	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 
 	"github.com/Palats/mastopoof/proto/gen/mastopoof/mastopoofconnect"
 	_ "github.com/mattn/go-sqlite3"
@@ -49,6 +53,23 @@ func getStorage(ctx context.Context, filename string) (*storage.Storage, *sql.DB
 		return nil, nil, fmt.Errorf("unable to init storage: %w", err)
 	}
 	return st, db, nil
+}
+
+func getRedirectURI(serverAddr string) string {
+	// return "urn:ietf:wg:oauth:2.0:oob"
+
+	u := &url.URL{
+		Scheme: "http",
+		Host:   "localhost:5173",
+		Path:   "/_redirect",
+	}
+	// RedirectURI for auth must contain information about the mastodon server
+	// it is about. Otherwise, when getting a code back after auth, the server
+	// cannot know what it is about.
+	q := u.Query()
+	q.Set("host", serverAddr)
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 func cmdUsers(ctx context.Context, st *storage.Storage) error {
@@ -204,11 +225,42 @@ func cmdServe(_ context.Context, st *storage.Storage, autoLogin int64) error {
 
 	mux := http.NewServeMux()
 
-	s := server.New(st, sessionManager, autoLogin)
+	s := server.New(st, sessionManager, autoLogin, getRedirectURI)
 
 	api := http.NewServeMux()
 	api.Handle(mastopoofconnect.NewMastopoofHandler(s))
 	mux.Handle("/_rpc/", http.StripPrefix("/_rpc", api))
+	mux.Handle("/_redirect", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		ctx := req.Context()
+
+		if req.Method != "GET" {
+			http.Error(w, "invalid method", http.StatusBadRequest)
+			return
+		}
+		authCode := req.URL.Query().Get("code")
+		if authCode == "" {
+			http.Error(w, "missing code", http.StatusBadRequest)
+			return
+		}
+		serverAddr := req.URL.Query().Get("host")
+		if serverAddr == "" {
+			http.Error(w, "missing host", http.StatusBadRequest)
+			return
+		}
+		glog.Infof("redirect for serverAddr: %v", serverAddr)
+
+		_, err := s.Token(ctx, connect.NewRequest(&pb.TokenRequest{
+			ServerAddr: serverAddr,
+			AuthCode:   authCode,
+		}))
+		if err != nil {
+			msg := fmt.Sprintf("unable to identify: %v", err)
+			glog.Errorf(msg)
+			http.Error(w, msg, http.StatusForbidden)
+			return
+		}
+		http.Redirect(w, req, "http://localhost:5173", http.StatusFound)
+	}))
 
 	addr := fmt.Sprintf(":%d", *port)
 	fmt.Printf("Listening on %s...\n", addr)
@@ -378,7 +430,7 @@ func run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		ss, err := st.ServerState(ctx, st.DB, as.ServerAddr)
+		ss, err := st.ServerState(ctx, st.DB, as.ServerAddr, getRedirectURI(as.ServerAddr))
 		if err != nil {
 			return err
 		}
@@ -404,7 +456,7 @@ func run(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			ss, err := st.ServerState(ctx, st.DB, as.ServerAddr)
+			ss, err := st.ServerState(ctx, st.DB, as.ServerAddr, getRedirectURI(as.ServerAddr))
 			if err != nil {
 				return err
 			}
