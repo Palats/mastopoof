@@ -40,6 +40,8 @@ var (
 	userID     = flag.Int64("uid", 0, "User ID to use for commands. With 'serve', will auto login that user.")
 	streamID   = flag.Int64("stream_id", 1, "Stream to use")
 	dbFilename = flag.String("db", "./mastopoof.db", "SQLite file")
+	// For subcmd `me` only.
+	showAccount = flag.Bool("show_account", false, "Query and show account state from Mastodon server")
 )
 
 func getStorage(ctx context.Context, filename string) (*storage.Storage, *sql.DB, error) {
@@ -414,16 +416,14 @@ func run(ctx context.Context) error {
 		},
 	})
 
-	cmdMeDef := &cobra.Command{
+	rootCmd.AddCommand(&cobra.Command{
 		Use:   "me",
 		Short: "Get information about one's own account.",
 		Args:  cobra.NoArgs,
-	}
-	showAccount := cmdMeDef.PersistentFlags().Bool("account", false, "Query and show account state from Mastodon server")
-	cmdMeDef.RunE = func(cmd *cobra.Command, args []string) error {
-		return cmdMe(ctx, st, *showAccount)
-	}
-	rootCmd.AddCommand(cmdMeDef)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmdMe(ctx, st, *showAccount)
+		},
+	})
 
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "fetch",
