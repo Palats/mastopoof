@@ -13,7 +13,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// ServerState contains information about a server - most notably, its app registration.
+// ServerState contains information about a Mastodon server - most notably, its app registration.
 type ServerState struct {
 	ServerAddr string `json:"server_addr"`
 
@@ -748,26 +748,6 @@ func (st *Storage) Opened(ctx context.Context, stid int64) ([]*Item, error) {
 	}
 
 	return results, txn.Commit()
-}
-
-// LastPosition returns the position of the latest added status in the stream.
-// Returns (0, nil) if there the stream is currently empty.
-func (st *Storage) LastPosition(ctx context.Context, stid int64, db SQLQueryable) (int64, error) {
-	var position int64
-	err := db.QueryRowContext(ctx, `
-		SELECT
-			position
-		FROM
-			streamcontent
-		WHERE
-			stid = ?
-		ORDER BY position DESC
-		LIMIT 1
-	`, stid).Scan(&position)
-	if err != nil && err != sql.ErrNoRows {
-		return 0, err
-	}
-	return position, nil
 }
 
 // StatusAt gets the status at the provided position in the stream.

@@ -89,35 +89,53 @@ func cmdUsers(ctx context.Context, st *storage.Storage) error {
 	return nil
 }
 
-func cmdInfo(ctx context.Context, st *storage.Storage) error {
-	txn, err := st.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer txn.Rollback()
-
-	as, err := st.AccountStateByUID(ctx, txn, *userID)
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("Local account UID:", *userID)
-	fmt.Println("Server address:", as.ServerAddr)
-	fmt.Println("Last home status ID:", as.LastHomeStatusID)
-
-	// Should be readonly.
-	return txn.Commit()
-}
-
 func cmdClearStream(ctx context.Context, st *storage.Storage) error {
 	stid := *streamID
 	return st.ClearStream(ctx, stid)
 }
 
-func cmdMe(ctx context.Context, st *storage.Storage, client *mastodon.Client) error {
-	stid := *streamID
+func cmdMe(ctx context.Context, st *storage.Storage, showAccount bool) error {
+	uid := *userID
+	fmt.Println("# User ID:", uid)
 
-	if client != nil {
+	userState, err := st.UserState(ctx, st.DB, uid)
+	if err != nil {
+		return err
+	}
+	fmt.Println("# Default stream ID:", userState.DefaultStID)
+	stid := userState.DefaultStID
+
+	accountState, err := st.AccountStateByUID(ctx, st.DB, uid)
+	if err != nil {
+		return err
+	}
+	fmt.Println("# Server address:", accountState.ServerAddr)
+	fmt.Println("# Last home status ID:", accountState.LastHomeStatusID)
+
+	serverState, err := st.ServerState(ctx, st.DB, accountState.ServerAddr, getRedirectURI(accountState.ServerAddr))
+	if err != nil {
+		return err
+	}
+	fmt.Println("# Auth URI:", serverState.AuthURI)
+	fmt.Println("# Redirect URI:", serverState.RedirectURI)
+
+	streamState, err := st.StreamState(ctx, st.DB, stid)
+	if err != nil {
+		return err
+	}
+	fmt.Println("# First position:", streamState.FirstPosition)
+	fmt.Println("# Last recorded position:", streamState.LastPosition)
+	fmt.Println("# Last read position:", streamState.LastRead)
+	fmt.Println("# Remaining in pool:", streamState.Remaining)
+
+	var client *mastodon.Client
+	if showAccount {
+		client = mastodon.NewClient(&mastodon.Config{
+			Server:       serverState.ServerAddr,
+			ClientID:     serverState.ClientID,
+			ClientSecret: serverState.ClientSecret,
+			AccessToken:  accountState.AccessToken,
+		})
 		fmt.Println("# Mastodon Account")
 		account, err := client.GetAccountCurrentUser(ctx)
 		if err != nil {
@@ -126,21 +144,6 @@ func cmdMe(ctx context.Context, st *storage.Storage, client *mastodon.Client) er
 		spew.Dump(account)
 		fmt.Println()
 	}
-
-	lastPosition, err := st.LastPosition(ctx, stid, st.DB)
-	if err != nil {
-		return err
-	}
-	fmt.Println("# Position of last status in stream:", lastPosition)
-
-	streamState, err := st.StreamState(ctx, st.DB, stid)
-	if err != nil {
-		return err
-	}
-	fmt.Println("# First position:", streamState.FirstPosition)
-	fmt.Println("# Last position:", streamState.LastPosition)
-	fmt.Println("# Last read position:", streamState.LastRead)
-	fmt.Println("# Remaining in pool:", streamState.Remaining)
 	return nil
 }
 
@@ -395,14 +398,6 @@ func run(ctx context.Context) error {
 	})
 
 	rootCmd.AddCommand(&cobra.Command{
-		Use:   "info",
-		Short: "Current account config info",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdInfo(ctx, st)
-		},
-	})
-	rootCmd.AddCommand(&cobra.Command{
 		Use:   "clear-app",
 		Short: "Remove app registrations from local DB, forcing Mastopoof to recreate them when needed.",
 		Args:  cobra.NoArgs,
@@ -426,24 +421,7 @@ func run(ctx context.Context) error {
 	}
 	showAccount := cmdMeDef.PersistentFlags().Bool("account", false, "Query and show account state from Mastodon server")
 	cmdMeDef.RunE = func(cmd *cobra.Command, args []string) error {
-		as, err := st.AccountStateByUID(ctx, st.DB, *userID)
-		if err != nil {
-			return err
-		}
-		ss, err := st.ServerState(ctx, st.DB, as.ServerAddr, getRedirectURI(as.ServerAddr))
-		if err != nil {
-			return err
-		}
-		var client *mastodon.Client
-		if *showAccount {
-			client = mastodon.NewClient(&mastodon.Config{
-				Server:       ss.ServerAddr,
-				ClientID:     ss.ClientID,
-				ClientSecret: ss.ClientSecret,
-				AccessToken:  as.AccessToken,
-			})
-		}
-		return cmdMe(ctx, st, client)
+		return cmdMe(ctx, st, *showAccount)
 	}
 	rootCmd.AddCommand(cmdMeDef)
 
