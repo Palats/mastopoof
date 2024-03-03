@@ -14,27 +14,13 @@ function fuzzy(ref: number, deltaRatio: number): number {
 
 // Event type when info about the stream/pool is updated.
 export class StreamUpdateEvent extends Event {
-    prev: StreamInfo = {};
-    curr: StreamInfo = {};
+    prev?: pb.StreamInfo;
+    curr?: pb.StreamInfo;
 }
 
 export class LoginUpdateEvent extends Event {
     state: LoginState = LoginState.LOADING;
     userInfo?: pb.UserInfo;
-}
-
-export interface StreamInfo {
-    // The stream ID.
-    // TODO: make it possible to change it while running.
-    stid?: number;
-    // The last-read status position, from this frontend perspective - i.e.,
-    // including local updates which might not have been propagated to the
-    // server.
-    lastRead?: number;
-    // Highest position in the stream.
-    lastPosition?: number;
-    // Number of status in the pool but not in the stream.
-    remaining?: number;
 }
 
 export enum LoginState {
@@ -47,7 +33,7 @@ export enum LoginState {
 }
 
 export class Backend {
-    private streamInfo: StreamInfo = {};
+    private streamInfo?: pb.StreamInfo;
 
     // Events:
     //  'stream-update': Fired when last-read is changed. Gives a StreamUpdateEvent event.
@@ -70,9 +56,11 @@ export class Backend {
     // Update the last-read position on the server. It will be rate limited,
     // so not all call might be immediately effective. It will always use the last value.
     public setLastRead(stid: number, position: number) {
-        const old = { ... this.streamInfo };
-        this.streamInfo.lastRead = position;
-        this.streamInfo.stid = stid;
+        const old = this.streamInfo;
+        this.streamInfo = old ? old.clone() : new pb.StreamInfo();
+
+        this.streamInfo.lastRead = BigInt(position);
+        this.streamInfo.stid = BigInt(stid);
         this.lastReadDirty = true;
         if (!this.lastReadQueued) {
             this.lastReadQueued = true;
@@ -80,7 +68,7 @@ export class Backend {
         }
         const evt = new StreamUpdateEvent("stream-update");
         evt.prev = old;
-        evt.curr = { ... this.streamInfo };
+        evt.curr = this.streamInfo;
         this.onEvent.dispatchEvent(evt);
     }
 
@@ -88,6 +76,10 @@ export class Backend {
     async updateLastRead() {
         if (!this.lastReadDirty) {
             this.lastReadQueued = false;
+            return;
+        }
+        if (!this.streamInfo) {
+            console.error("missing stream info");
             return;
         }
 
@@ -104,13 +96,11 @@ export class Backend {
     public async list(request: protobuf.PartialMessage<pb.ListRequest>) {
         const resp = await this.client.list(request);
 
-        const old = { ... this.streamInfo }
-        this.streamInfo.lastRead = Number(resp.lastRead);
-        this.streamInfo.lastPosition = Number(resp.lastPosition);
-        this.streamInfo.remaining = Number(resp.remainingPool);
+        const old = this.streamInfo;
+        this.streamInfo = resp.streamInfo;
         const evt = new StreamUpdateEvent("stream-update");
         evt.prev = old;
-        evt.curr = { ... this.streamInfo };
+        evt.curr = this.streamInfo;
         this.onEvent.dispatchEvent(evt);
 
         return resp;

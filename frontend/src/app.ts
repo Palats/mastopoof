@@ -126,9 +126,12 @@ export class MastStream extends LitElement {
     });
 
     backend.onEvent.addEventListener("stream-update", ((evt: StreamUpdateEvent) => {
-      this.lastRead = evt.curr.lastRead;
-      this.lastPosition = evt.curr.lastPosition;
-      this.remainingPool = evt.curr.remaining;
+      if (evt.curr) {
+        this.lastRead = Number(evt.curr.lastRead);
+        this.lastPosition = Number(evt.curr.lastPosition);
+        this.remainingPool = Number(evt.curr.remainingPool);
+
+      }
     }) as EventListener);
 
     // Trigger loading of content.

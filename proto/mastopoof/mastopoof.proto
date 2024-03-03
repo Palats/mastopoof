@@ -35,6 +35,21 @@ message UserInfo {
     int64 default_stid = 1;
 }
 
+// Information about the state of the stream.
+// This is independent of what the response containing is about - for example,
+// `last_position` contains the last position in the stream, no matter what
+// `List` was returning.
+message StreamInfo {
+    int64 stid = 1;
+
+    // Position of last-read item.
+    int64 last_read = 2;
+    // Position of the last item in the stream.
+    int64 last_position = 3;
+    // Remaining status still in the pool and not yet added to the stream.
+    int64 remaining_pool = 4;
+}
+
 message LoginRequest {}
 
 message LoginResponse {
@@ -127,15 +142,10 @@ message ListResponse {
     State backward_state = 4;
     State forward_state = 6;
 
-    // Position of last-read item.
-    // Can be outside the range of items directly returned in this response.
-    int64 last_read = 5;
-    // Position of the last item in the stream. This is specified even if the
-    // returned statuses are in the middle of the stream and do not include the
-    // last one.
-    int64 last_position = 7;
-    // Remaining status still in the pool and not yet added to the stream.
-    int64 remaining_pool = 8;
+    StreamInfo stream_info = 9;
+
+    reserved 5, 7, 8;
+    reserved "last_read", "last_position", "remaining_pool";
 }
 
 message SetReadRequest {

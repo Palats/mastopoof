@@ -297,9 +297,12 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 		return nil, fmt.Errorf("unknown direction %v", req.Msg.Direction)
 	}
 
-	resp.LastRead = listResult.StreamState.LastRead
-	resp.LastPosition = listResult.StreamState.LastPosition
-	resp.RemainingPool = listResult.StreamState.Remaining
+	resp.StreamInfo = &pb.StreamInfo{
+		Stid:          stid,
+		LastRead:      listResult.StreamState.LastRead,
+		LastPosition:  listResult.StreamState.LastPosition,
+		RemainingPool: listResult.StreamState.Remaining,
+	}
 	resp.BackwardState = pb.ListResponse_PARTIAL
 	if listResult.HasFirst {
 		resp.BackwardState = pb.ListResponse_DONE
