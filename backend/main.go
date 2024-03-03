@@ -35,7 +35,6 @@ import (
 var _ = spew.Sdump("")
 
 var (
-	serverAddr = flag.String("server", "", "Mastodon server to track. Only needed when authenticating.")
 	port       = flag.Int("port", 8079, "Port to listen on for the 'serve' command")
 	userID     = flag.Int64("uid", 0, "User ID to use for commands. With 'serve', will auto login that user.")
 	streamID   = flag.Int64("stream_id", 1, "Stream to use")
@@ -44,7 +43,8 @@ var (
 	showAccount = flag.Bool("show_account", false, "Query and show account state from Mastodon server")
 )
 
-func getStorage(ctx context.Context, filename string) (*storage.Storage, *sql.DB, error) {
+func getStorage(ctx context.Context) (*storage.Storage, *sql.DB, error) {
+	filename := *dbFilename
 	db, err := sql.Open("sqlite3", filename)
 	if err != nil {
 		return nil, nil, fmt.Errorf("unable to open storage %s: %w", filename, err)
@@ -74,6 +74,14 @@ func getRedirectURI(serverAddr string) string {
 	return u.String()
 }
 
+func getUserID(_ context.Context, _ *storage.Storage) (int64, error) {
+	return *userID, nil
+}
+
+func getStreamID(_ context.Context, _ *storage.Storage) (int64, error) {
+	return *streamID, nil
+}
+
 func cmdUsers(ctx context.Context, st *storage.Storage) error {
 	userList, err := st.ListUsers(ctx, st.DB)
 	if err != nil {
@@ -91,13 +99,11 @@ func cmdUsers(ctx context.Context, st *storage.Storage) error {
 	return nil
 }
 
-func cmdClearStream(ctx context.Context, st *storage.Storage) error {
-	stid := *streamID
+func cmdClearStream(ctx context.Context, st *storage.Storage, stid int64) error {
 	return st.ClearStream(ctx, stid)
 }
 
-func cmdMe(ctx context.Context, st *storage.Storage, showAccount bool) error {
-	uid := *userID
+func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool) error {
 	fmt.Println("# User ID:", uid)
 
 	userState, err := st.UserState(ctx, st.DB, uid)
@@ -149,7 +155,7 @@ func cmdMe(ctx context.Context, st *storage.Storage, showAccount bool) error {
 	return nil
 }
 
-func cmdFetch(ctx context.Context, st *storage.Storage, accountState *storage.AccountState, client *mastodon.Client) error {
+func cmdFetch(ctx context.Context, st *storage.Storage, uid int64, accountState *storage.AccountState, client *mastodon.Client) error {
 	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -188,7 +194,7 @@ func cmdFetch(ctx context.Context, st *storage.Storage, accountState *storage.Ac
 				return err
 			}
 			stmt := `INSERT INTO statuses(uid, uri, status) VALUES(?, ?, ?)`
-			_, err = txn.ExecContext(ctx, stmt, *userID, status.URI, jsonString)
+			_, err = txn.ExecContext(ctx, stmt, uid, status.URI, jsonString)
 			if err != nil {
 				return err
 			}
@@ -276,8 +282,8 @@ func cmdServe(_ context.Context, st *storage.Storage, autoLogin int64) error {
 	)
 }
 
-func cmdList(ctx context.Context, st *storage.Storage) error {
-	rows, err := st.DB.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, *userID)
+func cmdList(ctx context.Context, st *storage.Storage, uid int64) error {
+	rows, err := st.DB.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, uid)
 	if err != nil {
 		return err
 	}
@@ -298,8 +304,8 @@ func cmdList(ctx context.Context, st *storage.Storage) error {
 	return nil
 }
 
-func cmdDumpStatus(ctx context.Context, st *storage.Storage, args []string) error {
-	rows, err := st.DB.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, *userID)
+func cmdDumpStatus(ctx context.Context, st *storage.Storage, uid int64, args []string) error {
+	rows, err := st.DB.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, uid)
 	if err != nil {
 		return err
 	}
@@ -323,9 +329,7 @@ func cmdDumpStatus(ctx context.Context, st *storage.Storage, args []string) erro
 	return nil
 }
 
-func cmdPickNext(ctx context.Context, st *storage.Storage) error {
-	stid := *streamID
-
+func cmdPickNext(ctx context.Context, st *storage.Storage, stid int64) error {
 	ost, err := st.PickNext(ctx, stid)
 	if err != nil {
 		return err
@@ -334,9 +338,7 @@ func cmdPickNext(ctx context.Context, st *storage.Storage) error {
 	return nil
 }
 
-func cmdSetRead(ctx context.Context, st *storage.Storage, position int64) error {
-	stid := *streamID
-
+func cmdSetRead(ctx context.Context, st *storage.Storage, stid int64, position int64) error {
 	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -363,8 +365,8 @@ func cmdSetRead(ctx context.Context, st *storage.Storage, position int64) error 
 	return txn.Commit()
 }
 
-func cmdShowOpened(ctx context.Context, st *storage.Storage) error {
-	opened, err := st.Opened(ctx, *streamID)
+func cmdShowOpened(ctx context.Context, st *storage.Storage, stid int64) error {
+	opened, err := st.Opened(ctx, stid)
 	if err != nil {
 		return err
 	}
@@ -378,12 +380,6 @@ func cmdShowOpened(ctx context.Context, st *storage.Storage) error {
 }
 
 func run(ctx context.Context) error {
-	st, db, err := getStorage(ctx, *dbFilename)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
 	var rootCmd = &cobra.Command{
 		Use:   "mastopoof",
 		Short: "Mastopoof is a Mastodon client",
@@ -395,6 +391,12 @@ func run(ctx context.Context) error {
 		Short: "List users",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			st, db, err := getStorage(ctx)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
 			return cmdUsers(ctx, st)
 		},
 	})
@@ -404,6 +406,12 @@ func run(ctx context.Context) error {
 		Short: "Remove app registrations from local DB, forcing Mastopoof to recreate them when needed.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			st, db, err := getStorage(ctx)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
 			return st.ClearApp(ctx)
 		},
 	})
@@ -412,7 +420,18 @@ func run(ctx context.Context) error {
 		Short: "Remove all statuses from the stream, as if nothing was ever looked at.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdClearStream(ctx, st)
+			st, db, err := getStorage(ctx)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			stid, err := getStreamID(ctx, st)
+			if err != nil {
+				return err
+			}
+
+			return cmdClearStream(ctx, st, stid)
 		},
 	})
 
@@ -421,7 +440,18 @@ func run(ctx context.Context) error {
 		Short: "Get information about one's own account.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdMe(ctx, st, *showAccount)
+			st, db, err := getStorage(ctx)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			uid, err := getUserID(ctx, st)
+			if err != nil {
+				return err
+			}
+
+			return cmdMe(ctx, st, uid, *showAccount)
 		},
 	})
 
@@ -430,7 +460,18 @@ func run(ctx context.Context) error {
 		Short: "Fetch recent home content and add it to the DB.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			as, err := st.AccountStateByUID(ctx, st.DB, *userID)
+			st, db, err := getStorage(ctx)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			uid, err := getUserID(ctx, st)
+			if err != nil {
+				return err
+			}
+
+			as, err := st.AccountStateByUID(ctx, st.DB, uid)
 			if err != nil {
 				return err
 			}
@@ -444,7 +485,7 @@ func run(ctx context.Context) error {
 				ClientSecret: ss.ClientSecret,
 				AccessToken:  as.AccessToken,
 			})
-			return cmdFetch(ctx, st, as, client)
+			return cmdFetch(ctx, st, uid, as, client)
 		},
 	})
 
@@ -453,7 +494,18 @@ func run(ctx context.Context) error {
 		Short: "Run mastopoof backend server",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdServe(ctx, st, *userID)
+			st, db, err := getStorage(ctx)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			uid, err := getUserID(ctx, st)
+			if err != nil {
+				return err
+			}
+
+			return cmdServe(ctx, st, uid)
 		},
 	})
 
@@ -462,14 +514,36 @@ func run(ctx context.Context) error {
 		Short: "Get list of known statuses",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdList(ctx, st)
+			st, db, err := getStorage(ctx)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			uid, err := getUserID(ctx, st)
+			if err != nil {
+				return err
+			}
+
+			return cmdList(ctx, st, uid)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "dump-status",
 		Short: "Display one status, identified by ID",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdDumpStatus(ctx, st, args)
+			st, db, err := getStorage(ctx)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			uid, err := getUserID(ctx, st)
+			if err != nil {
+				return err
+			}
+
+			return cmdDumpStatus(ctx, st, uid, args)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
@@ -477,7 +551,18 @@ func run(ctx context.Context) error {
 		Short: "Add a status to the stream",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdPickNext(ctx, st)
+			st, db, err := getStorage(ctx)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			stid, err := getStreamID(ctx, st)
+			if err != nil {
+				return err
+			}
+
+			return cmdPickNext(ctx, st, stid)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
@@ -485,6 +570,17 @@ func run(ctx context.Context) error {
 		Short: "Set the already-read pointer",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			st, db, err := getStorage(ctx)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			stid, err := getStreamID(ctx, st)
+			if err != nil {
+				return err
+			}
+
 			position := int64(-1)
 			if len(args) > 0 {
 				position, err = strconv.ParseInt(args[0], 10, 64)
@@ -492,7 +588,7 @@ func run(ctx context.Context) error {
 					return err
 				}
 			}
-			return cmdSetRead(ctx, st, position)
+			return cmdSetRead(ctx, st, stid, position)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
@@ -500,7 +596,18 @@ func run(ctx context.Context) error {
 		Short: "List currently opened statuses (picked & not read)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmdShowOpened(ctx, st)
+			st, db, err := getStorage(ctx)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			stid, err := getStreamID(ctx, st)
+			if err != nil {
+				return err
+			}
+
+			return cmdShowOpened(ctx, st, stid)
 		},
 	})
 
