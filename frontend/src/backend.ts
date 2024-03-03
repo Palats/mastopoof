@@ -171,4 +171,8 @@ export class Backend {
         evt.userInfo = resp.userInfo;
         this.onEvent.dispatchEvent(evt);
     }
+
+    public async fetch(stid: number) {
+        await this.client.fetch({ stid: BigInt(stid) });
+    }
 }

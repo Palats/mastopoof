@@ -17,6 +17,9 @@ service Mastopoof {
     rpc List(ListRequest) returns (ListResponse);
     // Set the position of the read-marker.
     rpc SetRead(SetReadRequest) returns (SetReadResponse);
+
+    // Contact the Mastodon server and add more statuses to the pool.
+    rpc Fetch(FetchRequest) returns (FetchResponse);
 }
 
 message PingRequest {
@@ -144,3 +147,10 @@ message SetReadRequest {
 }
 
 message SetReadResponse {}
+
+message FetchRequest {
+    // The stream pool to add statuses to.
+    int64 stid = 1;
+}
+
+message FetchResponse {}

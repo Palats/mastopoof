@@ -1079,3 +1079,21 @@ func (st *Storage) ListForward(ctx context.Context, stid int64, refPosition int6
 
 	return result, txn.Commit()
 }
+
+// InsertStatuses add the given statuses to the user storage.
+// It does not update other info.
+func (st *Storage) InsertStatuses(ctx context.Context, txn *sql.Tx, uid int64, statuses []*mastodon.Status) error {
+	for _, status := range statuses {
+		jsonString, err := json.Marshal(status)
+		if err != nil {
+			return err
+		}
+		// TODO: batching
+		stmt := `INSERT INTO statuses(uid, uri, status) VALUES(?, ?, ?)`
+		_, err = txn.ExecContext(ctx, stmt, uid, status.URI, jsonString)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

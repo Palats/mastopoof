@@ -261,6 +261,16 @@ export class MastStream extends LitElement {
     this.requestUpdate();
   }
 
+  async fetch() {
+    const stid = this.stid;
+    if (!stid) {
+      throw new Error("missing stream id");
+    }
+    console.log("Fetching...");
+    await backend.fetch(stid);
+    console.log("Fetching done.");
+  }
+
   updateStatusRef(item: StatusItem, elt?: Element) {
     if (!this.observer) {
       return;
@@ -348,6 +358,7 @@ export class MastStream extends LitElement {
           <div class="footer">
             <div class="footercontent centered">
               ${remaining}
+              <button @click=${this.fetch}>Fetch</button>
             </div>
           </div>
         </div>

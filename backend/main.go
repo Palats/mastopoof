@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
@@ -153,77 +152,6 @@ func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool
 		fmt.Println()
 	}
 	return nil
-}
-
-func cmdFetch(ctx context.Context, st *storage.Storage, uid int64, accountState *storage.AccountState, client *mastodon.Client) error {
-	txn, err := st.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer txn.Rollback()
-
-	fetchCount := 0
-	// Do multiple fetching, until either up to date, or up to a boundary to avoid infinite loops by mistake.
-	for fetchCount < 10 {
-		// Pagination object is updated by GetTimelimeHome, based on the `Link` header
-		// returned by the API - see https://docs.joinmastodon.org/api/guidelines/#pagination .
-		// In practice, it seems:
-		//  - MinID is set to the most recent ID returned (from the "prev" Link, which is for future statuses)
-		//  - MaxID is set to an older ID (from the "next" Link, which is for older status)
-		//  - SinceID, Limit are empty/0.
-		// See https://github.com/mattn/go-mastodon/blob/9faaa4f0dc23d9001ccd1010a9a51f56ba8d2f9f/mastodon.go#L317
-		// It seems that if MaxID and MinID are identical, it means the end has been reached and some result were given.
-		// And if there is no MaxID, the end has been reached.
-		pg := &mastodon.Pagination{
-			MinID: accountState.LastHomeStatusID,
-		}
-		glog.Infof("Fetching from %s", pg.MinID)
-		timeline, err := client.GetTimelineHome(ctx, pg)
-		if err != nil {
-			return err
-		}
-		glog.Infof("Found %d new status on home timeline", len(timeline))
-
-		for _, status := range timeline {
-			if storage.IDNewer(status.ID, accountState.LastHomeStatusID) {
-				accountState.LastHomeStatusID = status.ID
-			}
-
-			jsonString, err := json.Marshal(status)
-			if err != nil {
-				return err
-			}
-			stmt := `INSERT INTO statuses(uid, uri, status) VALUES(?, ?, ?)`
-			_, err = txn.ExecContext(ctx, stmt, uid, status.URI, jsonString)
-			if err != nil {
-				return err
-			}
-		}
-
-		fetchCount++
-		// Pagination got updated.
-		if pg.MinID != accountState.LastHomeStatusID {
-			// Either there is a mismatch in the data or no `Link` was returned
-			// - in either case, we don't know enough to safely continue.
-			glog.Infof("no returned MinID / ID mismatch, stopping fetch")
-			break
-		}
-		if pg.MaxID == "" || pg.MaxID == pg.MinID {
-			// We've reached the end - either nothing was fetched, or just the
-			// latest ones.
-			break
-		}
-		if len(timeline) == 0 {
-			// Nothing was returned, assume it is because we've reached the end.
-			break
-		}
-	}
-
-	if err := st.SetAccountState(ctx, txn, accountState); err != nil {
-		return err
-	}
-
-	return txn.Commit()
 }
 
 func cmdServe(_ context.Context, st *storage.Storage, autoLogin int64) error {
@@ -405,40 +333,6 @@ func run(ctx context.Context) error {
 			}
 
 			return cmdMe(ctx, st, uid, *showAccount)
-		},
-	})
-
-	rootCmd.AddCommand(&cobra.Command{
-		Use:   "fetch",
-		Short: "Fetch recent home content and add it to the DB.",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx)
-			if err != nil {
-				return err
-			}
-			defer db.Close()
-
-			uid, err := getUserID(ctx, st)
-			if err != nil {
-				return err
-			}
-
-			as, err := st.AccountStateByUID(ctx, st.DB, uid)
-			if err != nil {
-				return err
-			}
-			ss, err := st.ServerState(ctx, st.DB, as.ServerAddr, getRedirectURI(as.ServerAddr))
-			if err != nil {
-				return err
-			}
-			client := mastodon.NewClient(&mastodon.Config{
-				Server:       ss.ServerAddr,
-				ClientID:     ss.ClientID,
-				ClientSecret: ss.ClientSecret,
-				AccessToken:  as.AccessToken,
-			})
-			return cmdFetch(ctx, st, uid, as, client)
 		},
 	})
 

@@ -12,6 +12,7 @@
  - Fetching from Mastodon from the UI
  - Display the time of posts
  - Have proper auth UI for copy/pasting code vs automatic redirect.
+ - Info when fetching
 
 ### Frontend
  - Split each element class
@@ -24,12 +25,18 @@
 
 ### CLI
 - Auth & fetch from CLI
+- Have mechanism to have CLI use server internally
 
 ### Backend
 - Stop hardcoding localhost:5173
 - Reuse mastodon clients
+- Find a better mechanism to manage the various redirect URI and getting a client when no redirect is needed anyway.
+- Have fetch as server RPC
+- Fix management of stream "maintained" metadata - like number of remaining statuses and the like.
 
 ### Others
+ - Fix model of stream/user/account/pool
+    - E.g., it seems that the pool is not related to the stream in "fetch"?
  - Tests
 
 
