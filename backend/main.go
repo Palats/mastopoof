@@ -282,53 +282,6 @@ func cmdServe(_ context.Context, st *storage.Storage, autoLogin int64) error {
 	)
 }
 
-func cmdList(ctx context.Context, st *storage.Storage, uid int64) error {
-	rows, err := st.DB.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, uid)
-	if err != nil {
-		return err
-	}
-	for rows.Next() {
-		var jsonString string
-		if err := rows.Scan(&jsonString); err != nil {
-			return err
-		}
-		var status mastodon.Status
-		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
-			return err
-		}
-		fmt.Printf("Status %s: %s\n", status.ID, status.URL)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func cmdDumpStatus(ctx context.Context, st *storage.Storage, uid int64, args []string) error {
-	rows, err := st.DB.QueryContext(ctx, `SELECT status FROM statuses WHERE uid = ?`, uid)
-	if err != nil {
-		return err
-	}
-	for rows.Next() {
-		var jsonString string
-		if err := rows.Scan(&jsonString); err != nil {
-			return err
-		}
-		var status mastodon.Status
-		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
-			return err
-		}
-
-		for _, a := range args {
-			if a != string(status.ID) {
-				continue
-			}
-			spew.Dump(status)
-		}
-	}
-	return nil
-}
-
 func cmdPickNext(ctx context.Context, st *storage.Storage, stid int64) error {
 	ost, err := st.PickNext(ctx, stid)
 	if err != nil {
@@ -506,44 +459,6 @@ func run(ctx context.Context) error {
 			}
 
 			return cmdServe(ctx, st, uid)
-		},
-	})
-
-	rootCmd.AddCommand(&cobra.Command{
-		Use:   "list",
-		Short: "Get list of known statuses",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx)
-			if err != nil {
-				return err
-			}
-			defer db.Close()
-
-			uid, err := getUserID(ctx, st)
-			if err != nil {
-				return err
-			}
-
-			return cmdList(ctx, st, uid)
-		},
-	})
-	rootCmd.AddCommand(&cobra.Command{
-		Use:   "dump-status",
-		Short: "Display one status, identified by ID",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx)
-			if err != nil {
-				return err
-			}
-			defer db.Close()
-
-			uid, err := getUserID(ctx, st)
-			if err != nil {
-				return err
-			}
-
-			return cmdDumpStatus(ctx, st, uid, args)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{
