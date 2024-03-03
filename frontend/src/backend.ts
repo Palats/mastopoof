@@ -101,8 +101,8 @@ export class Backend {
         setTimeout(() => this.updateLastRead(), 1000);
     }
 
-    public async fetch(request: protobuf.PartialMessage<pb.FetchRequest>) {
-        const resp = await this.client.fetch(request);
+    public async list(request: protobuf.PartialMessage<pb.ListRequest>) {
+        const resp = await this.client.list(request);
 
         const old = { ... this.streamInfo }
         this.streamInfo.lastRead = Number(resp.lastRead);

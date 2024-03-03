@@ -12,8 +12,9 @@ service Mastopoof {
     rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
     rpc Token(TokenRequest) returns (TokenResponse);
 
-    // Fetch statuses.
-    rpc Fetch(FetchRequest) returns (FetchResponse);
+    // List statuses available in the stream, inserting from the pool
+    // if needed.
+    rpc List(ListRequest) returns (ListResponse);
     // Set the position of the read-marker.
     rpc SetRead(SetReadRequest) returns (SetReadResponse);
 }
@@ -79,7 +80,7 @@ message MastodonStatus {
     string content = 1;
 }
 
-message FetchRequest {
+message ListRequest {
     enum Direction {
         // If unspecified - behaves as "INITIAL".
         DEFAULT = 0;
@@ -99,7 +100,7 @@ message FetchRequest {
     int64 stid = 3;
 }
 
-message FetchResponse {
+message ListResponse {
     // Ordered list of statuses.
     // If empty, another INITIAL request will need to be done later.
     repeated Item items = 1;

@@ -903,7 +903,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, stid int64, txn *sql.Tx, s
 	}, nil
 }
 
-type FetchResult struct {
+type ListResult struct {
 	HasFirst bool
 	HasLast  bool
 	Items    []*Item
@@ -911,10 +911,10 @@ type FetchResult struct {
 	StreamState *StreamState
 }
 
-// FetchBackward get statuses before the provided position.
+// ListBackward get statuses before the provided position.
 // It can insert things in the stream if necessary.
 // refPosition must be strictly positive - i.e., refer to an actual position.
-func (st *Storage) FetchBackward(ctx context.Context, stid int64, refPosition int64) (*FetchResult, error) {
+func (st *Storage) ListBackward(ctx context.Context, stid int64, refPosition int64) (*ListResult, error) {
 	if refPosition < 1 {
 		return nil, fmt.Errorf("invalid position %d", refPosition)
 	}
@@ -925,7 +925,7 @@ func (st *Storage) FetchBackward(ctx context.Context, stid int64, refPosition in
 	}
 	defer txn.Rollback()
 
-	result := &FetchResult{}
+	result := &ListResult{}
 
 	streamState, err := st.StreamState(ctx, txn, stid)
 	if err != nil {
@@ -986,10 +986,10 @@ func (st *Storage) FetchBackward(ctx context.Context, stid int64, refPosition in
 	return result, txn.Commit()
 }
 
-// FetchForward get statuses after the provided position.
+// ListForward get statuses after the provided position.
 // It can insert things in the stream if necessary.
 // If refPosition is 0, gives data around the provided position.
-func (st *Storage) FetchForward(ctx context.Context, stid int64, refPosition int64) (*FetchResult, error) {
+func (st *Storage) ListForward(ctx context.Context, stid int64, refPosition int64) (*ListResult, error) {
 	if refPosition < 0 {
 		return nil, fmt.Errorf("invalid position %d", refPosition)
 	}
@@ -1000,7 +1000,7 @@ func (st *Storage) FetchForward(ctx context.Context, stid int64, refPosition int
 	}
 	defer txn.Rollback()
 
-	result := &FetchResult{}
+	result := &ListResult{}
 
 	streamState, err := st.StreamState(ctx, txn, stid)
 	if err != nil {

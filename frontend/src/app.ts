@@ -95,12 +95,12 @@ export class MastStream extends LitElement {
   private perEltItem = new Map<Element, StatusItem>();
 
   private backwardPosition: number = 0;
-  private backwardState: pb.FetchResponse_State = pb.FetchResponse_State.UNKNOWN;
+  private backwardState: pb.ListResponse_State = pb.ListResponse_State.UNKNOWN;
   private forwardPosition: number = 0;
-  private forwardState: pb.FetchResponse_State = pb.FetchResponse_State.UNKNOWN;
+  private forwardState: pb.ListResponse_State = pb.ListResponse_State.UNKNOWN;
 
   // Set to false when the first fetch of status (after auth) is done.
-  private isInitialFetch = true;
+  private isInitialList = true;
 
   private observer?: IntersectionObserver;
 
@@ -198,13 +198,13 @@ export class MastStream extends LitElement {
     if (!stid) {
       throw new Error("missing stream id");
     }
-    const resp = await backend.fetch({ stid: BigInt(stid), position: BigInt(this.backwardPosition), direction: pb.FetchRequest_Direction.BACKWARD })
+    const resp = await backend.list({ stid: BigInt(stid), position: BigInt(this.backwardPosition), direction: pb.ListRequest_Direction.BACKWARD })
 
     if (resp.backwardPosition > 0) {
       this.backwardPosition = Number(resp.backwardPosition);
       this.backwardState = resp.backwardState;
     }
-    if (resp.forwardPosition > 0 && this.forwardState === pb.FetchResponse_State.UNKNOWN) {
+    if (resp.forwardPosition > 0 && this.forwardState === pb.ListResponse_State.UNKNOWN) {
       this.forwardPosition = Number(resp.forwardPosition);
       this.forwardState = resp.forwardState;
     }
@@ -233,9 +233,9 @@ export class MastStream extends LitElement {
       throw new Error("missing stream id");
     }
 
-    const resp = await backend.fetch({ stid: BigInt(stid), position: BigInt(this.forwardPosition), direction: pb.FetchRequest_Direction.FORWARD })
+    const resp = await backend.list({ stid: BigInt(stid), position: BigInt(this.forwardPosition), direction: pb.ListRequest_Direction.FORWARD })
 
-    if (resp.backwardPosition > 0 && this.backwardState === pb.FetchResponse_State.UNKNOWN) {
+    if (resp.backwardPosition > 0 && this.backwardState === pb.ListResponse_State.UNKNOWN) {
       this.backwardPosition = Number(resp.backwardPosition);
       this.backwardState = resp.backwardState;
     }
@@ -257,7 +257,7 @@ export class MastStream extends LitElement {
       });
     }
     // Always indicate that initial loading is done - this is a latch anyway.
-    this.isInitialFetch = false;
+    this.isInitialList = false;
     this.requestUpdate();
   }
 
@@ -320,8 +320,8 @@ export class MastStream extends LitElement {
             </div>
           </div>
           <div class="content">
-            ${this.isInitialFetch ? html`<div class="contentitem"><div class="centered">Loading...</div></div>` : html``}
-            <div class="noanchor contentitem stream-beginning bg-blue-300 centered">${this.backwardState === pb.FetchResponse_State.DONE ? html`
+            ${this.isInitialList ? html`<div class="contentitem"><div class="centered">Loading...</div></div>` : html``}
+            <div class="noanchor contentitem stream-beginning bg-blue-300 centered">${this.backwardState === pb.ListResponse_State.DONE ? html`
               <div>Beginning of stream.</div>
             `: html`
               <button @click=${this.loadPrevious}>
@@ -334,7 +334,7 @@ export class MastStream extends LitElement {
 
             ${repeat(this.items, item => item.position, (item, _) => this.renderStatus(item))}
 
-            <div class="noanchor contentitem bg-blue-300 stream-end"><div class="centered">${this.forwardState === pb.FetchResponse_State.DONE ? html`
+            <div class="noanchor contentitem bg-blue-300 stream-end"><div class="centered">${this.forwardState === pb.ListResponse_State.DONE ? html`
               Nothing more right now. <button @click=${this.loadNext}>Try again</button>
             `: html`
               <button @click=${this.loadNext}>

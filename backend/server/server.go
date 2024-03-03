@@ -265,52 +265,52 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	}), nil
 }
 
-func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {
+func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest]) (*connect.Response[pb.ListResponse], error) {
 	stid := req.Msg.Stid
 	if err := s.verifyStID(ctx, stid); err != nil {
 		return nil, err
 	}
 
-	resp := &pb.FetchResponse{}
+	resp := &pb.ListResponse{}
 
 	var err error
-	var fetchResult *storage.FetchResult
+	var listResult *storage.ListResult
 	switch req.Msg.Direction {
-	case pb.FetchRequest_FORWARD, pb.FetchRequest_DEFAULT:
-		fetchResult, err = s.st.FetchForward(ctx, stid, req.Msg.Position)
+	case pb.ListRequest_FORWARD, pb.ListRequest_DEFAULT:
+		listResult, err = s.st.ListForward(ctx, stid, req.Msg.Position)
 		if err != nil {
 			return nil, err
 		}
-		resp.ForwardState = pb.FetchResponse_PARTIAL
-		if fetchResult.HasLast {
-			resp.ForwardState = pb.FetchResponse_DONE
+		resp.ForwardState = pb.ListResponse_PARTIAL
+		if listResult.HasLast {
+			resp.ForwardState = pb.ListResponse_DONE
 		}
-	case pb.FetchRequest_BACKWARD:
-		fetchResult, err = s.st.FetchBackward(ctx, stid, req.Msg.Position)
+	case pb.ListRequest_BACKWARD:
+		listResult, err = s.st.ListBackward(ctx, stid, req.Msg.Position)
 		if err != nil {
 			return nil, err
 		}
 		// Looking backward never checks for potential extra statuses to insert
 		// into the stream, so it cannot say anything about.
-		resp.ForwardState = pb.FetchResponse_UNKNOWN
+		resp.ForwardState = pb.ListResponse_UNKNOWN
 	default:
 		return nil, fmt.Errorf("unknown direction %v", req.Msg.Direction)
 	}
 
-	resp.LastRead = fetchResult.StreamState.LastRead
-	resp.LastPosition = fetchResult.StreamState.LastPosition
-	resp.RemainingPool = fetchResult.StreamState.Remaining
-	resp.BackwardState = pb.FetchResponse_PARTIAL
-	if fetchResult.HasFirst {
-		resp.BackwardState = pb.FetchResponse_DONE
+	resp.LastRead = listResult.StreamState.LastRead
+	resp.LastPosition = listResult.StreamState.LastPosition
+	resp.RemainingPool = listResult.StreamState.Remaining
+	resp.BackwardState = pb.ListResponse_PARTIAL
+	if listResult.HasFirst {
+		resp.BackwardState = pb.ListResponse_DONE
 	}
 
-	if len(fetchResult.Items) > 0 {
-		resp.BackwardPosition = fetchResult.Items[0].Position
-		resp.ForwardPosition = fetchResult.Items[len(fetchResult.Items)-1].Position
+	if len(listResult.Items) > 0 {
+		resp.BackwardPosition = listResult.Items[0].Position
+		resp.ForwardPosition = listResult.Items[len(listResult.Items)-1].Position
 	}
 
-	for _, item := range fetchResult.Items {
+	for _, item := range listResult.Items {
 		raw, err := json.Marshal(item.Status)
 		if err != nil {
 			return nil, err
