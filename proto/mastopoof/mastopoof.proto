@@ -156,7 +156,9 @@ message SetReadRequest {
     int64 stid = 2;
 }
 
-message SetReadResponse {}
+message SetReadResponse {
+    StreamInfo stream_info = 1;
+}
 
 message FetchRequest {
     // The stream pool to add statuses to.

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 
+	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	"github.com/golang/glog"
 	"github.com/mattn/go-mastodon"
 
@@ -66,6 +67,15 @@ type StreamState struct {
 	LastPosition int64 `json:"last_position"`
 	// Remaining statuses in the pool which are not yet added in the stream.
 	Remaining int64 `json:"remaining"`
+}
+
+func (ss *StreamState) ToStreamInfo() *pb.StreamInfo {
+	return &pb.StreamInfo{
+		Stid:          ss.StID,
+		LastRead:      ss.LastRead,
+		LastPosition:  ss.LastPosition,
+		RemainingPool: ss.Remaining,
+	}
 }
 
 type SQLQueryable interface {

@@ -53,6 +53,15 @@ export class Backend {
         this.onEvent = new EventTarget();
     }
 
+    private updateStreamInfo(streamInfo?: pb.StreamInfo) {
+        if (!streamInfo) { return; }
+        const evt = new StreamUpdateEvent("stream-update");
+        evt.prev = this.streamInfo;
+        evt.curr = streamInfo;
+        this.streamInfo = streamInfo;
+        this.onEvent.dispatchEvent(evt);
+    }
+
     // Update the last-read position on the server. It will be rate limited,
     // so not all call might be immediately effective. It will always use the last value.
     public setLastRead(stid: number, position: number) {
@@ -88,21 +97,15 @@ export class Backend {
         // only called after `setLastRead` which does not allow for it.
         const promise = this.client.setRead({ stid: BigInt(this.streamInfo.stid!), lastRead: BigInt(this.streamInfo.lastRead!) });
         this.lastReadDirty = false;
-        await promise;
+        const resp = await promise;
+        this.updateStreamInfo(resp.streamInfo);
 
         setTimeout(() => this.updateLastRead(), 1000);
     }
 
     public async list(request: protobuf.PartialMessage<pb.ListRequest>) {
         const resp = await this.client.list(request);
-
-        const old = this.streamInfo;
-        this.streamInfo = resp.streamInfo;
-        const evt = new StreamUpdateEvent("stream-update");
-        evt.prev = old;
-        evt.curr = this.streamInfo;
-        this.onEvent.dispatchEvent(evt);
-
+        this.updateStreamInfo(resp.streamInfo);
         return resp;
     }
 

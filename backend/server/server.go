@@ -297,12 +297,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 		return nil, fmt.Errorf("unknown direction %v", req.Msg.Direction)
 	}
 
-	resp.StreamInfo = &pb.StreamInfo{
-		Stid:          stid,
-		LastRead:      listResult.StreamState.LastRead,
-		LastPosition:  listResult.StreamState.LastPosition,
-		RemainingPool: listResult.StreamState.Remaining,
-	}
+	resp.StreamInfo = listResult.StreamState.ToStreamInfo()
 	resp.BackwardState = pb.ListResponse_PARTIAL
 	if listResult.HasFirst {
 		resp.BackwardState = pb.ListResponse_DONE
@@ -346,7 +341,9 @@ func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadReq
 	if err := s.st.SetStreamState(ctx, s.st.DB, streamState); err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(&pb.SetReadResponse{}), nil
+	return connect.NewResponse(&pb.SetReadResponse{
+		StreamInfo: streamState.ToStreamInfo(),
+	}), nil
 }
 
 func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {
