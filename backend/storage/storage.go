@@ -1092,18 +1092,32 @@ func (st *Storage) ListForward(ctx context.Context, stid int64, refPosition int6
 
 // InsertStatuses add the given statuses to the user storage.
 // It does not update other info.
-func (st *Storage) InsertStatuses(ctx context.Context, txn *sql.Tx, uid int64, statuses []*mastodon.Status) error {
+func (st *Storage) InsertStatuses(ctx context.Context, txn *sql.Tx, uid int64, statuses []*mastodon.Status) (*StreamState, error) {
 	for _, status := range statuses {
 		jsonString, err := json.Marshal(status)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		// TODO: batching
 		stmt := `INSERT INTO statuses(uid, uri, status) VALUES(?, ?, ?)`
 		_, err = txn.ExecContext(ctx, stmt, uid, status.URI, jsonString)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+
+	// Keep stats up-to-date for the stream.
+	userState, err := st.UserState(ctx, txn, uid)
+	if err != nil {
+		return nil, err
+	}
+	streamState, err := st.StreamState(ctx, txn, userState.DefaultStID)
+	if err != nil {
+		return nil, err
+	}
+	streamState.Remaining += int64(len(statuses))
+	if err := st.SetStreamState(ctx, txn, streamState); err != nil {
+		return nil, err
+	}
+	return streamState, nil
 }

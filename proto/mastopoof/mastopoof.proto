@@ -165,4 +165,7 @@ message FetchRequest {
     int64 stid = 1;
 }
 
-message FetchResponse {}
+message FetchResponse {
+    StreamInfo stream_info = 1;
+    int64 fetched_count = 2;
+}

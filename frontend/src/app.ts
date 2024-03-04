@@ -270,8 +270,8 @@ export class MastStream extends LitElement {
       throw new Error("missing stream id");
     }
     console.log("Fetching...");
-    await backend.fetch(stid);
-    console.log("Fetching done.");
+    const resp = await backend.fetch(stid);
+    console.log(`${resp.fetchedCount} statuses fetched.`);
   }
 
   updateStatusRef(item: StatusItem, elt?: Element) {
@@ -297,7 +297,7 @@ export class MastStream extends LitElement {
     const content: TemplateResult[] = [];
     content.push(html`<mast-status class="statustrack contentitem" ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .stid=${this.stid} .item=${item as any}></mast-status>`);
     if (item.position == this.lastRead) {
-      content.push(html`<div class="lastread contentitem centered">You were here.</div>`);
+      content.push(html`<div class="lastread contentitem centered">The bookmark</div>`);
     }
     return content;
   }

@@ -436,9 +436,14 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		return nil, err
 	}
 
-	if err := s.st.InsertStatuses(ctx, txn, uid, statuses); err != nil {
+	// TODO: mess of stream state - there is another version above.
+	streamState, err = s.st.InsertStatuses(ctx, txn, uid, statuses)
+	if err != nil {
 		return nil, err
 	}
 
-	return connect.NewResponse(&pb.FetchResponse{}), txn.Commit()
+	return connect.NewResponse(&pb.FetchResponse{
+		FetchedCount: int64(len(statuses)),
+		StreamInfo:   streamState.ToStreamInfo(),
+	}), txn.Commit()
 }

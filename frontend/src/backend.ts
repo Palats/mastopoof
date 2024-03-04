@@ -166,6 +166,8 @@ export class Backend {
     }
 
     public async fetch(stid: number) {
-        await this.client.fetch({ stid: BigInt(stid) });
+        const resp = await this.client.fetch({ stid: BigInt(stid) });
+        this.updateStreamInfo(resp.streamInfo);
+        return resp;
     }
 }
