@@ -1,3 +1,8 @@
+### Missing for personal use
+ - Initialization - how much history to initally load.
+ - Automated loading on scroll down.
+ - Allow configuration of automated loading.
+
 ### UI style
  - Better title menu & logout button
  - Design auth pages

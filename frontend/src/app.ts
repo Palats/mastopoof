@@ -116,6 +116,8 @@ export class MastStream extends LitElement {
   // discarded.
   @state() private remainingPool?: number;
 
+  @state() private showMenu = false;
+
   connectedCallback(): void {
     super.connectedCallback();
     this.observer = new IntersectionObserver(
@@ -293,15 +295,6 @@ export class MastStream extends LitElement {
     item.elt = elt;
   }
 
-  renderStatus(item: StatusItem): TemplateResult[] {
-    const content: TemplateResult[] = [];
-    content.push(html`<mast-status class="statustrack contentitem" ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .stid=${this.stid} .item=${item as any}></mast-status>`);
-    if (item.position == this.lastRead) {
-      content.push(html`<div class="lastread contentitem centered">The bookmark</div>`);
-    }
-    return content;
-  }
-
   render() {
     let remaining = html`No available info`;
     if (this.lastPosition !== undefined && this.lastVisiblePosition !== undefined && this.remainingPool !== undefined) {
@@ -324,7 +317,7 @@ export class MastStream extends LitElement {
           <div class="header">
             <div class="headercontent">
               <div>
-                <button style="font-size: 24px"><span class="material-symbols-outlined" title="More...">menu</span></button>
+                <button style="font-size: 24px" @click=${() => { this.showMenu = !this.showMenu }}><span class="material-symbols-outlined" title="More...">menu</span></button>
                 Mastopoof - Stream
               </div>
               <div>
@@ -332,31 +325,13 @@ export class MastStream extends LitElement {
             </div>
             </div>
           </div>
+          ${this.showMenu ? html`
+          <div class="menu">
+            <div class="menucontent">${this.renderMenu()}</div>
+          </div>`: nothing}
           <div class="content">
-            ${this.isInitialList ? html`<div class="contentitem"><div class="centered">Loading...</div></div>` : html``}
-            <div class="noanchor contentitem stream-beginning bg-blue-300 centered">${this.backwardState === pb.ListResponse_State.DONE ? html`
-              <div>Beginning of stream.</div>
-            `: html`
-              <button @click=${this.loadPrevious}>
-                <span class="material-symbols-outlined">arrow_upward</span>
-                Load earlier statuses
-                <span class="material-symbols-outlined">arrow_upward</span>
-              </button>
-            `}
-            </div>
+            ${this.renderStreamContent()}
 
-            ${repeat(this.items, item => item.position, (item, _) => this.renderStatus(item))}
-
-            <div class="noanchor contentitem bg-blue-300 stream-end"><div class="centered">${this.forwardState === pb.ListResponse_State.DONE ? html`
-              Nothing more right now. <button @click=${this.loadNext}>Try again</button>
-            `: html`
-              <button @click=${this.loadNext}>
-                <span class="material-symbols-outlined">arrow_downward</span>
-                Load more statuses
-                <span class="material-symbols-outlined">arrow_downward</span>
-              </button>
-            `}
-            </div></div>
           </div>
           <div class="footer">
             <div class="footercontent centered">
@@ -367,6 +342,54 @@ export class MastStream extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  renderMenu(): TemplateResult {
+    return html`
+      <div>plop</div>
+      <div>coin</div>
+      <button @click=${() => backend.logout()}>Logout</button>
+    `;
+  }
+
+  renderStreamContent(): TemplateResult {
+    return html`
+      ${this.isInitialList ? html`<div class="contentitem"><div class="centered">Loading...</div></div>` : nothing}
+      <div class="noanchor contentitem stream-beginning bg-blue-300 centered">${this.backwardState === pb.ListResponse_State.DONE ? html`
+        <div>Beginning of stream.</div>
+      `: html`
+        <button @click=${this.loadPrevious}>
+          <span class="material-symbols-outlined">arrow_upward</span>
+          Load earlier statuses
+          <span class="material-symbols-outlined">arrow_upward</span>
+        </button>
+      `}
+      </div>
+
+      ${repeat(this.items, item => item.position, (item, _) => this.renderStatus(item))}
+
+      <div class="noanchor contentitem bg-blue-300 stream-end">
+        <div class="centered">${this.forwardState === pb.ListResponse_State.DONE ? html`
+          Nothing more right now. <button @click=${this.loadNext}>Try again</button>
+        `: html`
+          <button @click=${this.loadNext}>
+            <span class="material-symbols-outlined">arrow_downward</span>
+            Load more statuses
+            <span class="material-symbols-outlined">arrow_downward</span>
+          </button>
+        `}
+        </div>
+      </div>
+    `;
+  }
+
+  renderStatus(item: StatusItem): TemplateResult[] {
+    const content: TemplateResult[] = [];
+    content.push(html`<mast-status class="statustrack contentitem" ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .stid=${this.stid} .item=${item as any}></mast-status>`);
+    if (item.position == this.lastRead) {
+      content.push(html`<div class="lastread contentitem centered">The bookmark</div>`);
+    }
+    return content;
   }
 
   static styles = [commonCSS, css`
@@ -435,6 +458,22 @@ export class MastStream extends LitElement {
       background-color: #f7fdff;
       border-top-style: double;
       border-top-width: 3px;
+      padding: 8px;
+    }
+
+    .menu {
+      position: fixed;
+      top: 60px;
+      z-index: 2;
+      background-color: #f7fdff;
+      border-style: double;
+      min-width: 100px;
+      width: 600px;
+      box-sizing: border-box;
+      box-shadow: rgb(0 0 0 / 80%) 0px 16px 12px;
+    }
+
+    .menucontent {
       padding: 8px;
     }
 
