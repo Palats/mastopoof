@@ -24,6 +24,7 @@ import (
 
 	"github.com/Palats/mastopoof/backend/server"
 	"github.com/Palats/mastopoof/backend/storage"
+	"github.com/Palats/mastopoof/frontend"
 
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 
@@ -155,6 +156,11 @@ func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool
 }
 
 func cmdServe(_ context.Context, st *storage.Storage, autoLogin int64) error {
+	content, err := frontend.Content()
+	if err != nil {
+		return err
+	}
+
 	sessionManager := scs.New()
 	sessionManager.Store = sqlite3store.New(st.DB)
 	sessionManager.Lifetime = 90 * 24 * time.Hour
@@ -163,6 +169,7 @@ func cmdServe(_ context.Context, st *storage.Storage, autoLogin int64) error {
 	sessionManager.Cookie.Secure = true
 
 	mux := http.NewServeMux()
+	mux.Handle("/", http.FileServer(http.FS(content)))
 
 	s := server.New(st, sessionManager, autoLogin, getRedirectURI)
 

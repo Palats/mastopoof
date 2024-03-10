@@ -1,7 +1,7 @@
 ### Missing for personal use
  - Initialization - how much history to initally load.
  - Automated loading on scroll down.
- - Allow configuration of automated loading.
+ - Allow configuration of automated loading
 
 ### UI style
  - Better title menu & logout button
@@ -60,3 +60,4 @@
  - Fix spacing with a common value (.1rem -> xx px, css class)
  - Fix serverstate updating
  - Better “state of what’s remaining”
+ - Serve static content.

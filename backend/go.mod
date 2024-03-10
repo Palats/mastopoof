@@ -4,6 +4,7 @@ go 1.21.5
 
 require (
 	connectrpc.com/connect v1.14.0
+	github.com/Palats/mastopoof/frontend v0.0.0
 	github.com/Palats/mastopoof/proto v0.0.0
 	github.com/alexedwards/scs/sqlite3store v0.0.0-20240203174419-a38e822451b6
 	github.com/alexedwards/scs/v2 v2.7.0
@@ -25,3 +26,5 @@ require (
 )
 
 replace github.com/Palats/mastopoof/proto v0.0.0 => ../proto
+
+replace github.com/Palats/mastopoof/frontend v0.0.0 => ../frontend
