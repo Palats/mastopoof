@@ -317,11 +317,14 @@ export class MastStream extends LitElement {
           <div class="header">
             <div class="headercontent">
               <div>
-                <button style="font-size: 24px" @click=${() => { this.showMenu = !this.showMenu }}><span class="material-symbols-outlined" title="More...">menu</span></button>
+                <button style="font-size: 24px" @click=${() => { this.showMenu = !this.showMenu }}>
+                  ${this.showMenu ? html`
+                  <span class="material-symbols-outlined" title="Close menu">close</span>
+                  `: html`
+                  <span class="material-symbols-outlined" title="Open menu">menu</span>
+                  `}
+                </button>
                 Mastopoof - Stream
-              </div>
-              <div>
-                <button @click=${() => backend.logout()}>Logout</button>
               </div>
             </div>
             ${this.showMenu ? html`<div class="menucontent">${this.renderMenu()}</div>` : nothing}
