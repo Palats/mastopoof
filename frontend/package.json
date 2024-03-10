@@ -9,16 +9,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@bufbuild/protobuf": "1.6.0",
-    "@connectrpc/connect": "1.2.1",
-    "@connectrpc/connect-web": "1.2.1",
+    "@bufbuild/protobuf": "1.7.2",
+    "@connectrpc/connect": "1.4.0",
+    "@connectrpc/connect-web": "1.4.0",
     "@lit-labs/virtualizer": "2.0.12",
-    "lit": "3.1.1",
-    "mastopoof-proto": "file:../proto",
-    "rxjs": "7.8.1"
+    "lit": "3.1.2",
+    "mastopoof-proto": "file:../proto"
   },
   "devDependencies": {
-    "typescript": "5.3.3",
-    "vite": "4.5.1"
+    "typescript": "5.4.2",
+    "vite": "5.1.5"
   }
 }
