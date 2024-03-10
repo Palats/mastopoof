@@ -33,7 +33,6 @@
 - Have mechanism to have CLI use server internally
 
 ### Backend
-- Stop hardcoding localhost:5173
 - Reuse mastodon clients
 - Find a better mechanism to manage the various redirect URI and getting a client when no redirect is needed anyway.
 - Have fetch as server RPC
@@ -61,3 +60,4 @@
  - Fix serverstate updating
  - Better “state of what’s remaining”
  - Serve static content.
+ - Stop hardcoding localhost:5173

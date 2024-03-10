@@ -41,6 +41,7 @@ var (
 	dbFilename = flag.String("db", "./mastopoof.db", "SQLite file")
 	// For subcmd `me` only.
 	showAccount = flag.Bool("show_account", false, "Query and show account state from Mastodon server")
+	redirectURL = flag.String("redirect_url", "", "URL to use for authentication redirection on the frontend. When empty, uses out-of-band auth.")
 )
 
 func getStorage(ctx context.Context) (*storage.Storage, *sql.DB, error) {
@@ -57,21 +58,8 @@ func getStorage(ctx context.Context) (*storage.Storage, *sql.DB, error) {
 	return st, db, nil
 }
 
-func getRedirectURI(serverAddr string) string {
-	// return "urn:ietf:wg:oauth:2.0:oob"
-
-	u := &url.URL{
-		Scheme: "http",
-		Host:   "localhost:5173",
-		Path:   "/_redirect",
-	}
-	// RedirectURI for auth must contain information about the mastodon server
-	// it is about. Otherwise, when getting a code back after auth, the server
-	// cannot know what it is about.
-	q := u.Query()
-	q.Set("host", serverAddr)
-	u.RawQuery = q.Encode()
-	return u.String()
+func getRedirectURL() string {
+	return *redirectURL
 }
 
 func getUserID(_ context.Context, _ *storage.Storage) (int64, error) {
@@ -80,6 +68,32 @@ func getUserID(_ context.Context, _ *storage.Storage) (int64, error) {
 
 func getStreamID(_ context.Context, _ *storage.Storage) (int64, error) {
 	return *streamID, nil
+}
+
+func redirectURIFunc(target string) (func(string) string, error) {
+	if target == "" {
+		return func(string) string {
+			return "urn:ietf:wg:oauth:2.0:oob"
+		}, nil
+	}
+
+	baseURL, err := url.Parse(target)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse redirect URI %q: %w", target, err)
+	}
+	baseURL = baseURL.JoinPath("_redirect")
+	glog.Infof("Using redirect URI %s", baseURL)
+
+	return func(serverAddr string) string {
+		// RedirectURI for auth must contain information about the mastodon server
+		// it is about. Otherwise, when getting a code back after auth, the server
+		// cannot know what it is about.
+		u := *baseURL // Make a copy to not modify the base URL.
+		q := u.Query()
+		q.Set("host", serverAddr)
+		u.RawQuery = q.Encode()
+		return u.String()
+	}, nil
 }
 
 func cmdUsers(ctx context.Context, st *storage.Storage) error {
@@ -120,7 +134,11 @@ func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool
 	fmt.Println("# Server address:", accountState.ServerAddr)
 	fmt.Println("# Last home status ID:", accountState.LastHomeStatusID)
 
-	serverState, err := st.ServerState(ctx, st.DB, accountState.ServerAddr, getRedirectURI(accountState.ServerAddr))
+	redirectURIFunc, err := redirectURIFunc(getRedirectURL())
+	if err != nil {
+		return err
+	}
+	serverState, err := st.ServerState(ctx, st.DB, accountState.ServerAddr, redirectURIFunc(accountState.ServerAddr))
 	if err != nil {
 		return err
 	}
@@ -171,7 +189,13 @@ func cmdServe(_ context.Context, st *storage.Storage, autoLogin int64) error {
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.FS(content)))
 
-	s := server.New(st, sessionManager, autoLogin, getRedirectURI)
+	redirectURL := getRedirectURL()
+	redirectURIFunc, err := redirectURIFunc(redirectURL)
+	if err != nil {
+		return err
+	}
+
+	s := server.New(st, sessionManager, autoLogin, redirectURIFunc)
 
 	api := http.NewServeMux()
 	api.Handle(mastopoofconnect.NewMastopoofHandler(s))
@@ -205,7 +229,12 @@ func cmdServe(_ context.Context, st *storage.Storage, autoLogin int64) error {
 			http.Error(w, msg, http.StatusForbidden)
 			return
 		}
-		http.Redirect(w, req, "http://localhost:5173", http.StatusFound)
+
+		if redirectURL == "" {
+			fmt.Fprintf(w, "Auth done, no redirect configured.")
+		} else {
+			http.Redirect(w, req, redirectURL, http.StatusFound)
+		}
 	}))
 
 	addr := fmt.Sprintf(":%d", *port)

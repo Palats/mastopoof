@@ -4,43 +4,17 @@ A Mastodon client
 
 ## Dev setup
 
+One time:
 - Run `npm install` in `frontend/` and in `proto/`
 - Run `npm run gen` to regenerate protobuf modules
 
-### Backend
-Authentication is kept in the DB.
+To run:
+- Start `go run main.go --alsologtostderr serve` in `backend/` ; `--redirect_url http://localhost:5173` to have auth redirection.
+- Start `npm run dev` in `frontend/`
 
-Initial auth:
-
-```
-go run main.go --server https://mastodon.social auth
-```
-
-Reauth:
-
-```
-go run main.go --server https://mastodon.social --clear_app --clear_auth auth
-```
-
-Server:
-
-```
-go run main.go --alsologtostderr serve
-```
-
-### Frontend
-
-Initial setup:
-
-```
-npm install
-```
-
-Run:
-
-```
-npm run dev
-```
+To use built-in frontend:
+- Run `npm run build` in `frontend/`
+- Start `go run main.go --alsologtostderr serve --redirect_url http://localhost:8079` in `backend/`
 
 ### Comms
 
