@@ -322,16 +322,13 @@ export class MastStream extends LitElement {
               </div>
               <div>
                 <button @click=${() => backend.logout()}>Logout</button>
+              </div>
             </div>
-            </div>
+            ${this.showMenu ? html`<div class="menucontent">${this.renderMenu()}</div>` : nothing}
           </div>
-          ${this.showMenu ? html`
-          <div class="menu">
-            <div class="menucontent">${this.renderMenu()}</div>
-          </div>`: nothing}
+
           <div class="content">
             ${this.renderStreamContent()}
-
           </div>
           <div class="footer">
             <div class="footercontent centered">
@@ -420,11 +417,11 @@ export class MastStream extends LitElement {
       top: 0;
       z-index: 2;
       box-sizing: border-box;
-      min-height: 60px;
+      min-height: 50px;
       background-color: #e0e0e0;
 
-      display: grid;
-      grid-template-rows: 1fr;
+      display: flex;
+      flex-direction: column;
     }
 
     /* Header content is separated from header styling. This way, the header
@@ -435,12 +432,20 @@ export class MastStream extends LitElement {
       background-color: #f7fdff;
       padding: 8px;
 
+      min-height: 50px;
+
       border-bottom-style: double;
       border-bottom-width: 3px;
 
       display: flex;
       align-items: center;
       justify-content: space-between;
+    }
+
+    .menucontent {
+      padding: 8px;
+      background-color: #f7fdff;
+      box-shadow: rgb(0 0 0 / 80%) 0px 16px 12px;
     }
 
     .footer {
@@ -458,22 +463,6 @@ export class MastStream extends LitElement {
       background-color: #f7fdff;
       border-top-style: double;
       border-top-width: 3px;
-      padding: 8px;
-    }
-
-    .menu {
-      position: fixed;
-      top: 60px;
-      z-index: 2;
-      background-color: #f7fdff;
-      border-style: double;
-      min-width: 100px;
-      width: 600px;
-      box-sizing: border-box;
-      box-shadow: rgb(0 0 0 / 80%) 0px 16px 12px;
-    }
-
-    .menucontent {
       padding: 8px;
     }
 
