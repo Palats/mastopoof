@@ -3,6 +3,7 @@ import { customElement, state, property } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { Ref, createRef, ref } from 'lit/directives/ref.js';
+import { classMap } from 'lit/directives/class-map.js';
 
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import { Backend, StreamUpdateEvent, LoginUpdateEvent, LoginState } from "./backend";
@@ -384,9 +385,11 @@ export class MastStream extends LitElement {
   }
 
   renderStatus(item: StatusItem): TemplateResult[] {
+    const lastRead = this.lastRead ?? 0;
+    const pos = item.position;
     const content: TemplateResult[] = [];
-    content.push(html`<mast-status class="statustrack contentitem" ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .stid=${this.stid} .item=${item as any}></mast-status>`);
-    if (item.position == this.lastRead) {
+    content.push(html`<mast-status ?isRead=${pos <= lastRead} class="contentitem" ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .stid=${this.stid} .item=${item as any}></mast-status>`);
+    if (item.position == lastRead) {
       content.push(html`<div class="lastread contentitem centered">The bookmark</div>`);
     }
     return content;
@@ -555,6 +558,9 @@ export class MastStatus extends LitElement {
   @property({ attribute: false })
   stid?: number;
 
+  @property({ type: Boolean })
+  isRead: boolean = false;
+
   @state()
   private accessor showRaw = false;
 
@@ -591,7 +597,7 @@ export class MastStatus extends LitElement {
     }
 
     return html`
-      <div class="status bg-blue-800">
+      <div class="status bg-blue-800 ${classMap({ read: this.isRead, unread: !this.isRead })}">
         <div class="account bg-blue-100">
           <span class="centered">
             <img class="avatar" src=${s.account.avatar}></img>
@@ -641,6 +647,14 @@ export class MastStatus extends LitElement {
 
       overflow: hidden;
       display: grid;
+    }
+
+    .read {
+      border-color: #a1bcdf;
+    }
+
+    .unread {
+      border-color: black;
     }
 
     .rawcontent {
