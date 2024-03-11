@@ -2,6 +2,7 @@
  - Initialization - how much history to initally load.
  - Automated loading on scroll down.
  - Allow configuration of automated loading
+ - Show number of replies and the like on each status.
 
 ### UI style
  - Better title menu & logout button
