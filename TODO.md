@@ -2,7 +2,7 @@
  - Initialization - how much history to initally load.
  - Automated loading on scroll down.
  - Allow configuration of automated loading
- - Show number of replies and the like on each status.
+ - Show date
 
 ### UI style
  - Better title menu & logout button
@@ -62,3 +62,4 @@
  - Better “state of what’s remaining”
  - Serve static content.
  - Stop hardcoding localhost:5173
+ - Show number of replies and the like on each status.

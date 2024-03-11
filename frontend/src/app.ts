@@ -619,9 +619,9 @@ export class MastStatus extends LitElement {
         </div>
         <div class="tools bg-blue-400 text-light">
           <div>
-            <button><span class="material-symbols-outlined" title="Favorite">star</span></button>
-            <button><span class="material-symbols-outlined" title="Boost">repeat</span></button>
-            <button><span class="material-symbols-outlined" title="Reply...">reply</span></button>
+            <button><span class="material-symbols-outlined" title="Favorite">star</span></button><span class="count">${s.favourites_count}</span>
+            <button><span class="material-symbols-outlined" title="Boost">repeat</span></button><span class="count">${s.reblogs_count}</span>
+            <button><span class="material-symbols-outlined" title="Reply...">reply</span></button><span class="count">${s.replies_count}</span>
           </div>
           <div>
             <button @click="${() => this.markUnread()}" title="Mark as unread and move read-marker above">
@@ -716,6 +716,12 @@ export class MastStatus extends LitElement {
       justify-content: space-between;
       padding: 2px;
       margin-top: 2px;
+    }
+
+    .count {
+      font-size: 0.8rem;
+      margin-left: 2px;
+      margin-right: 4px;
     }
   `];
 }
