@@ -385,6 +385,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	var statuses []*mastodon.Status
 
 	fetchCount := 0
+	// TODO: absolutely do not do fetching from server while in a local transaction.
 	// Do multiple fetching, until either up to date, or up to a boundary to avoid infinite loops by mistake.
 	for fetchCount < 10 {
 		// Pagination object is updated by GetTimelimeHome, based on the `Link` header

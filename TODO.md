@@ -1,8 +1,5 @@
 ### Missing for personal use
  - Initialization - how much history to initally load.
- - Automated loading on scroll down.
- - Allow configuration of automated loading
- - Show date
 
 ### UI style
  - Better title menu & logout button
@@ -19,6 +16,8 @@
  - Display the time of posts
  - Have proper auth UI for copy/pasting code vs automatic redirect.
  - Info when fetching
+ - Automated loading on scroll down.
+ - Allow configuration of automated loading
 
 ### Frontend
  - Split each element class
@@ -63,3 +62,4 @@
  - Serve static content.
  - Stop hardcoding localhost:5173
  - Show number of replies and the like on each status.
+ - Show date

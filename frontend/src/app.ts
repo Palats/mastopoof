@@ -13,6 +13,17 @@ import baseCSSstr from "./base.css?inline";
 
 import * as mastodon from "./mastodon";
 
+import dayjs from 'dayjs';
+import relativeTimePlugin from 'dayjs/plugin/relativeTime';
+dayjs.extend(relativeTimePlugin);
+import utcPlugin from 'dayjs/plugin/utc';
+dayjs.extend(utcPlugin);
+import timezonePlugin from 'dayjs/plugin/timezone';
+dayjs.extend(timezonePlugin);
+
+const displayTimezone = dayjs.tz.guess();
+console.log("Display timezone:", displayTimezone);
+
 // Create a global backend access.
 const backend = new Backend();
 
@@ -596,6 +607,11 @@ export class MastStatus extends LitElement {
       }
     }
 
+    const d = dayjs(s.created_at);
+    const createdStamp = d.fromNow();
+    const localts = d.tz(displayTimezone);
+    const timeLabel = `${displayTimezone}: ${localts.format()}\nSource: ${s.created_at}`;
+
     return html`
       <div class="status bg-blue-800 ${classMap({ read: this.isRead, unread: !this.isRead })}">
         <div class="account bg-blue-100">
@@ -603,7 +619,10 @@ export class MastStatus extends LitElement {
             <img class="avatar" src=${s.account.avatar}></img>
             ${expandEmojis(s.account.display_name, s.account.emojis)} &lt;${qualifiedAccount(s.account)}&gt;
           </span>
-          <a href=${s.url!} target="_blank"><span class="material-symbols-outlined" title="Open status on original server">open_in_new</span></a>
+          <span>
+            <span class="timestamp" title="${timeLabel}">${createdStamp}</span>
+            <a href=${s.url!} target="_blank"><span class="material-symbols-outlined" title="Open status on original server">open_in_new</span></a>
+          </span>
         </div>
         ${isReblog ? html`
           <div class="reblog bg-blue-50">
@@ -722,6 +741,10 @@ export class MastStatus extends LitElement {
       font-size: 0.8rem;
       margin-left: 2px;
       margin-right: 4px;
+    }
+
+    .timestamp {
+      font-size: 0.8rem;
     }
   `];
 }
