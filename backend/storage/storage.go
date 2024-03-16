@@ -545,8 +545,8 @@ func (st *Storage) SetAccountState(ctx context.Context, db SQLQueryable, as *Acc
 	}
 
 	// TODO: make SetAccountState support only update and verify primary key existin for ON CONFLICT.
-	stmt := `INSERT INTO accountstate(asid, content) VALUES(?, ?) ON CONFLICT(asid) DO UPDATE SET content = ?`
-	_, err = db.ExecContext(ctx, stmt, as.ASID, content, content)
+	stmt := `INSERT INTO accountstate(asid, content, uid) VALUES(?, ?, ?) ON CONFLICT(asid) DO UPDATE SET content = ?`
+	_, err = db.ExecContext(ctx, stmt, as.ASID, content, as.UID, content)
 	if err != nil {
 		return err
 	}
