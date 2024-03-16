@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -37,7 +38,7 @@ var _ = spew.Sdump("")
 var (
 	port       = flag.Int("port", 8079, "Port to listen on for the 'serve' command")
 	userID     = flag.Int64("uid", 0, "User ID to use for commands. With 'serve', will auto login that user.")
-	streamID   = flag.Int64("stream_id", 1, "Stream to use")
+	streamID   = flag.Int64("stream_id", 0, "Stream to use")
 	dbFilename = flag.String("db", "./mastopoof.db", "SQLite file")
 	// For subcmd `me` only.
 	showAccount = flag.Bool("show_account", false, "Query and show account state from Mastodon server")
@@ -66,8 +67,18 @@ func getUserID(_ context.Context, _ *storage.Storage) (int64, error) {
 	return *userID, nil
 }
 
-func getStreamID(_ context.Context, _ *storage.Storage) (int64, error) {
-	return *streamID, nil
+func getStreamID(ctx context.Context, st *storage.Storage) (int64, error) {
+	if *streamID != 0 {
+		return *streamID, nil
+	}
+	if *userID != 0 {
+		userState, err := st.UserState(ctx, st.DB, *userID)
+		if err != nil {
+			return 0, err
+		}
+		return userState.DefaultStID, nil
+	}
+	return 0, errors.New("no streamID / user ID specified")
 }
 
 func redirectURIFunc(target string) (func(string) string, error) {
@@ -347,6 +358,7 @@ func run(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
+			glog.Infof("using stream ID %d", stid)
 
 			return cmdClearStream(ctx, st, stid)
 		},
