@@ -34,7 +34,7 @@ Example call:
 curl --header 'Content-Type: application/json' --data '{"msg": "plop"}' http://localhost:8079/_rpc/mastopoof.Mastopoof/Ping
 ```
 
-## Structure
+## Internals
 
 ### Database
 
@@ -78,6 +78,22 @@ curl --header 'Content-Type: application/json' --data '{"msg": "plop"}' http://l
  - FE->BE [Mastopoof.Token] ; auth code
  - BE: get token from server, create user if needed.
  - BE->FE : Set cookie, send back user info (default stream ID)
+
+### Stream data model
+
+- User: usually a Mastopoof user.
+- Account: usually refers to a Mastopoof account.
+- Stream: ordered list of items presented to the user. A stream is owned by a given Mastopoof user.
+- Stream item: a reference to a given Mastodon status, with a position in the stream.
+   - Items are never re-ordered - once an item has been added, it is in that position.
+- Pool: Statuses from a Mastodon timeline in the Mastopoof database.
+- Fetch: querying Mastodon for statuses and inserting them in a pool.
+- Triaging: selecting statuses from the pool and adding them as items in the stream (or indicating they are to be skipped).
+   - Inconsistent terminology: picking, inserting, etc.
+- Untriaged statuses: entries of the pool which are not yet in the stream.
+- Triaged statuses: entries of the pool which have been added to the stream or marked-as-hidden.-
+- List: getting a list of items from a stream. That might trigger triaging.
+- Last-read: a marker in the stream, pointing to the last item which has been read by the user. Lower or equal positions are read.
 
 ### Notes
 

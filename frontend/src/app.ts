@@ -37,7 +37,7 @@ export class AppRoot extends LitElement {
     super();
     backend.onEvent.addEventListener("login-update", ((evt: LoginUpdateEvent) => {
       if (evt.state === LoginState.LOGGED && this.lastLoginUpdate?.state !== LoginState.LOGGED) {
-        console.log("userinfo", evt.userInfo);
+        console.log("Logged in");
       }
       this.lastLoginUpdate = evt;
     }) as EventListener);
@@ -106,13 +106,8 @@ export class MastStream extends LitElement {
   private items: StatusItem[] = [];
   private perEltItem = new Map<Element, StatusItem>();
 
-  private backwardPosition: number = 0;
-  private backwardState: pb.ListResponse_State = pb.ListResponse_State.UNKNOWN;
-  private forwardPosition: number = 0;
-  private forwardState: pb.ListResponse_State = pb.ListResponse_State.UNKNOWN;
-
-  // Set to false when the first fetch of status (after auth) is done.
-  private isInitialList = true;
+  // Set to true when the first list of status (after auth) is done.
+  private firstListDone = false;
 
   private observer?: IntersectionObserver;
 
@@ -120,13 +115,7 @@ export class MastStream extends LitElement {
   // screen.
   @state() private lastVisiblePosition?: number;
 
-  // Last read item position in this stream.
-  @state() private lastRead?: number;
-  // Position of the last status currently sorted into the stream.
-  @state() private lastPosition?: number;
-  // Number of statuses still in the pool but not yet assigned to the stream /
-  // discarded.
-  @state() private remainingPool?: number;
+  @state() private streamInfo?: pb.StreamInfo;
 
   @state() private showMenu = false;
 
@@ -141,10 +130,7 @@ export class MastStream extends LitElement {
 
     backend.onEvent.addEventListener("stream-update", ((evt: StreamUpdateEvent) => {
       if (evt.curr) {
-        this.lastRead = Number(evt.curr.lastRead);
-        this.lastPosition = Number(evt.curr.lastPosition);
-        this.remainingPool = Number(evt.curr.remainingPool);
-
+        this.streamInfo = evt.curr;
       }
     }) as EventListener);
 
@@ -201,7 +187,7 @@ export class MastStream extends LitElement {
       }
       disappearedPosition = item.position;
     }
-    if (this.lastRead !== undefined && disappearedPosition > this.lastRead) {
+    if (this.streamInfo !== undefined && disappearedPosition > this.streamInfo.lastRead) {
       if (!this.stid) {
         throw new Error("missing stid");
       }
@@ -215,16 +201,12 @@ export class MastStream extends LitElement {
     if (!stid) {
       throw new Error("missing stream id");
     }
-    const resp = await backend.list({ stid: BigInt(stid), position: BigInt(this.backwardPosition), direction: pb.ListRequest_Direction.BACKWARD })
 
-    if (resp.backwardPosition > 0) {
-      this.backwardPosition = Number(resp.backwardPosition);
-      this.backwardState = resp.backwardState;
+    if (this.items.length === 0) {
+      throw new Error("loading previous status without successful forward loading");
     }
-    if (resp.forwardPosition > 0 && this.forwardState === pb.ListResponse_State.UNKNOWN) {
-      this.forwardPosition = Number(resp.forwardPosition);
-      this.forwardState = resp.forwardState;
-    }
+    const position = this.items[0].position;
+    const resp = await backend.list({ stid: BigInt(stid), position: BigInt(position), direction: pb.ListRequest_Direction.BACKWARD })
 
     const newItems = [];
     for (let i = 0; i < resp.items.length; i++) {
@@ -250,16 +232,11 @@ export class MastStream extends LitElement {
       throw new Error("missing stream id");
     }
 
-    const resp = await backend.list({ stid: BigInt(stid), position: BigInt(this.forwardPosition), direction: pb.ListRequest_Direction.FORWARD })
-
-    if (resp.backwardPosition > 0 && this.backwardState === pb.ListResponse_State.UNKNOWN) {
-      this.backwardPosition = Number(resp.backwardPosition);
-      this.backwardState = resp.backwardState;
+    let position = 0;
+    if (this.items.length > 0) {
+      position = this.items[this.items.length - 1].position;
     }
-    if (resp.forwardPosition > 0) {
-      this.forwardPosition = Number(resp.forwardPosition);
-      this.forwardState = resp.forwardState;
-    }
+    const resp = await backend.list({ stid: BigInt(stid), position: BigInt(position), direction: pb.ListRequest_Direction.FORWARD })
 
     for (let i = 0; i < resp.items.length; i++) {
       const item = resp.items[i];
@@ -274,7 +251,7 @@ export class MastStream extends LitElement {
       });
     }
     // Always indicate that initial loading is done - this is a latch anyway.
-    this.isInitialList = false;
+    this.firstListDone = true;
     this.requestUpdate();
   }
 
@@ -308,19 +285,31 @@ export class MastStream extends LitElement {
   }
 
   render() {
-    let remaining = html`No available info`;
-    if (this.lastPosition !== undefined && this.lastVisiblePosition !== undefined && this.remainingPool !== undefined) {
+    if (!this.firstListDone || !this.streamInfo) {
+      // TODO: better presentation on loading
+      return html`Loading...`;
+    }
+
+    let count = 0;
+    if (this.items.length === 0) {
+      // Initial loading was done, so if items is empty, it means nothing is available.
+      count = Number(this.streamInfo.remainingPool);
+    } else {
+      const lastPosition = this.items[this.items.length - 1].position;
+      const lastVisible = this.lastVisiblePosition ?? 0;
       // We've got:
       //   - visible statuses which are already on stream but not yet on screen/loaded.
       //   - statuses still in pool and not yet sorted in stream.
-      const count = this.remainingPool + this.lastPosition - this.lastVisiblePosition;
-      if (count == 0) {
-        remaining = html`End of stream`;
-      } else if (count == 1) {
-        remaining = html`1 remaining status`;
-      } else {
-        remaining = html`${count} remaining statuses`;
-      }
+      count = Number(this.streamInfo.remainingPool) + lastPosition - lastVisible;
+    }
+
+    let remaining = html`Updating...`;
+    if (count == 0) {
+      remaining = html`End of stream`;
+    } else if (count == 1) {
+      remaining = html`1 remaining status`;
+    } else {
+      remaining = html`${count} remaining statuses`;
     }
 
     return html`
@@ -365,9 +354,19 @@ export class MastStream extends LitElement {
   }
 
   renderStreamContent(): TemplateResult {
+    if (!this.streamInfo) {
+      throw new Error("should not have been called");
+    }
+    // This function is called only if the initial loading is done - so if there is no items, it means that
+    // the stream was empty at that time, and thus we're at its beginning.
+    const isBeginning = this.items.length == 0 || (this.items[0].position === Number(this.streamInfo.firstPosition))
+
+    let isEnd = this.streamInfo.remainingPool === BigInt(0);
+    if (this.items.length > 0) {
+      isEnd = isEnd && (this.items[this.items.length - 1].position === Number(this.streamInfo.lastPosition));
+    }
     return html`
-      ${this.isInitialList ? html`<div class="contentitem"><div class="centered">Loading...</div></div>` : nothing}
-      <div class="noanchor contentitem stream-beginning bg-blue-300 centered">${this.backwardState === pb.ListResponse_State.DONE ? html`
+      <div class="noanchor contentitem stream-beginning bg-blue-300 centered">${isBeginning ? html`
         <div>Beginning of stream.</div>
       `: html`
         <button @click=${this.loadPrevious}>
@@ -381,7 +380,7 @@ export class MastStream extends LitElement {
       ${repeat(this.items, item => item.position, (item, _) => this.renderStatus(item))}
 
       <div class="noanchor contentitem bg-blue-300 stream-end">
-        <div class="centered">${this.forwardState === pb.ListResponse_State.DONE ? html`
+        <div class="centered">${isEnd ? html`
           Nothing more right now. <button @click=${this.loadNext}>Try again</button>
         `: html`
           <button @click=${this.loadNext}>
@@ -396,7 +395,7 @@ export class MastStream extends LitElement {
   }
 
   renderStatus(item: StatusItem): TemplateResult[] {
-    const lastRead = this.lastRead ?? 0;
+    const lastRead = this.streamInfo?.lastRead ?? 0;
     const pos = item.position;
     const content: TemplateResult[] = [];
     content.push(html`<mast-status ?isRead=${pos <= lastRead} class="contentitem" ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .stid=${this.stid} .item=${item as any}></mast-status>`);

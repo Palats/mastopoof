@@ -281,27 +281,16 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 		if err != nil {
 			return nil, err
 		}
-		resp.ForwardState = pb.ListResponse_PARTIAL
-		if listResult.HasLast {
-			resp.ForwardState = pb.ListResponse_DONE
-		}
 	case pb.ListRequest_BACKWARD:
 		listResult, err = s.st.ListBackward(ctx, stid, req.Msg.Position)
 		if err != nil {
 			return nil, err
 		}
-		// Looking backward never checks for potential extra statuses to insert
-		// into the stream, so it cannot say anything about.
-		resp.ForwardState = pb.ListResponse_UNKNOWN
 	default:
 		return nil, fmt.Errorf("unknown direction %v", req.Msg.Direction)
 	}
 
 	resp.StreamInfo = listResult.StreamState.ToStreamInfo()
-	resp.BackwardState = pb.ListResponse_PARTIAL
-	if listResult.HasFirst {
-		resp.BackwardState = pb.ListResponse_DONE
-	}
 
 	if len(listResult.Items) > 0 {
 		resp.BackwardPosition = listResult.Items[0].Position

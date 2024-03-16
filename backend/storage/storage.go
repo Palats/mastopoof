@@ -73,6 +73,7 @@ func (ss *StreamState) ToStreamInfo() *pb.StreamInfo {
 	return &pb.StreamInfo{
 		Stid:          ss.StID,
 		LastRead:      ss.LastRead,
+		FirstPosition: ss.FirstPosition,
 		LastPosition:  ss.LastPosition,
 		RemainingPool: ss.Remaining,
 	}
@@ -911,15 +912,11 @@ func (st *Storage) pickNextInTxn(ctx context.Context, stid int64, txn *sql.Tx, s
 }
 
 type ListResult struct {
-	HasFirst bool
-	HasLast  bool
-	Items    []*Item
-
+	Items       []*Item
 	StreamState *StreamState
 }
 
 // ListBackward get statuses before the provided position.
-// It can insert things in the stream if necessary.
 // refPosition must be strictly positive - i.e., refer to an actual position.
 func (st *Storage) ListBackward(ctx context.Context, stid int64, refPosition int64) (*ListResult, error) {
 	if refPosition < 1 {
@@ -938,6 +935,14 @@ func (st *Storage) ListBackward(ctx context.Context, stid int64, refPosition int
 	if err != nil {
 		return nil, err
 	}
+
+	if streamState.FirstPosition == streamState.LastPosition {
+		return nil, fmt.Errorf("backward requests on empty stream are not allowed")
+	}
+	if refPosition < streamState.FirstPosition || refPosition > streamState.LastPosition {
+		return nil, fmt.Errorf("position %d does not exists", refPosition)
+	}
+
 	result.StreamState = streamState
 
 	maxCount := 10
@@ -987,14 +992,11 @@ func (st *Storage) ListBackward(ctx context.Context, stid int64, refPosition int
 		result.Items = append(result.Items, reverseItems[i])
 	}
 
-	if len(result.Items) > 0 {
-		result.HasFirst = streamState.FirstPosition == result.Items[0].Position
-	}
 	return result, txn.Commit()
 }
 
 // ListForward get statuses after the provided position.
-// It can insert things in the stream if necessary.
+// It can triage things in the stream if necessary.
 // If refPosition is 0, gives data around the provided position.
 func (st *Storage) ListForward(ctx context.Context, stid int64, refPosition int64) (*ListResult, error) {
 	if refPosition < 0 {
@@ -1018,9 +1020,14 @@ func (st *Storage) ListForward(ctx context.Context, stid int64, refPosition int6
 	if refPosition == 0 {
 		// Also pick the one last read status, for context.
 		refPosition = streamState.LastRead - 1
-		if refPosition < 0 {
-			refPosition = 0
+		if refPosition < streamState.FirstPosition {
+			refPosition = streamState.FirstPosition
 		}
+	} else if streamState.FirstPosition == streamState.LastPosition {
+		return nil, fmt.Errorf("forward requests with non-null position on empty stream are not allowed")
+	}
+	if refPosition < streamState.FirstPosition || refPosition > streamState.LastPosition {
+		return nil, fmt.Errorf("position %d does not exists", refPosition)
 	}
 
 	maxCount := 10
@@ -1064,7 +1071,7 @@ func (st *Storage) ListForward(ctx context.Context, stid int64, refPosition int6
 		return nil, err
 	}
 
-	// Do we want to fetch more?
+	// Do we want to triage more?
 	for len(result.Items) < maxCount {
 		// If we're here, it means we've reached the end of the current stream,
 		// so we need to try to inject new items.
@@ -1074,14 +1081,9 @@ func (st *Storage) ListForward(ctx context.Context, stid int64, refPosition int6
 		}
 		if ost == nil {
 			// Nothing is available anymore to insert at this point.
-			result.HasLast = true
 			break
 		}
 		result.Items = append(result.Items, ost)
-	}
-
-	if len(result.Items) > 0 {
-		result.HasFirst = streamState.FirstPosition == result.Items[0].Position
 	}
 
 	return result, txn.Commit()

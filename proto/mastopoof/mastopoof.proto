@@ -44,9 +44,11 @@ message StreamInfo {
 
     // Position of last-read item.
     int64 last_read = 2;
+    // Position of the first item in the stream.
+    int64 first_position = 5;
     // Position of the last item in the stream.
     int64 last_position = 3;
-    // Remaining status still in the pool and not yet added to the stream.
+    // Untriaged statuses in the pool and not yet added to the stream.
     int64 remaining_pool = 4;
 }
 
@@ -100,18 +102,21 @@ message MastodonStatus {
 
 message ListRequest {
     enum Direction {
-        // If unspecified - behaves as "INITIAL".
+        // If unspecified - behaves as "FORWARD".
         DEFAULT = 0;
-        // Get more recent statuses.
+        // Get more recent statuses with item > (strict) request.position.
         FORWARD = 1;
         // Go back in the history of the stream.
+        // Returns item < (strict) request.position.
         BACKWARD = 2;
     }
     Direction direction = 1;
 
     // Continuation position obtained from a previous request.
-    // Cannot be zero for BACKWARD.
+    // When specified, must refer to an existing position returned by a list
+    // request before, except if set to direction=FORWARD, position=0.
     // If zero for FORWARD, gives statuses around last_read.
+    // Cannot be zero for BACKWARD.
     int64 position = 2;
 
     // The stream to fetch from.
@@ -120,7 +125,6 @@ message ListRequest {
 
 message ListResponse {
     // Ordered list of statuses.
-    // If empty, another INITIAL request will need to be done later.
     repeated Item items = 1;
 
     // Position to use for continuation requests.
@@ -129,23 +133,10 @@ message ListResponse {
     int64 backward_position = 2;
     int64 forward_position = 3;
 
-    // Whether more statuses are available on each end. That includes statuses
-    // which might not be yet inserted in the stream.
-    enum State {
-        // Information is not available.
-        UNKNOWN = 0;
-        // More statuses are potentially available now.
-        PARTIAL = 1;
-        // No available extra statuses right now.
-        DONE = 2;
-    }
-    State backward_state = 4;
-    State forward_state = 6;
-
     StreamInfo stream_info = 9;
 
-    reserved 5, 7, 8;
-    reserved "last_read", "last_position", "remaining_pool";
+    reserved 5, 7, 8, 4, 6;
+    reserved "last_read", "last_position", "remaining_pool", "backward_state", "forward_state";
 }
 
 message SetReadRequest {
