@@ -1,5 +1,6 @@
 ### Missing for personal use
  - Initialization - how much history to initally load.
+ - Allow-list for mastodon accounts
 
 ### UI style
  - Better title menu & logout button
@@ -18,6 +19,7 @@
  - Info when fetching
  - Automated loading on scroll down.
  - Allow configuration of automated loading
+ - Notifications
 
 ### Frontend
  - Split each element class
@@ -38,10 +40,13 @@
 - Have fetch as server RPC
 - Fix management of stream "maintained" metadata - like number of remaining statuses and the like.
 
+### Tests
+- Test creation of empty DB
+- Test initial login flow of first user
+
 ### Others
  - Fix model of stream/user/account/pool
     - E.g., it seems that the pool is not related to the stream in "fetch"?
- - Tests
 
 
 ### Done
@@ -63,3 +68,4 @@
  - Stop hardcoding localhost:5173
  - Show number of replies and the like on each status.
  - Show date
+ - Fix fresh DB init

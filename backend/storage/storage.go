@@ -117,8 +117,15 @@ func NewStorage(db *sql.DB) *Storage {
 const schemaVersion = 10
 
 func (st *Storage) Init(ctx context.Context) error {
+	// Prepare update of the database schema.
+	txn, err := st.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("unable to update DB schema: %w", err)
+	}
+	defer txn.Rollback()
+
 	// Get version of the storage.
-	row := st.DB.QueryRow("PRAGMA user_version")
+	row := txn.QueryRow("PRAGMA user_version")
 	if row == nil {
 		return fmt.Errorf("unable to find user_version")
 
@@ -137,13 +144,6 @@ func (st *Storage) Init(ctx context.Context) error {
 
 	glog.Infof("updating database schema")
 
-	// Prepare update of the database schema.
-	txn, err := st.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("unable to update DB schema: %w", err)
-	}
-	defer txn.Rollback()
-
 	if version < 1 {
 		sqlStmt := `
 			CREATE TABLE IF NOT EXISTS authinfo (
@@ -154,7 +154,7 @@ func (st *Storage) Init(ctx context.Context) error {
 			);
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+			return fmt.Errorf("schema v1: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 	if version < 2 {
@@ -176,7 +176,7 @@ func (st *Storage) Init(ctx context.Context) error {
 			);
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+			return fmt.Errorf("schema v2: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 
@@ -186,29 +186,29 @@ func (st *Storage) Init(ctx context.Context) error {
 			ALTER TABLE statuses ADD COLUMN uri TEXT
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+			return fmt.Errorf("schema v3: unable to run %q: %w", sqlStmt, err)
 		}
 
-		rows, err := st.DB.QueryContext(ctx, `SELECT sid, status FROM statuses`)
+		rows, err := txn.QueryContext(ctx, `SELECT sid, status FROM statuses`)
 		if err != nil {
-			return err
+			return fmt.Errorf("schema v3: unable to query status keys: %w", err)
 		}
 		for rows.Next() {
 			var jsonString string
 			var sid int64
 			if err := rows.Scan(&sid, &jsonString); err != nil {
-				return err
+				return fmt.Errorf("schema v3: unable to scan status: %w", err)
 			}
 			var status mastodon.Status
 			if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
-				return err
+				return fmt.Errorf("schema v3: unable to unmarshal status: %w", err)
 			}
 
 			stmt := `
 				UPDATE statuses SET uri = ? WHERE sid = ?;
 			`
 			if _, err := txn.ExecContext(ctx, stmt, status.URI, sid); err != nil {
-				return fmt.Errorf("unable to backfil URI for sid %v: %v", sid, err)
+				return fmt.Errorf("schema v3: unable to backfil URI for sid %v: %v", sid, err)
 			}
 		}
 	}
@@ -232,7 +232,7 @@ func (st *Storage) Init(ctx context.Context) error {
 			);
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+			return fmt.Errorf("schema v4: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 
@@ -245,7 +245,7 @@ func (st *Storage) Init(ctx context.Context) error {
 			ALTER TABLE streamcontent RENAME COLUMN lid TO stid;
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+			return fmt.Errorf("schema v5: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 
@@ -263,7 +263,7 @@ func (st *Storage) Init(ctx context.Context) error {
 			);
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+			return fmt.Errorf("schema v6: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 
@@ -284,7 +284,7 @@ func (st *Storage) Init(ctx context.Context) error {
 			);
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+			return fmt.Errorf("schema v7: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 
@@ -303,7 +303,7 @@ func (st *Storage) Init(ctx context.Context) error {
 			);
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+			return fmt.Errorf("schema v8: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 
@@ -341,7 +341,7 @@ func (st *Storage) Init(ctx context.Context) error {
 			);
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+			return fmt.Errorf("schema v9: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 
@@ -357,7 +357,7 @@ func (st *Storage) Init(ctx context.Context) error {
 			CREATE INDEX sessions_expiry_idx ON sessions(expiry);
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+			return fmt.Errorf("schema v10: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 
@@ -476,17 +476,15 @@ func (st *Storage) SetServerState(ctx context.Context, db SQLQueryable, ss *Serv
 
 // CreateAccountState creates a new account for the given UID and assign it an ASID.
 func (st *Storage) CreateAccountState(ctx context.Context, db SQLQueryable, uid int64, serverAddr string, accountID string, username string) (*AccountState, error) {
-	var asid int64
+	var asid sql.NullInt64
 	err := db.QueryRowContext(ctx, "SELECT MAX(asid) FROM accountstate").Scan(&asid)
-	if err == sql.ErrNoRows {
-		// DB is empty, consider previous asid is zero, to get first real entry at 1.
-		asid = 0
-	} else if err != nil {
+	if err != nil {
 		return nil, err
 	}
 
 	as := &AccountState{
-		ASID:       asid + 1,
+		// DB is empty, consider previous asid is zero, to get first real entry at 1.
+		ASID:       asid.Int64 + 1,
 		UID:        uid,
 		ServerAddr: serverAddr,
 		AccountID:  accountID,
@@ -556,17 +554,16 @@ func (st *Storage) SetAccountState(ctx context.Context, db SQLQueryable, as *Acc
 
 // CreateUserState creates a new account and assign it a UID.
 func (st *Storage) CreateUserState(ctx context.Context, db SQLQueryable) (*UserState, error) {
-	var uid int64
+	var uid sql.NullInt64
+	// If there is no entry, a row is still returned, but with a NULL value.
 	err := db.QueryRowContext(ctx, "SELECT MAX(uid) FROM userstate").Scan(&uid)
-	if err == sql.ErrNoRows {
-		// DB is empty, consider previous uid is zero, to get first real entry at 1.
-		uid = 0
-	} else if err != nil {
-		return nil, err
+	if err != nil {
+		return nil, fmt.Errorf("unable to create new user: %w", err)
 	}
 
 	userState := &UserState{
-		UID: uid + 1,
+		// If DB is empty, consider previous uid is zero, to get first real entry at 1.
+		UID: uid.Int64 + 1,
 	}
 	return userState, st.SetUserState(ctx, db, userState)
 }
