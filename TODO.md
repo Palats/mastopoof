@@ -1,5 +1,4 @@
 ### Missing for personal use
- - Initialization - how much history to initally load.
  - Allow-list for mastodon accounts
 
 ### UI style
@@ -47,7 +46,7 @@
 ### Others
  - Fix model of stream/user/account/pool
     - E.g., it seems that the pool is not related to the stream in "fetch"?
-
+ - Support fetch in the past, to get older stuff.
 
 ### Done
  - header/footer are confusing compared to the posts

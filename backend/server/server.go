@@ -379,7 +379,12 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	for fetchCount < 10 {
 		// Pagination object is updated by GetTimelimeHome, based on the `Link` header
 		// returned by the API - see https://docs.joinmastodon.org/api/guidelines/#pagination .
-		// In practice, it seems:
+		// On the query:
+		//  - MaxID is an upper bound.
+		//  - MinID will indicate to get statuses starting at that ID - aka, cursor like.
+		//  - SinceID sets a lower bound on the results, but will prioritize recent results. I.e., it will
+		//     return the last $Limit statuses, assuming they are all more recent than SinceID.
+		// On the result, it seems:
 		//  - MinID is set to the most recent ID returned (from the "prev" Link, which is for future statuses)
 		//  - MaxID is set to an older ID (from the "next" Link, which is for older status)
 		//  - SinceID, Limit are empty/0.
