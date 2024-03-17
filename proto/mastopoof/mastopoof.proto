@@ -66,6 +66,9 @@ message AuthorizeRequest {
     // The mastodon server address the user wants to use.
     // Typically should start with `https://`
     string server_addr = 1;
+
+    // User provided invite code.
+    string invite_code = 2;
 }
 message AuthorizeResponse {
     // The address for asking the user authorization.

@@ -43,6 +43,7 @@ var (
 	// For subcmd `me` only.
 	showAccount = flag.Bool("show_account", false, "Query and show account state from Mastodon server")
 	redirectURL = flag.String("redirect_url", "", "URL to use for authentication redirection on the frontend. When empty, uses out-of-band auth.")
+	inviteCode  = flag.String("invite_code", "", "If not empty, users can only be created by providing this code.")
 )
 
 func getStorage(ctx context.Context) (*storage.Storage, *sql.DB, error) {
@@ -180,7 +181,7 @@ func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool
 	return nil
 }
 
-func cmdServe(_ context.Context, st *storage.Storage, autoLogin int64) error {
+func cmdServe(_ context.Context, st *storage.Storage, inviteCode string, autoLogin int64) error {
 	content, err := frontend.Content()
 	if err != nil {
 		return err
@@ -202,7 +203,7 @@ func cmdServe(_ context.Context, st *storage.Storage, autoLogin int64) error {
 		return err
 	}
 
-	s := server.New(st, sessionManager, autoLogin, redirectURIFunc)
+	s := server.New(st, sessionManager, inviteCode, autoLogin, redirectURIFunc)
 
 	api := http.NewServeMux()
 	api.Handle(mastopoofconnect.NewMastopoofHandler(s))
@@ -414,7 +415,7 @@ func run(ctx context.Context) error {
 				return err
 			}
 
-			return cmdServe(ctx, st, uid)
+			return cmdServe(ctx, st, *inviteCode, uid)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{

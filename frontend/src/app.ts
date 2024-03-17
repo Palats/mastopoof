@@ -769,13 +769,15 @@ export class MastLogin extends LitElement {
 
   private serverAddrRef: Ref<HTMLInputElement> = createRef();
   private authCodeRef: Ref<HTMLInputElement> = createRef();
+  private inviteCodeRef: Ref<HTMLInputElement> = createRef();
 
   async startLogin() {
     const serverAddr = this.serverAddrRef.value?.value;
     if (!serverAddr) {
       return;
     }
-    this.authURI = await backend.authorize(serverAddr);
+    const inviteCode = this.inviteCodeRef.value?.value;
+    this.authURI = await backend.authorize(serverAddr, inviteCode);
     this.serverAddr = serverAddr;
     console.log("authURI", this.authURI);
   }
@@ -803,6 +805,9 @@ export class MastLogin extends LitElement {
         <div>
           <label for="server-addr">Mastodon server address (must start with https)</label>
           <input type="url" id="server-addr" ${ref(this.serverAddrRef)} value="https://mastodon.social" required autofocus></input>
+          <label for="invite-code">Invite code</label>
+          <input type="text" id="invite-code" ${ref(this.inviteCodeRef)} value=""></input>
+
           <button @click=${this.startLogin}>Auth</button>
         </div>
       `;

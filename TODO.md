@@ -1,5 +1,5 @@
 ### Missing for personal use
- - Allow-list for mastodon accounts
+
 
 ### UI style
  - Better title menu & logout button
@@ -38,6 +38,7 @@
 - Find a better mechanism to manage the various redirect URI and getting a client when no redirect is needed anyway.
 - Have fetch as server RPC
 - Fix management of stream "maintained" metadata - like number of remaining statuses and the like.
+- Rework auth workflow, esp. naming
 
 ### Tests
 - Test creation of empty DB
@@ -68,3 +69,4 @@
  - Show number of replies and the like on each status.
  - Show date
  - Fix fresh DB init
+ - Dumb invite code system

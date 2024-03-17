@@ -149,8 +149,8 @@ export class Backend {
         this.onEvent.dispatchEvent(evt);
     }
 
-    public async authorize(serverAddr: string): Promise<string> {
-        const resp = await this.client.authorize({ serverAddr: serverAddr });
+    public async authorize(serverAddr: string, inviteCode?: string): Promise<string> {
+        const resp = await this.client.authorize({ serverAddr: serverAddr, inviteCode: inviteCode });
         return resp.authorizeAddr;
     }
 

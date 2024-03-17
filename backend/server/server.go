@@ -20,15 +20,17 @@ import (
 type Server struct {
 	st             *storage.Storage
 	mux            *http.ServeMux
+	inviteCode     string
 	autoLogin      int64
 	sessionManager *scs.SessionManager
 	getRedirectURI func(string) string
 }
 
-func New(st *storage.Storage, sm *scs.SessionManager, autoLogin int64, getRedirectURI func(string) string) *Server {
+func New(st *storage.Storage, sm *scs.SessionManager, inviteCode string, autoLogin int64, getRedirectURI func(string) string) *Server {
 	s := &Server{
 		st:             st,
 		sessionManager: sm,
+		inviteCode:     inviteCode,
 		autoLogin:      autoLogin,
 		mux:            http.NewServeMux(),
 		getRedirectURI: getRedirectURI,
@@ -97,6 +99,14 @@ func (s *Server) Logout(ctx context.Context, req *connect.Request[pb.LogoutReque
 }
 
 func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.AuthorizeRequest]) (*connect.Response[pb.AuthorizeResponse], error) {
+	if s.inviteCode != "" {
+		if req.Msg.InviteCode != s.inviteCode {
+			return nil, fmt.Errorf("Invalid invite code")
+		}
+		// TODO: make it less hacky
+		s.sessionManager.Put(ctx, "invitecheck", true)
+	}
+
 	serverAddr := req.Msg.ServerAddr
 	if !strings.HasPrefix(serverAddr, "https://") {
 		return nil, fmt.Errorf("Mastodon server address should start with https:// ; got: %q", serverAddr)
@@ -157,6 +167,13 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 }
 
 func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest]) (*connect.Response[pb.TokenResponse], error) {
+	if s.inviteCode != "" {
+		// TODO: make it less hacky
+		if !s.sessionManager.GetBool(ctx, "invitecheck") {
+			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("missing invite code"))
+		}
+	}
+
 	// TODO: sanitization of server addr to be factorized with Authorize.
 	serverAddr := req.Msg.ServerAddr
 	if !strings.HasPrefix(serverAddr, "https://") {
