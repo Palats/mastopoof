@@ -124,10 +124,6 @@ func cmdUsers(ctx context.Context, st *storage.Storage) error {
 	return nil
 }
 
-func cmdClearStream(ctx context.Context, st *storage.Storage, stid int64) error {
-	return st.ClearStream(ctx, stid)
-}
-
 func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool) error {
 	fmt.Println("# User ID:", uid)
 
@@ -360,7 +356,25 @@ func run(ctx context.Context) error {
 			}
 			glog.Infof("using stream ID %d", stid)
 
-			return cmdClearStream(ctx, st, stid)
+			return st.ClearStream(ctx, stid)
+		},
+	})
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "clear-pool-stream",
+		Short: "Remove all statuses from the pool and stream, as if nothing had ever been fetched.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			st, db, err := getStorage(ctx)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			uid, err := getUserID(ctx, st)
+			if err != nil {
+				return err
+			}
+			return st.ClearPoolAndStream(ctx, uid)
 		},
 	})
 

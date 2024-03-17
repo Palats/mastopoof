@@ -696,6 +696,52 @@ func (st *Storage) ClearStream(ctx context.Context, stid int64) error {
 	return txn.Commit()
 }
 
+func (st *Storage) ClearPoolAndStream(ctx context.Context, uid int64) error {
+	txn, err := st.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer txn.Rollback()
+
+	userState, err := st.UserState(ctx, txn, uid)
+	if err != nil {
+		return err
+	}
+
+	// Remove all statuses.
+	if _, err := txn.ExecContext(ctx, `DELETE FROM statuses WHERE uid = ?`, uid); err != nil {
+		return err
+	}
+	// Reset the fetch-from-server state.
+	accountState, err := st.AccountStateByUID(ctx, txn, uid)
+	if err != nil {
+		return err
+	}
+	accountState.LastHomeStatusID = ""
+	if err := st.SetAccountState(ctx, txn, accountState); err != nil {
+		return err
+	}
+
+	// Remove everything from the stream.
+	stid := userState.DefaultStID
+	if _, err := txn.ExecContext(ctx, `DELETE FROM streamcontent WHERE stid = ?`, stid); err != nil {
+		return err
+	}
+	// Also reset last-read and other state keeping.
+	streamState, err := st.StreamState(ctx, txn, stid)
+	if err != nil {
+		return err
+	}
+	streamState.LastRead = 0
+	streamState.FirstPosition = 0
+	streamState.LastPosition = 0
+	if err := st.SetStreamState(ctx, txn, streamState); err != nil {
+		return err
+	}
+
+	return txn.Commit()
+}
+
 type Item struct {
 	// Position in the stream.
 	Position int64           `json:"position"`
