@@ -337,7 +337,7 @@ export class MastStream extends LitElement {
           <div class="footer">
             <div class="footercontent centered">
               ${remaining}
-              <button @click=${this.fetch}>Fetch</button>
+
             </div>
           </div>
         </div>
@@ -348,8 +348,12 @@ export class MastStream extends LitElement {
   renderMenu(): TemplateResult {
     return html`
       <div>plop</div>
-      <div>coin</div>
-      <button @click=${() => backend.logout()}>Logout</button>
+      <div>
+        <button @click=${this.fetch}>Fetch now</button>
+      </div>
+      <div>
+        <button @click=${() => backend.logout()}>Logout</button>
+      </div>
     `;
   }
 
@@ -357,17 +361,18 @@ export class MastStream extends LitElement {
     if (!this.streamInfo) {
       throw new Error("should not have been called");
     }
+
     // This function is called only if the initial loading is done - so if there is no items, it means that
     // the stream was empty at that time, and thus we're at its beginning.
     const isBeginning = this.items.length == 0 || (this.items[0].position === Number(this.streamInfo.firstPosition))
 
-    let isEnd = this.streamInfo.remainingPool === BigInt(0);
-    if (this.items.length > 0) {
-      isEnd = isEnd && (this.items[this.items.length - 1].position === Number(this.streamInfo.lastPosition));
-    }
     return html`
-      <div class="noanchor contentitem stream-beginning bg-blue-300 centered">${isBeginning ? html`
-        <div>Beginning of stream.</div>
+      <div class="noanchor contentitem stream-beginning bg-blue-300 centered">
+      ${isBeginning ? html`
+        ${this.items.length === 0 ?
+          html`<div>No statuses.</div>` :
+          html`<div>Beginning of stream.</div>`
+        }
       `: html`
         <button @click=${this.loadPrevious}>
           <span class="material-symbols-outlined">arrow_upward</span>
@@ -380,15 +385,15 @@ export class MastStream extends LitElement {
       ${repeat(this.items, item => item.position, (item, _) => this.renderStatus(item))}
 
       <div class="noanchor contentitem bg-blue-300 stream-end">
-        <div class="centered">${isEnd ? html`
-          Nothing more right now. <button @click=${this.loadNext}>Try again</button>
-        `: html`
-          <button @click=${this.loadNext}>
-            <span class="material-symbols-outlined">arrow_downward</span>
-            Load more statuses
-            <span class="material-symbols-outlined">arrow_downward</span>
-          </button>
-        `}
+        <div class="centered">
+          <div>
+            <button @click=${this.loadNext} ?disabled=${Number(this.streamInfo.remainingPool) === 0}>
+              <span class="material-symbols-outlined">arrow_downward</span>
+              Load more statuses
+              <span class="material-symbols-outlined">arrow_downward</span>
+            </button>
+          </div>
+          <button @click=${this.fetch}>Fetch</button>
         </div>
       </div>
     `;
