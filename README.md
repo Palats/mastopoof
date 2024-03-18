@@ -34,6 +34,12 @@ Example call:
 curl --header 'Content-Type: application/json' --data '{"msg": "plop"}' http://localhost:8079/_rpc/mastopoof.Mastopoof/Ping
 ```
 
+### Release
+
+```
+(cd proto && npm run gen ) && (cd frontend && npm run build) && (cd backend && go build) && cp -f backend/backend prod/backend
+```
+
 ## Internals
 
 ### Database

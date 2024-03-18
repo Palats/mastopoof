@@ -191,7 +191,9 @@ func cmdServe(_ context.Context, st *storage.Storage, inviteCode string, autoLog
 	sessionManager.Store = sqlite3store.New(st.DB)
 	sessionManager.Lifetime = 90 * 24 * time.Hour
 	sessionManager.Cookie.Name = "mastopoof"
-	sessionManager.Cookie.SameSite = http.SameSiteStrictMode
+	// Need Lax and not Strict for oauth redirections
+	// https://stackoverflow.com/a/42220786
+	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
 	sessionManager.Cookie.Secure = true
 
 	mux := http.NewServeMux()
