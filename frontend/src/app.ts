@@ -165,15 +165,14 @@ export class MastStream extends LitElement {
     // make things slow.
 
     // Find the boundaries of which statuses are visible.
-    let lastVisiblePosition: number | undefined = undefined;
-    let firstVisiblePosition: number | undefined = undefined;
+    let lastVisiblePosition: number | undefined;
+    let firstVisiblePosition: number | undefined;
     for (const item of this.items) {
       if (item.isVisible) {
         if (firstVisiblePosition === undefined) {
           firstVisiblePosition = item.position;
-        } else {
-          lastVisiblePosition = item.position;
         }
+        lastVisiblePosition = item.position;
       }
     }
     this.lastVisiblePosition = lastVisiblePosition;
