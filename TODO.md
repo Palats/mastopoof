@@ -26,7 +26,6 @@
  - See full size picture
  - Link to post on own server to allow for +1
  - "scroll to unread"
- - Link to mentions to own server (instead of user original server)
 
 ### Frontend
  - Split each element class
@@ -78,3 +77,4 @@
  - Show date
  - Fix fresh DB init
  - Dumb invite code system
+ - Link to mentions to own server (instead of user original server)

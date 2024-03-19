@@ -48,16 +48,16 @@ func (s *Server) isLogged(ctx context.Context) error {
 
 // verifyStdID checks that the logged in user is allowed access to that
 // stream.
-func (s *Server) verifyStID(ctx context.Context, stid int64) error {
+func (s *Server) verifyStID(ctx context.Context, stid int64) (*storage.UserState, error) {
 	userID := s.sessionManager.GetInt64(ctx, "userid")
 	userState, err := s.st.UserState(ctx, s.st.DB, userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if userState.DefaultStID != stid {
-		return connect.NewError(connect.CodePermissionDenied, errors.New("stream access denied"))
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("stream access denied"))
 	}
-	return nil
+	return userState, nil
 }
 
 func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest]) (*connect.Response[pb.LoginResponse], error) {
@@ -284,13 +284,23 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 
 func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest]) (*connect.Response[pb.ListResponse], error) {
 	stid := req.Msg.Stid
-	if err := s.verifyStID(ctx, stid); err != nil {
+	userState, err := s.verifyStID(ctx, stid)
+	if err != nil {
 		return nil, err
+	}
+
+	accountState, err := s.st.AccountStateByUID(ctx, s.st.DB, userState.UID)
+	if err != nil {
+		return nil, err
+	}
+	account := &pb.Account{
+		ServerAddr: accountState.ServerAddr,
+		AccountId:  accountState.AccountID,
+		Username:   accountState.Username,
 	}
 
 	resp := &pb.ListResponse{}
 
-	var err error
 	var listResult *storage.ListResult
 	switch req.Msg.Direction {
 	case pb.ListRequest_FORWARD, pb.ListRequest_DEFAULT:
@@ -322,6 +332,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 		resp.Items = append(resp.Items, &pb.Item{
 			Status:   &pb.MastodonStatus{Content: string(raw)},
 			Position: item.Position,
+			Account:  account,
 		})
 	}
 
@@ -330,7 +341,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 
 func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadRequest]) (*connect.Response[pb.SetReadResponse], error) {
 	stid := req.Msg.Stid
-	if err := s.verifyStID(ctx, stid); err != nil {
+	if _, err := s.verifyStID(ctx, stid); err != nil {
 		return nil, err
 	}
 
@@ -354,7 +365,7 @@ func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadReq
 
 func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {
 	stid := req.Msg.Stid
-	if err := s.verifyStID(ctx, stid); err != nil {
+	if _, err := s.verifyStID(ctx, stid); err != nil {
 		return nil, err
 	}
 

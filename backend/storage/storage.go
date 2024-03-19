@@ -30,10 +30,13 @@ type AccountState struct {
 	ASID int64 `json:"asid"`
 
 	// The Mastodon server this account is part of.
+	// E.g., `https://mastodon.social`
 	ServerAddr string `json:"server_addr"`
 	// The Mastodon account ID on the server.
+	// E.g., `123456789765432132`
 	AccountID string `json:"account_id"`
 	// The Mastodon username
+	// E.g., `foobar`
 	Username string `json:"username"`
 
 	AccessToken string `json:"access_token"`

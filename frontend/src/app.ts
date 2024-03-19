@@ -86,6 +86,8 @@ interface StatusItem {
   position: number;
   // status, if loaded.
   status: mastodon.Status;
+  // The account where this status was obtained from.
+  account: pb.Account;
 
   // HTML element used to represent this status.
   elt?: Element;
@@ -215,6 +217,7 @@ export class MastStream extends LitElement {
       newItems.push({
         status: status,
         position: position,
+        account: item.account!,
         isVisible: false,
         wasSeen: false,
         disappeared: false,
@@ -244,6 +247,7 @@ export class MastStream extends LitElement {
       this.items.push({
         status: status,
         position: position,
+        account: item.account!,
         isVisible: false,
         wasSeen: false,
         disappeared: false,
@@ -537,6 +541,10 @@ function qualifiedAccount(account: mastodon.Account): string {
   return `${account.username}@${u.hostname}`;
 }
 
+function localStatusURL(item: StatusItem): string {
+  return `${item.account.serverAddr}/@${item.status.account.acct}/${item.status.id}`;
+}
+
 function expandEmojis(msg: string, emojis?: mastodon.CustomEmoji[]): TemplateResult {
   if (!emojis) {
     return html`${msg}`;
@@ -614,6 +622,7 @@ export class MastStatus extends LitElement {
     const createdStamp = d.fromNow();
     const localts = d.tz(displayTimezone);
     const timeLabel = `${displayTimezone}: ${localts.format()}\nSource: ${s.created_at}`;
+    const openTarget = localStatusURL(this.item);
 
     return html`
       <div class="status bg-blue-800 ${classMap({ read: this.isRead, unread: !this.isRead })}">
@@ -624,7 +633,7 @@ export class MastStatus extends LitElement {
           </span>
           <span>
             <span class="timestamp" title="${timeLabel}">${createdStamp}</span>
-            <a href=${s.url!} target="_blank"><span class="material-symbols-outlined" title="Open status on original server">open_in_new</span></a>
+            <a href=${openTarget} target="_blank"><span class="material-symbols-outlined" title="Open status">open_in_new</span></a>
           </span>
         </div>
         ${isReblog ? html`

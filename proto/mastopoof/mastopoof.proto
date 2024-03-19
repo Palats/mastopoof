@@ -95,12 +95,27 @@ message TokenResponse {
 message Item {
     MastodonStatus status = 1;
     int64 position = 2;
+    // The mastodon account this status was fetched from.
+    Account account = 3;
 }
 
 // A single mastodon status.
 message MastodonStatus {
     // JSON encoded mastodon status.
     string content = 1;
+}
+
+// A Mastodon account info.
+message Account {
+    // Mastodon server.
+	// E.g., `https://mastodon.social`
+	string server_addr = 1;
+	// The Mastodon account ID on the server.
+	// E.g., `123456789765432132`
+	string account_id = 2;
+	// The Mastodon username
+	// E.g., `foobar`
+    string username = 3;
 }
 
 message ListRequest {
