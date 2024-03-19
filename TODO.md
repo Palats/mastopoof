@@ -19,6 +19,14 @@
  - Automated loading on scroll down.
  - Allow configuration of automated loading
  - Notifications
+ - Missing preview of URLs (when no other media in status)
+ - Show polls
+ - Improve URL look (removing https://, etc.)
+ - Threading/replies
+ - See full size picture
+ - Link to post on own server to allow for +1
+ - "scroll to unread"
+ - Link to mentions to own server (instead of user original server)
 
 ### Frontend
  - Split each element class

@@ -1,6 +1,6 @@
-# mastopoof
-A Mastodon client
+# Mastopoof
 
+A Mastodon web client.
 
 ## Dev setup
 
@@ -128,7 +128,7 @@ are added.
 
 Also listing == stream.
 
-#### Links
+### Links
 
 On infinite scrolling:
  - https://adrianfaciu.dev/posts/observables-litelement/
@@ -137,3 +137,22 @@ On infinite scrolling:
 
 Favicos sources:
  - https://commons.wikimedia.org/wiki/File:Duck-293474_white_background.jpg
+
+
+## Bigger picture
+### Significant features
+ - Keep track of what was read - no remembering what you've read or not.
+ - Top-to-bottom stream ordering - i.e., read in top-to-bottom. Scroll down to have more recent things.
+ - [planned] Hide reshared statuses that you've already seen.
+ - [planned] Configure stream to see first what you care to not miss, and then things for idle reading.
+
+### Dev principles
+
+Some principles important to the development. This is very much in flux, just trying things out.
+
+ - Predictability - reduce user surprise.
+    - Stream stays in the same order once visualized once.
+ - Light tech stack
+    - Try to keep dependencies under control.
+    - No complex features papering over something non critical. E.g., try to rely on browser scrolling and not re-inventing my own just to fix some minor issue.
+ -
