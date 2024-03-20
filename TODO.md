@@ -1,4 +1,5 @@
-### Missing for personal use
+### Bugs
+ - https://hachyderm.io/@lcamtuf@infosec.exchange/112127045987137202 does not show
 
 
 ### UI style
@@ -26,6 +27,9 @@
  - See full size picture
  - Link to post on own server to allow for +1
  - "scroll to unread"
+ - Refresh timestamp (i.e., does not stay at "less then a minute ago")
+ - Have a way to link to somewhere specific in the stream (for re-loading context)
+
 
 ### Frontend
  - Split each element class
@@ -55,6 +59,8 @@
  - Fix model of stream/user/account/pool
     - E.g., it seems that the pool is not related to the stream in "fetch"?
  - Support fetch in the past, to get older stuff.
+ - PWA
+
 
 ### Done
  - header/footer are confusing compared to the posts
@@ -78,3 +84,4 @@
  - Fix fresh DB init
  - Dumb invite code system
  - Link to mentions to own server (instead of user original server)
+ - Show reblog timestamp

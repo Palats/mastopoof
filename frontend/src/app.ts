@@ -606,7 +606,7 @@ export class MastStatus extends LitElement {
     // This actual status - i.e., the reblogged one when it is a reblogged, or
     // the basic one.
     const s = this.item.status.reblog ?? this.item.status;
-    const isReblog = !!this.item.status.reblog;
+    const reblog = this.item.status.reblog;
     const account = this.item.status.account;
 
     const attachments: TemplateResult[] = [];
@@ -618,10 +618,15 @@ export class MastStatus extends LitElement {
       }
     }
 
-    const d = dayjs(s.created_at);
-    const createdStamp = d.fromNow();
-    const localts = d.tz(displayTimezone);
-    const timeLabel = `${displayTimezone}: ${localts.format()}\nSource: ${s.created_at}`;
+    // Main created time is the time of the status or of the reblog content
+    // if the status is a reblog.
+    const createdTime = dayjs(s.created_at);
+    const createdTimeLabel = `${displayTimezone}: ${createdTime.tz(displayTimezone).format()}\nSource: ${s.created_at}`;
+
+    // Reblog time is the time of the main status, as in those case, the real content is in the reblog.
+    const reblogTime = dayjs(this.item.status.created_at);
+    const reblogTimeLabel = `${displayTimezone}: ${reblogTime.tz(displayTimezone).format()}\nSource: ${this.item.status.created_at}`;
+
     const openTarget = localStatusURL(this.item);
 
     return html`
@@ -632,14 +637,17 @@ export class MastStatus extends LitElement {
             ${expandEmojis(s.account.display_name, s.account.emojis)} &lt;${qualifiedAccount(s.account)}&gt;
           </span>
           <span>
-            <span class="timestamp" title="${timeLabel}">${createdStamp}</span>
+            <span class="timestamp" title="${createdTimeLabel}">${createdTime.fromNow()}</span>
             <a href=${openTarget} target="_blank"><span class="material-symbols-outlined" title="Open status">open_in_new</span></a>
           </span>
         </div>
-        ${isReblog ? html`
+        ${!!reblog ? html`
           <div class="reblog bg-blue-50">
-            <img class="avatar" src=${account.avatar}></img>
-            Reblog by ${expandEmojis(account.display_name, account.emojis)} &lt;${qualifiedAccount(account)}&gt;
+            <span class="centered">
+              <img class="avatar" src=${account.avatar}></img>
+              Reblog by ${expandEmojis(account.display_name, account.emojis)} &lt;${qualifiedAccount(account)}&gt;
+            </span>
+            <span class="timestamp" title="${reblogTimeLabel}">${reblogTime.fromNow()}</span>
           </div>
         `: nothing}
         <div class="content">
@@ -706,6 +714,7 @@ export class MastStatus extends LitElement {
       padding: 2px;
       font-size: 0.8rem;
       font-style: italic;
+      justify-content: space-between;
     }
 
     .avatar {
