@@ -6,15 +6,11 @@
  - Better title menu & logout button
  - Design auth pages
  - Sanitize html from statuses
- - Fix width on narrow screen on status with long URLs
 
 ### UI features
  - Automated loading as scrolling
- - Maybe a drop down menu for extra per-post actions
  - Adjust “already read” position on load
  - Link to user profile
- - Fetching from Mastodon from the UI
- - Display the time of posts
  - Have proper auth UI for copy/pasting code vs automatic redirect.
  - Info when fetching
  - Automated loading on scroll down.
@@ -29,6 +25,7 @@
  - "scroll to unread"
  - Refresh timestamp (i.e., does not stay at "less then a minute ago")
  - Have a way to link to somewhere specific in the stream (for re-loading context)
+ - Improve display of multiple attachments for a post (i.e., not a dumb column)
 
 
 ### Frontend
@@ -36,9 +33,11 @@
 
 ### Status Ordering
  - Remove redundant reblogs
+ - Show thread info
+ - Display replies together with initial post.
  - Prioritize specific users
-- Support ignoring some status
-    - What do they become in the stream?
+ - Support ignoring some status
+      - What do they become in the stream?
 
 ### CLI
 - Auth & fetch from CLI
@@ -85,3 +84,4 @@
  - Dumb invite code system
  - Link to mentions to own server (instead of user original server)
  - Show reblog timestamp
+ - Fix width on narrow screen on status with long URLs

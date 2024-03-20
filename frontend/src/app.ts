@@ -685,7 +685,8 @@ export class MastStatus extends LitElement {
       background-color: #ffffff;
 
       overflow: hidden;
-      display: grid;
+      display: flex;
+      flex-direction: column;
     }
 
     .read {
@@ -738,11 +739,10 @@ export class MastStatus extends LitElement {
     }
 
     .attachments {
-      width: 100%;
-      display: grid;
       align-items: center;
       justify-items: center;
-      grid-template-columns: 1fr;
+      display: flex;
+      flex-direction: column;
     }
 
     .attachments img {
