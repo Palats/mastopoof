@@ -615,6 +615,8 @@ export class MastStatus extends LitElement {
         attachments.push(html`
           <img src=${ma.preview_url} alt=${ma.description}></img>
         `);
+      } else {
+        attachments.push(html`unsupported attachment type ${ma.type}`);
       }
     }
 
