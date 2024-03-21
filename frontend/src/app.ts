@@ -741,13 +741,13 @@ export class MastStatus extends LitElement {
     }
 
     .attachments {
-      justify-items: center;
+      align-items: center;
       display: flex;
       flex-direction: column;
     }
 
     .attachments img {
-      max-width: 500px;
+      max-width: 100%;
       max-height: 400px;
     }
 
