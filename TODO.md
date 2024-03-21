@@ -1,5 +1,5 @@
 ### Bugs
- - https://hachyderm.io/@lcamtuf@infosec.exchange/112127045987137202 does not show
+ - https://hachyderm.io/@lcamtuf@infosec.exchange/112127045987137202 does not show; missing support for "type": "gifv"
 
 
 ### UI style

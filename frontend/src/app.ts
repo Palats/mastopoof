@@ -739,7 +739,6 @@ export class MastStatus extends LitElement {
     }
 
     .attachments {
-      align-items: center;
       justify-items: center;
       display: flex;
       flex-direction: column;
