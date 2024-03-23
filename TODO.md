@@ -13,6 +13,7 @@
  - Link to user profile
  - Have proper auth UI for copy/pasting code vs automatic redirect.
  - Info when fetching
+ - Show last fetch time
  - Automated loading on scroll down.
  - Allow configuration of automated loading
  - Notifications
@@ -59,7 +60,10 @@
     - E.g., it seems that the pool is not related to the stream in "fetch"?
  - Support fetch in the past, to get older stuff.
  - PWA
-
+ - What's the impact of editing statuses, given that Mastopoof caches them?
+ - GC of old & viewed statuses (requires some notion of refetching)
+ - Detect advance of unread in other device
+ - Show button to scroll down to current unread
 
 ### Done
  - header/footer are confusing compared to the posts

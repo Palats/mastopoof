@@ -16,6 +16,9 @@ To use built-in frontend:
 - Run `npm run build` in `frontend/`
 - Start `go run main.go --alsologtostderr serve --redirect_url http://localhost:8079` in `backend/`
 
+To run tests:
+ - `cd backend && go test ./...`
+
 ### Comms
 
 Usage of:
