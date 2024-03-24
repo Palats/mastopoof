@@ -7,8 +7,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Palats/mastopoof/backend/mastodon"
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
-	"github.com/mattn/go-mastodon"
 
 	_ "github.com/mattn/go-sqlite3"
 )

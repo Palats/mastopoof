@@ -17,12 +17,12 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/golang/glog"
-	"github.com/mattn/go-mastodon"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
+	"github.com/Palats/mastopoof/backend/mastodon"
 	"github.com/Palats/mastopoof/backend/server"
 	"github.com/Palats/mastopoof/backend/storage"
 	"github.com/Palats/mastopoof/frontend"
