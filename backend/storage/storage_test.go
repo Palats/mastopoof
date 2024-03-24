@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 type SchemaDB struct {
@@ -181,7 +183,8 @@ func TestDBCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got, want := sch.Linear(), refSch.Linear(); got != want {
-		t.Errorf("=== Got:\n%s\n=== Want:\n%s\n", got, want)
+	// And compare them.
+	if diff := cmp.Diff(refSch, sch); diff != "" {
+		t.Errorf("DB schema mismatch (-want +got):\n%s", diff)
 	}
 }
