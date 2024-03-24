@@ -18,20 +18,20 @@ import (
 
 type Server struct {
 	st             *storage.Storage
-	mux            *http.ServeMux
 	inviteCode     string
 	autoLogin      int64
 	sessionManager *scs.SessionManager
+	selfURL        string
 	getRedirectURI func(string) string
 }
 
-func New(st *storage.Storage, sm *scs.SessionManager, inviteCode string, autoLogin int64, getRedirectURI func(string) string) *Server {
+func New(st *storage.Storage, sm *scs.SessionManager, inviteCode string, autoLogin int64, selfURL string, getRedirectURI func(string) string) *Server {
 	s := &Server{
 		st:             st,
 		sessionManager: sm,
 		inviteCode:     inviteCode,
 		autoLogin:      autoLogin,
-		mux:            http.NewServeMux(),
+		selfURL:        selfURL,
 		getRedirectURI: getRedirectURI,
 	}
 	return s
@@ -459,4 +459,41 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		FetchedCount: int64(len(statuses)),
 		StreamInfo:   streamState.ToStreamInfo(),
 	}), txn.Commit()
+}
+
+func (s *Server) RedirectHandler(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+
+	if req.Method != "GET" {
+		http.Error(w, "invalid method", http.StatusBadRequest)
+		return
+	}
+	authCode := req.URL.Query().Get("code")
+	if authCode == "" {
+		http.Error(w, "missing code", http.StatusBadRequest)
+		return
+	}
+	serverAddr := req.URL.Query().Get("host")
+	if serverAddr == "" {
+		http.Error(w, "missing host", http.StatusBadRequest)
+		return
+	}
+	glog.Infof("redirect for serverAddr: %v", serverAddr)
+
+	_, err := s.Token(ctx, connect.NewRequest(&pb.TokenRequest{
+		ServerAddr: serverAddr,
+		AuthCode:   authCode,
+	}))
+	if err != nil {
+		msg := fmt.Sprintf("unable to identify: %v", err)
+		glog.Errorf(msg)
+		http.Error(w, msg, http.StatusForbidden)
+		return
+	}
+
+	if s.selfURL == "" {
+		fmt.Fprintf(w, "Auth done, no redirect configured.")
+	} else {
+		http.Redirect(w, req, s.selfURL, http.StatusFound)
+	}
 }

@@ -9,12 +9,12 @@ One time:
 - Run `npm run gen` to regenerate protobuf modules
 
 To run:
-- Start `go run main.go --alsologtostderr serve` in `backend/` ; `--redirect_url http://localhost:5173` to have auth redirection.
+- Start `go run main.go --alsologtostderr serve` in `backend/` ; `--self_url http://localhost:5173` to have auth redirection.
 - Start `npm run dev` in `frontend/`
 
 To use built-in frontend:
 - Run `npm run build` in `frontend/`
-- Start `go run main.go --alsologtostderr serve --redirect_url http://localhost:8079` in `backend/`
+- Start `go run main.go --alsologtostderr serve --self_url http://localhost:8079` in `backend/`
 
 To run tests:
  - `cd backend && go test ./...`

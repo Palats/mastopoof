@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
 	"github.com/alexedwards/scs/sqlite3store"
 	"github.com/alexedwards/scs/v2"
 	"github.com/davecgh/go-spew/spew"
@@ -28,8 +27,6 @@ import (
 	"github.com/Palats/mastopoof/backend/storage"
 	"github.com/Palats/mastopoof/frontend"
 
-	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
-
 	"github.com/Palats/mastopoof/proto/gen/mastopoof/mastopoofconnect"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -37,17 +34,19 @@ import (
 var _ = spew.Sdump("")
 
 var (
-	port       = flag.Int("port", 8079, "Port to listen on for the 'serve' command")
-	userID     = flag.Int64("uid", 0, "User ID to use for commands. With 'serve', will auto login that user.")
-	streamID   = flag.Int64("stream_id", 0, "Stream to use")
-	dbFilename = flag.String("db", "./mastopoof.db", "SQLite file")
-	// For subcmd `me` only.
+	port        = flag.Int("port", 8079, "Port to listen on for the 'serve' command")
+	userID      = flag.Int64("uid", 0, "User ID to use for commands. With 'serve', will auto login that user.")
+	streamID    = flag.Int64("stream_id", 0, "Stream to use")
+	dbFilename  = flag.String("db", "", "SQLite file")
 	showAccount = flag.Bool("show_account", false, "Query and show account state from Mastodon server")
-	redirectURL = flag.String("redirect_url", "", "URL to use for authentication redirection on the frontend. When empty, uses out-of-band auth.")
+	selfURL     = flag.String("self_url", "", "URL to use for authentication redirection on the frontend. When empty, uses out-of-band auth.")
 	inviteCode  = flag.String("invite_code", "", "If not empty, users can only be created by providing this code.")
 )
 
 func getStorage(ctx context.Context, filename string) (*storage.Storage, *sql.DB, error) {
+	if filename == "" {
+		return nil, nil, fmt.Errorf("missing database filename; try specifying --db <filename>")
+	}
 	glog.Infof("Using %s as datasource", filename)
 	db, err := sql.Open("sqlite3", filename)
 	if err != nil {
@@ -59,10 +58,6 @@ func getStorage(ctx context.Context, filename string) (*storage.Storage, *sql.DB
 		return nil, nil, fmt.Errorf("unable to init storage: %w", err)
 	}
 	return st, db, nil
-}
-
-func getRedirectURL() string {
-	return *redirectURL
 }
 
 func getUserID(_ context.Context, _ *storage.Storage) (int64, error) {
@@ -126,7 +121,7 @@ func cmdUsers(ctx context.Context, st *storage.Storage) error {
 	return nil
 }
 
-func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool) error {
+func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool, selfURL string) error {
 	fmt.Println("# User ID:", uid)
 
 	userState, err := st.UserState(ctx, st.DB, uid)
@@ -143,7 +138,7 @@ func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool
 	fmt.Println("# Server address:", accountState.ServerAddr)
 	fmt.Println("# Last home status ID:", accountState.LastHomeStatusID)
 
-	redirectURIFunc, err := redirectURIFunc(getRedirectURL())
+	redirectURIFunc, err := redirectURIFunc(selfURL)
 	if err != nil {
 		return err
 	}
@@ -182,7 +177,7 @@ func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool
 	return nil
 }
 
-func cmdServe(_ context.Context, st *storage.Storage, inviteCode string, autoLogin int64, testServer bool) error {
+func cmdServe(_ context.Context, st *storage.Storage, selfURL string, inviteCode string, autoLogin int64, testServer bool) error {
 	content, err := frontend.Content()
 	if err != nil {
 		return err
@@ -204,53 +199,17 @@ func cmdServe(_ context.Context, st *storage.Storage, inviteCode string, autoLog
 		testserver.New().RegisterOn(mux)
 	}
 
-	redirectURL := getRedirectURL()
-	redirectURIFunc, err := redirectURIFunc(redirectURL)
+	redirectURIFunc, err := redirectURIFunc(selfURL)
 	if err != nil {
 		return err
 	}
 
-	s := server.New(st, sessionManager, inviteCode, autoLogin, redirectURIFunc)
+	s := server.New(st, sessionManager, inviteCode, autoLogin, selfURL, redirectURIFunc)
 
 	api := http.NewServeMux()
 	api.Handle(mastopoofconnect.NewMastopoofHandler(s))
 	mux.Handle("/_rpc/", http.StripPrefix("/_rpc", api))
-	mux.Handle("/_redirect", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		ctx := req.Context()
-
-		if req.Method != "GET" {
-			http.Error(w, "invalid method", http.StatusBadRequest)
-			return
-		}
-		authCode := req.URL.Query().Get("code")
-		if authCode == "" {
-			http.Error(w, "missing code", http.StatusBadRequest)
-			return
-		}
-		serverAddr := req.URL.Query().Get("host")
-		if serverAddr == "" {
-			http.Error(w, "missing host", http.StatusBadRequest)
-			return
-		}
-		glog.Infof("redirect for serverAddr: %v", serverAddr)
-
-		_, err := s.Token(ctx, connect.NewRequest(&pb.TokenRequest{
-			ServerAddr: serverAddr,
-			AuthCode:   authCode,
-		}))
-		if err != nil {
-			msg := fmt.Sprintf("unable to identify: %v", err)
-			glog.Errorf(msg)
-			http.Error(w, msg, http.StatusForbidden)
-			return
-		}
-
-		if redirectURL == "" {
-			fmt.Fprintf(w, "Auth done, no redirect configured.")
-		} else {
-			http.Redirect(w, req, redirectURL, http.StatusFound)
-		}
-	}))
+	mux.HandleFunc("/_redirect", s.RedirectHandler)
 
 	addr := fmt.Sprintf(":%d", *port)
 	fmt.Printf("Listening on %s...\n", addr)
@@ -402,7 +361,7 @@ func run(ctx context.Context) error {
 				return err
 			}
 
-			return cmdMe(ctx, st, uid, *showAccount)
+			return cmdMe(ctx, st, uid, *showAccount, *selfURL)
 		},
 	})
 
@@ -422,7 +381,7 @@ func run(ctx context.Context) error {
 				return err
 			}
 
-			return cmdServe(ctx, st, *inviteCode, uid, false /*testServer*/)
+			return cmdServe(ctx, st, *selfURL, *inviteCode, uid, false /*testServer*/)
 		},
 	})
 
@@ -443,7 +402,7 @@ func run(ctx context.Context) error {
 				return fmt.Errorf("unable to create testuser: %w", err)
 			}
 
-			return cmdServe(ctx, st, "", userState.UID, true /*testServer*/)
+			return cmdServe(ctx, st, *selfURL, "", userState.UID, true /*testServer*/)
 		},
 	})
 
