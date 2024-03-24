@@ -117,42 +117,6 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 	return schemaDB, nil
 }
 
-const refSchema = `
-	CREATE TABLE accountstate (
-		asid INTEGER PRIMARY KEY,
-		content TEXT NOT NULL,
-		uid TEXT
-	);
-
-	CREATE TABLE serverstate (
-		server_addr STRING NOT NULL,
-		state TEXT NOT NULL
-	);
-
-	CREATE TABLE statuses (
-		sid INTEGER PRIMARY KEY AUTOINCREMENT,
-		uid INTEGER NOT NULL,
-		status TEXT NOT NULL,
-		uri TEXT
-	);
-
-	CREATE TABLE "streamcontent" (
-		stid INTEGER NOT NULL,
-		sid INTEGER NOT NULL,
-		position INTEGER NOT NULL
-	);
-
-	CREATE TABLE "streamstate" (
-		stid INTEGER PRIMARY KEY,
-		state TEXT NOT NULL
-	);
-
-	CREATE TABLE userstate (
-		uid INTEGER PRIMARY KEY,
-		state TEXT NOT NULL
-	);
-`
-
 func TestDBCreate(t *testing.T) {
 	ctx := context.Background()
 
