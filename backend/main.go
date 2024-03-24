@@ -23,6 +23,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/Palats/mastopoof/backend/mastodon"
+	"github.com/Palats/mastopoof/backend/mastodon/testserver"
 	"github.com/Palats/mastopoof/backend/server"
 	"github.com/Palats/mastopoof/backend/storage"
 	"github.com/Palats/mastopoof/frontend"
@@ -37,6 +38,7 @@ var _ = spew.Sdump("")
 
 var (
 	port       = flag.Int("port", 8079, "Port to listen on for the 'serve' command")
+	testPort   = flag.Int("testport", 0, "Port to run a test mastodon server on when using the 'serve' command. If set to 0, no test server is started.")
 	userID     = flag.Int64("uid", 0, "User ID to use for commands. With 'serve', will auto login that user.")
 	streamID   = flag.Int64("stream_id", 0, "Stream to use")
 	dbFilename = flag.String("db", "./mastopoof.db", "SQLite file")
@@ -48,6 +50,7 @@ var (
 
 func getStorage(ctx context.Context) (*storage.Storage, *sql.DB, error) {
 	filename := *dbFilename
+	glog.Infof("using %s as datasource", filename)
 	db, err := sql.Open("sqlite3", filename)
 	if err != nil {
 		return nil, nil, fmt.Errorf("unable to open storage %s: %w", filename, err)
@@ -182,6 +185,16 @@ func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool
 }
 
 func cmdServe(_ context.Context, st *storage.Storage, inviteCode string, autoLogin int64) error {
+	if *testPort != 0 {
+		testServer := testserver.New()
+		go func() {
+			testAddr := fmt.Sprintf("localhost:%d", *testPort)
+			fmt.Printf("Test Mastodon server on %s\n", testAddr)
+			err := http.ListenAndServe(testAddr, testServer)
+			glog.Error(err)
+		}()
+	}
+
 	content, err := frontend.Content()
 	if err != nil {
 		return err

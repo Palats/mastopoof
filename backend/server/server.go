@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"connectrpc.com/connect"
 	"github.com/Palats/mastopoof/backend/mastodon"
@@ -108,8 +107,8 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 	}
 
 	serverAddr := req.Msg.ServerAddr
-	if !strings.HasPrefix(serverAddr, "https://") {
-		return nil, fmt.Errorf("Mastodon server address should start with https:// ; got: %q", serverAddr)
+	if err := mastodon.ValidateAddress(serverAddr); err != nil {
+		return nil, err
 	}
 	redirectURI := s.getRedirectURI(serverAddr)
 
@@ -176,8 +175,8 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 
 	// TODO: sanitization of server addr to be factorized with Authorize.
 	serverAddr := req.Msg.ServerAddr
-	if !strings.HasPrefix(serverAddr, "https://") {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("Mastodon server address should start with https:// ; got: %q", serverAddr))
+	if err := mastodon.ValidateAddress(serverAddr); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	redirectURI := s.getRedirectURI(serverAddr)
 
