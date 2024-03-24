@@ -38,7 +38,6 @@ var _ = spew.Sdump("")
 
 var (
 	port       = flag.Int("port", 8079, "Port to listen on for the 'serve' command")
-	testPort   = flag.Int("testport", 0, "Port to run a test mastodon server on when using the 'serve' command. If set to 0, no test server is started.")
 	userID     = flag.Int64("uid", 0, "User ID to use for commands. With 'serve', will auto login that user.")
 	streamID   = flag.Int64("stream_id", 0, "Stream to use")
 	dbFilename = flag.String("db", "./mastopoof.db", "SQLite file")
@@ -48,9 +47,8 @@ var (
 	inviteCode  = flag.String("invite_code", "", "If not empty, users can only be created by providing this code.")
 )
 
-func getStorage(ctx context.Context) (*storage.Storage, *sql.DB, error) {
-	filename := *dbFilename
-	glog.Infof("using %s as datasource", filename)
+func getStorage(ctx context.Context, filename string) (*storage.Storage, *sql.DB, error) {
+	glog.Infof("Using %s as datasource", filename)
 	db, err := sql.Open("sqlite3", filename)
 	if err != nil {
 		return nil, nil, fmt.Errorf("unable to open storage %s: %w", filename, err)
@@ -184,17 +182,7 @@ func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool
 	return nil
 }
 
-func cmdServe(_ context.Context, st *storage.Storage, inviteCode string, autoLogin int64) error {
-	if *testPort != 0 {
-		testServer := testserver.New()
-		go func() {
-			testAddr := fmt.Sprintf("localhost:%d", *testPort)
-			fmt.Printf("Test Mastodon server on %s\n", testAddr)
-			err := http.ListenAndServe(testAddr, testServer)
-			glog.Error(err)
-		}()
-	}
-
+func cmdServe(_ context.Context, st *storage.Storage, inviteCode string, autoLogin int64, testServer bool) error {
 	content, err := frontend.Content()
 	if err != nil {
 		return err
@@ -211,6 +199,10 @@ func cmdServe(_ context.Context, st *storage.Storage, inviteCode string, autoLog
 
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.FS(content)))
+
+	if testServer {
+		testserver.New().RegisterOn(mux)
+	}
 
 	redirectURL := getRedirectURL()
 	redirectURIFunc, err := redirectURIFunc(redirectURL)
@@ -331,7 +323,7 @@ func run(ctx context.Context) error {
 		Short: "List users",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx)
+			st, db, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
@@ -346,7 +338,7 @@ func run(ctx context.Context) error {
 		Short: "Remove app registrations from local DB, forcing Mastopoof to recreate them when needed.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx)
+			st, db, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
@@ -360,7 +352,7 @@ func run(ctx context.Context) error {
 		Short: "Remove all statuses from the stream, as if nothing was ever looked at.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx)
+			st, db, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
@@ -380,7 +372,7 @@ func run(ctx context.Context) error {
 		Short: "Remove all statuses from the pool and stream, as if nothing had ever been fetched.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx)
+			st, db, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
@@ -399,7 +391,7 @@ func run(ctx context.Context) error {
 		Short: "Get information about one's own account.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx)
+			st, db, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
@@ -419,7 +411,7 @@ func run(ctx context.Context) error {
 		Short: "Run mastopoof backend server",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx)
+			st, db, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
@@ -430,15 +422,37 @@ func run(ctx context.Context) error {
 				return err
 			}
 
-			return cmdServe(ctx, st, *inviteCode, uid)
+			return cmdServe(ctx, st, *inviteCode, uid, false /*testServer*/)
 		},
 	})
+
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "testserve",
+		Short: "Run mastopoof backend server with a fake mastodon server",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			st, db, err := getStorage(ctx, "file::memory:?cache=shared")
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			serverAddr := fmt.Sprintf("http://localhost:%d", *port)
+			userState, err := st.CreateUser(ctx, st.DB, serverAddr, "1234", "testuser1")
+			if err != nil {
+				return fmt.Errorf("unable to create testuser: %w", err)
+			}
+
+			return cmdServe(ctx, st, "", userState.UID, true /*testServer*/)
+		},
+	})
+
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "pick-next",
 		Short: "Add a status to the stream",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx)
+			st, db, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
@@ -457,7 +471,7 @@ func run(ctx context.Context) error {
 		Short: "Set the already-read pointer",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx)
+			st, db, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
@@ -483,7 +497,7 @@ func run(ctx context.Context) error {
 		Short: "List currently opened statuses (picked & not read)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx)
+			st, db, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}

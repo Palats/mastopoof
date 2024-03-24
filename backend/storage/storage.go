@@ -166,6 +166,33 @@ func (st *Storage) ListUsers(ctx context.Context, db SQLQueryable) ([]*ListUserE
 	return resp, nil
 }
 
+// CreateUser creates a new mastopoof user, with all the necessary bit and pieces.
+// Returns the UID.
+func (st *Storage) CreateUser(ctx context.Context, txn SQLQueryable, serverAddr string, accountID mastodon.ID, username string) (*UserState, error) {
+	// Create the local user.
+	userState, err := st.CreateUserState(ctx, txn)
+	if err != nil {
+		return nil, err
+	}
+	// Create the mastodon account state.
+	_, err = st.CreateAccountState(ctx, txn, userState.UID, serverAddr, string(accountID), username)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a stream.
+	stID, err := st.CreateStreamState(ctx, txn, userState.UID)
+	if err != nil {
+		return nil, err
+	}
+	userState.DefaultStID = stID
+	if err := st.SetUserState(ctx, txn, userState); err != nil {
+		return nil, err
+	}
+
+	return userState, nil
+}
+
 // CreateServerState creates a server with the given address.
 func (st *Storage) CreateServerState(ctx context.Context, db SQLQueryable, serverAddr string, redirectURI string) (*ServerState, error) {
 	ss := &ServerState{

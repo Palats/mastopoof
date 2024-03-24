@@ -229,24 +229,15 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 		// No mastodon account - and the way to find actual user is through the mastodon
 		// account, so it means we need to create a user and then we can create
 		// the mastodon account state.
-		userState, err := s.st.CreateUserState(ctx, txn)
-		if err != nil {
-			return nil, err
-		}
-		// And then create the mastodon account state.
-		accountState, err = s.st.CreateAccountState(ctx, txn, userState.UID, serverAddr, string(accountID), string(username))
+		userState, err := s.st.CreateUser(ctx, txn, serverAddr, accountID, username)
 		if err != nil {
 			return nil, err
 		}
 
-		// Also, create a stream.
-		stID, err := s.st.CreateStreamState(ctx, txn, userState.UID)
+		// And load the account state properly now it is created.
+		accountState, err = s.st.AccountStateByUID(ctx, txn, userState.UID)
 		if err != nil {
-			return nil, err
-		}
-		userState.DefaultStID = stID
-		if err := s.st.SetUserState(ctx, txn, userState); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("unable to re-read account state: %w", err)
 		}
 	} else if err != nil {
 		return nil, err

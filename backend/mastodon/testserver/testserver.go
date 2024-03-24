@@ -4,29 +4,21 @@ package testserver
 import (
 	"encoding/json"
 	"net/http"
-
-	"github.com/golang/glog"
 )
 
-type Server struct {
-	mux *http.ServeMux
-}
+type Server struct{}
 
 func New() *Server {
-	mux := http.NewServeMux()
-	s := &Server{
-		mux: mux,
-	}
+	s := &Server{}
+
+	return s
+}
+
+func (s *Server) RegisterOn(mux *http.ServeMux) {
 	mux.HandleFunc("/oauth/token", s.serveOAuthToken)
 	mux.HandleFunc("/api/v1/apps", s.serveAPIApps)
 	mux.HandleFunc("/api/v1/accounts/verify_credentials", s.serverAPIAccountsVerifyCredentials)
 	mux.HandleFunc("/api/v1/timelines/home", s.serveAPITimelinesHome)
-	return s
-}
-
-func (s *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	glog.Infof("testserver: request for %s", req.URL.String())
-	s.mux.ServeHTTP(w, req)
 }
 
 func (s *Server) returnJSON(w http.ResponseWriter, _ *http.Request, data any) {
