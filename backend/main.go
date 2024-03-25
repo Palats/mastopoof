@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 
@@ -37,6 +38,7 @@ var (
 	showAccount = flag.Bool("show_account", false, "Query and show account state from Mastodon server")
 	selfURL     = flag.String("self_url", "", "URL to use for authentication redirection on the frontend. When empty, uses out-of-band auth.")
 	inviteCode  = flag.String("invite_code", "", "If not empty, users can only be created by providing this code.")
+	testData    = flag.String("testdata", "testdata", "Directory with backend testdata, for testserve")
 )
 
 func getStorage(ctx context.Context, filename string) (*storage.Storage, *sql.DB, error) {
@@ -386,7 +388,12 @@ func run(ctx context.Context) error {
 				return err
 			}
 
-			testserver.New().RegisterOn(mux)
+			testDataFS := os.DirFS(*testData)
+			ts, err := testserver.New(testDataFS)
+			if err != nil {
+				return err
+			}
+			ts.RegisterOn(mux)
 
 			addr := fmt.Sprintf(":%d", *port)
 			fmt.Printf("Listening on %s...\n", addr)

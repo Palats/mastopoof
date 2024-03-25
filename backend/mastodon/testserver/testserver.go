@@ -2,16 +2,55 @@
 package testserver
 
 import (
+	"cmp"
 	"encoding/json"
+	"fmt"
+	"io/fs"
 	"net/http"
+	"slices"
+
+	"github.com/Palats/mastopoof/backend/mastodon"
+	"github.com/golang/glog"
 )
 
-type Server struct{}
+type Server struct {
+	// Ordered list of Mastodon statuses to serve.
+	statuses []*mastodon.Status
+}
 
-func New() *Server {
-	s := &Server{}
+func New(statusesFS fs.FS) (*Server, error) {
+	entries, err := fs.ReadDir(statusesFS, ".")
+	if err != nil {
+		return nil, err
+	}
 
-	return s
+	var statuses []*mastodon.Status
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		glog.Infof("Testserver: including %s", entry.Name())
+		raw, err := fs.ReadFile(statusesFS, entry.Name())
+		if err != nil {
+			return nil, fmt.Errorf("unable to open %s: %w", entry.Name(), err)
+		}
+		status := &mastodon.Status{}
+		if err := json.Unmarshal(raw, status); err != nil {
+			return nil, fmt.Errorf("unable to decode %s as status json: %w", entry.Name(), err)
+		}
+		statuses = append(statuses, status)
+	}
+
+	slices.SortFunc(statuses, func(a, b *mastodon.Status) int {
+		// TODO: parse into integer
+		return cmp.Compare(a.ID, a.ID)
+	})
+
+	s := &Server{
+		statuses: statuses,
+	}
+	return s, nil
 }
 
 func (s *Server) RegisterOn(mux *http.ServeMux) {
@@ -78,5 +117,5 @@ func (s *Server) serverAPIAccountsVerifyCredentials(w http.ResponseWriter, req *
 
 // https://docs.joinmastodon.org/methods/timelines/#home
 func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request) {
-	s.returnJSON(w, req, []map[string]any{})
+	s.returnJSON(w, req, s.statuses)
 }
