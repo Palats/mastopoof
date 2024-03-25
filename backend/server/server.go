@@ -6,14 +6,17 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/Palats/mastopoof/backend/mastodon"
 	"github.com/Palats/mastopoof/backend/storage"
+	"github.com/alexedwards/scs/sqlite3store"
 	"github.com/alexedwards/scs/v2"
 	"github.com/golang/glog"
 
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
+	"github.com/Palats/mastopoof/proto/gen/mastopoof/mastopoofconnect"
 )
 
 type Server struct {
@@ -25,10 +28,19 @@ type Server struct {
 	getRedirectURI func(string) string
 }
 
-func New(st *storage.Storage, sm *scs.SessionManager, inviteCode string, autoLogin int64, selfURL string, getRedirectURI func(string) string) *Server {
+func New(st *storage.Storage, inviteCode string, autoLogin int64, selfURL string, getRedirectURI func(string) string) *Server {
+	sessionManager := scs.New()
+	sessionManager.Store = sqlite3store.New(st.DB)
+	sessionManager.Lifetime = 90 * 24 * time.Hour
+	sessionManager.Cookie.Name = "mastopoof"
+	// Need Lax and not Strict for oauth redirections
+	// https://stackoverflow.com/a/42220786
+	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
+	sessionManager.Cookie.Secure = true
+
 	s := &Server{
 		st:             st,
-		sessionManager: sm,
+		sessionManager: sessionManager,
 		inviteCode:     inviteCode,
 		autoLogin:      autoLogin,
 		selfURL:        selfURL,
@@ -496,4 +508,11 @@ func (s *Server) RedirectHandler(w http.ResponseWriter, req *http.Request) {
 	} else {
 		http.Redirect(w, req, s.selfURL, http.StatusFound)
 	}
+}
+
+func (s *Server) RegisterOn(mux *http.ServeMux) {
+	api := http.NewServeMux()
+	api.Handle(mastopoofconnect.NewMastopoofHandler(s))
+	mux.Handle("/_rpc/", s.sessionManager.LoadAndSave(http.StripPrefix("/_rpc", api)))
+	mux.Handle("/_redirect", s.sessionManager.LoadAndSave(http.HandlerFunc(s.RedirectHandler)))
 }

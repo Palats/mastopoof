@@ -10,10 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/alexedwards/scs/sqlite3store"
-	"github.com/alexedwards/scs/v2"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
@@ -27,7 +24,6 @@ import (
 	"github.com/Palats/mastopoof/backend/storage"
 	"github.com/Palats/mastopoof/frontend"
 
-	"github.com/Palats/mastopoof/proto/gen/mastopoof/mastopoofconnect"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -76,6 +72,26 @@ func getStreamID(ctx context.Context, st *storage.Storage) (int64, error) {
 		return userState.DefaultStID, nil
 	}
 	return 0, errors.New("no streamID / user ID specified")
+}
+
+func getMux(st *storage.Storage, autoLogin int64) (*http.ServeMux, error) {
+	mux := http.NewServeMux()
+
+	// Serve frontend content (html, js, etc.).
+	content, err := frontend.Content()
+	if err != nil {
+		return nil, err
+	}
+	mux.Handle("/", http.FileServer(http.FS(content)))
+
+	// Run the backend RPC server.
+	redirectURIFunc, err := redirectURIFunc(*selfURL)
+	if err != nil {
+		return nil, err
+	}
+	s := server.New(st, *inviteCode, autoLogin, *selfURL, redirectURIFunc)
+	s.RegisterOn(mux)
+	return mux, nil
 }
 
 func redirectURIFunc(target string) (func(string) string, error) {
@@ -175,49 +191,6 @@ func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool
 		fmt.Println()
 	}
 	return nil
-}
-
-func cmdServe(_ context.Context, st *storage.Storage, selfURL string, inviteCode string, autoLogin int64, testServer bool) error {
-	content, err := frontend.Content()
-	if err != nil {
-		return err
-	}
-
-	sessionManager := scs.New()
-	sessionManager.Store = sqlite3store.New(st.DB)
-	sessionManager.Lifetime = 90 * 24 * time.Hour
-	sessionManager.Cookie.Name = "mastopoof"
-	// Need Lax and not Strict for oauth redirections
-	// https://stackoverflow.com/a/42220786
-	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
-	sessionManager.Cookie.Secure = true
-
-	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.FS(content)))
-
-	if testServer {
-		testserver.New().RegisterOn(mux)
-	}
-
-	redirectURIFunc, err := redirectURIFunc(selfURL)
-	if err != nil {
-		return err
-	}
-
-	s := server.New(st, sessionManager, inviteCode, autoLogin, selfURL, redirectURIFunc)
-
-	api := http.NewServeMux()
-	api.Handle(mastopoofconnect.NewMastopoofHandler(s))
-	mux.Handle("/_rpc/", sessionManager.LoadAndSave(http.StripPrefix("/_rpc", api)))
-	mux.Handle("/_redirect", sessionManager.LoadAndSave(http.HandlerFunc(s.RedirectHandler)))
-
-	addr := fmt.Sprintf(":%d", *port)
-	fmt.Printf("Listening on %s...\n", addr)
-
-	return http.ListenAndServe(addr,
-		// Use h2c so we can serve HTTP/2 without TLS.
-		h2c.NewHandler(mux, &http2.Server{}),
-	)
 }
 
 func cmdPickNext(ctx context.Context, st *storage.Storage, stid int64) error {
@@ -381,7 +354,13 @@ func run(ctx context.Context) error {
 				return err
 			}
 
-			return cmdServe(ctx, st, *selfURL, *inviteCode, uid, false /*testServer*/)
+			mux, err := getMux(st, uid)
+			if err != nil {
+				return err
+			}
+			addr := fmt.Sprintf(":%d", *port)
+			fmt.Printf("Listening on %s...\n", addr)
+			return http.ListenAndServe(addr, h2c.NewHandler(mux, &http2.Server{}))
 		},
 	})
 
@@ -402,7 +381,17 @@ func run(ctx context.Context) error {
 				return fmt.Errorf("unable to create testuser: %w", err)
 			}
 
-			return cmdServe(ctx, st, *selfURL, "", userState.UID, true /*testServer*/)
+			mux, err := getMux(st, userState.UID)
+			if err != nil {
+				return err
+			}
+
+			testserver.New().RegisterOn(mux)
+
+			addr := fmt.Sprintf(":%d", *port)
+			fmt.Printf("Listening on %s...\n", addr)
+			return http.ListenAndServe(addr, h2c.NewHandler(mux, &http2.Server{}))
+
 		},
 	})
 
