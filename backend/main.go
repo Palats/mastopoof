@@ -378,6 +378,16 @@ func run(ctx context.Context) error {
 			defer db.Close()
 
 			serverAddr := fmt.Sprintf("http://localhost:%d", *port)
+			redirectURIFunc, err := redirectURIFunc(*selfURL)
+			if err != nil {
+				return err
+			}
+
+			_, err = st.CreateServerState(ctx, st.DB, serverAddr, redirectURIFunc(serverAddr))
+			if err != nil {
+				return fmt.Errorf("unable to create server state: %w", err)
+			}
+
 			userState, err := st.CreateUser(ctx, st.DB, serverAddr, "1234", "testuser1")
 			if err != nil {
 				return fmt.Errorf("unable to create testuser: %w", err)
