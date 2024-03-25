@@ -208,15 +208,15 @@ func cmdServe(_ context.Context, st *storage.Storage, selfURL string, inviteCode
 
 	api := http.NewServeMux()
 	api.Handle(mastopoofconnect.NewMastopoofHandler(s))
-	mux.Handle("/_rpc/", http.StripPrefix("/_rpc", api))
-	mux.HandleFunc("/_redirect", s.RedirectHandler)
+	mux.Handle("/_rpc/", sessionManager.LoadAndSave(http.StripPrefix("/_rpc", api)))
+	mux.Handle("/_redirect", sessionManager.LoadAndSave(http.HandlerFunc(s.RedirectHandler)))
 
 	addr := fmt.Sprintf(":%d", *port)
 	fmt.Printf("Listening on %s...\n", addr)
 
 	return http.ListenAndServe(addr,
 		// Use h2c so we can serve HTTP/2 without TLS.
-		h2c.NewHandler(sessionManager.LoadAndSave(mux), &http2.Server{}),
+		h2c.NewHandler(mux, &http2.Server{}),
 	)
 }
 
