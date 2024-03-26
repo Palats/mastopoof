@@ -39,6 +39,7 @@ var (
 	selfURL     = flag.String("self_url", "", "URL to use for authentication redirection on the frontend. When empty, uses out-of-band auth.")
 	inviteCode  = flag.String("invite_code", "", "If not empty, users can only be created by providing this code.")
 	testData    = flag.String("testdata", "testdata", "Directory with backend testdata, for testserve")
+	doFix       = flag.Bool("fix", false, "If set, update streamstate based on computed value.")
 )
 
 func getStorage(ctx context.Context, filename string) (*storage.Storage, *sql.DB, error) {
@@ -243,6 +244,51 @@ func cmdShowOpened(ctx context.Context, st *storage.Storage, stid int64) error {
 		fmt.Printf("[%d] %s@%v %s...\n", openStatus.Position, status.ID, status.CreatedAt, subject)
 	}
 	return nil
+}
+
+func cmdCheckStreamState(ctx context.Context, st *storage.Storage, stid int64) error {
+	txn, err := st.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer txn.Rollback()
+
+	dbStreamState, err := st.StreamState(ctx, txn, stid)
+	if err != nil {
+		return fmt.Errorf("unable to get streamstate from DB: %w", err)
+	}
+
+	fmt.Println("### Stream state in database")
+	fmt.Println("Stream ID:", dbStreamState.StID)
+	fmt.Println("First position:", dbStreamState.FirstPosition)
+	fmt.Println("Last position:", dbStreamState.LastPosition)
+	fmt.Println("Remaining:", dbStreamState.Remaining)
+	fmt.Println()
+
+	computeStreamState, err := st.RecomputeStreamState(ctx, txn, stid)
+	if err != nil {
+		return fmt.Errorf("unable to calculate streamstate: %w", err)
+	}
+
+	fmt.Println("### Calculated stream state")
+	fmt.Println("Stream ID:", computeStreamState.StID)
+	fmt.Println("First position:", computeStreamState.FirstPosition)
+	fmt.Println("Last position:", computeStreamState.LastPosition)
+	fmt.Println("Remaining:", computeStreamState.Remaining)
+	fmt.Println()
+
+	if !*doFix {
+		return nil
+	}
+
+	fmt.Println("Fixing state in DB...")
+	dbStreamState.FirstPosition = computeStreamState.FirstPosition
+	dbStreamState.LastPosition = computeStreamState.LastPosition
+	dbStreamState.Remaining = computeStreamState.Remaining
+	if err := st.SetStreamState(ctx, txn, dbStreamState); err != nil {
+		return fmt.Errorf("failed to update stream state: %w", err)
+	}
+	return txn.Commit()
 }
 
 func run(ctx context.Context) error {
@@ -474,6 +520,25 @@ func run(ctx context.Context) error {
 			}
 
 			return cmdShowOpened(ctx, st, stid)
+		},
+	})
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "check-stream-state",
+		Short: "Compare stream state values to its theoritical values.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			st, db, err := getStorage(ctx, *dbFilename)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			stid, err := getStreamID(ctx, st)
+			if err != nil {
+				return err
+			}
+
+			return cmdCheckStreamState(ctx, st, stid)
 		},
 	})
 

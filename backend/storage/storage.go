@@ -430,6 +430,50 @@ func (st *Storage) SetStreamState(ctx context.Context, db SQLQueryable, streamSt
 	return nil
 }
 
+// RecomputeStreamState recreates what it can about StreamState from
+// the state of the DB.
+func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLQueryable, stid int64) (*StreamState, error) {
+	streamState := &StreamState{
+		StID: stid,
+		// UID: kept empty
+		// LastRead: arbitrary, cannot be rebuilt.
+	}
+
+	// FirstPosition
+	err := txn.QueryRowContext(ctx, "SELECT min(position) FROM streamcontent WHERE stid = ?", stid).Scan(&streamState.FirstPosition)
+	if err == sql.ErrNoRows {
+		streamState.FirstPosition = 0
+	} else if err != nil {
+		return nil, err
+	}
+
+	// LastPosition
+	err = txn.QueryRowContext(ctx, "SELECT max(position) FROM streamcontent WHERE stid = ?", stid).Scan(&streamState.LastPosition)
+	if err == sql.ErrNoRows {
+		streamState.LastRead = 0
+	} else if err != nil {
+		return nil, err
+	}
+
+	// Remaining
+	// The `streamcontent.stid != ?` is necessary to avoid interference from other streams.
+	// TODO: document the `streamcontent.stid != ?`
+	err = txn.QueryRowContext(ctx, `
+		SELECT
+			COUNT(*)
+		FROM
+			statuses LEFT OUTER JOIN streamcontent USING (sid)
+		WHERE
+			(streamcontent.stid IS NULL OR streamcontent.stid != ?)
+		;
+	`, stid).Scan(&streamState.Remaining)
+	if err != nil {
+		return nil, err
+	}
+
+	return streamState, nil
+}
+
 func (st *Storage) ClearApp(ctx context.Context) error {
 	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -642,6 +686,7 @@ func (st *Storage) PickNext(ctx context.Context, stid int64) (*Item, error) {
 
 func (st *Storage) pickNextInTxn(ctx context.Context, stid int64, txn *sql.Tx, streamState *StreamState) (*Item, error) {
 	// List all statuses which are not listed yet in "streamcontent" for that stream ID.
+	// TODO: document the `streamcontent.stid != ?`
 	rows, err := txn.QueryContext(ctx, `
 		SELECT
 			statuses.sid,
