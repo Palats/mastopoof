@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/golang/glog"
@@ -230,20 +229,6 @@ func cmdSetRead(ctx context.Context, st *storage.Storage, stid int64, position i
 	}
 
 	return txn.Commit()
-}
-
-func cmdShowOpened(ctx context.Context, st *storage.Storage, stid int64) error {
-	opened, err := st.Opened(ctx, stid)
-	if err != nil {
-		return err
-	}
-
-	for _, openStatus := range opened {
-		status := openStatus.Status
-		subject := strings.ReplaceAll(status.Content[:50], "\n", "  ")
-		fmt.Printf("[%d] %s@%v %s...\n", openStatus.Position, status.ID, status.CreatedAt, subject)
-	}
-	return nil
 }
 
 func cmdCheckStreamState(ctx context.Context, st *storage.Storage, stid int64) error {
@@ -501,25 +486,6 @@ func run(ctx context.Context) error {
 				}
 			}
 			return cmdSetRead(ctx, st, stid, position)
-		},
-	})
-	rootCmd.AddCommand(&cobra.Command{
-		Use:   "show-opened",
-		Short: "List currently opened statuses (picked & not read)",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx, *dbFilename)
-			if err != nil {
-				return err
-			}
-			defer db.Close()
-
-			stid, err := getStreamID(ctx, st)
-			if err != nil {
-				return err
-			}
-
-			return cmdShowOpened(ctx, st, stid)
 		},
 	})
 	rootCmd.AddCommand(&cobra.Command{

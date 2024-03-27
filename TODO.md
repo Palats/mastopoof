@@ -64,6 +64,7 @@
  - GC of old & viewed statuses (requires some notion of refetching)
  - Detect advance of unread in other device
  - Show button to scroll down to current unread
+ - No-connect mode: do not allow any mastodon server query
 
 ### Done
  - header/footer are confusing compared to the posts
