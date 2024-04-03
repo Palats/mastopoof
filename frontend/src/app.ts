@@ -814,13 +814,6 @@ export class MastLogin extends LitElement {
     await backend.token(this.serverAddr, authCode);
   }
 
-  openMastodonAuth() {
-    window.open(this.authURI, "Auth");
-    /*if (window.focus) {
-      newWindow.focus();
-    } */
-  }
-
   render() {
     if (!this.authURI) {
       return html`
@@ -837,7 +830,7 @@ export class MastLogin extends LitElement {
 
     return html`
       <div>
-        <button @click="${this.openMastodonAuth}">Open Mastodon Auth</button>
+        <a href=${this.authURI}>Mastodon Auth</a>
       </div>
       <div>
         <label for="auth-code">Authorization code</label>

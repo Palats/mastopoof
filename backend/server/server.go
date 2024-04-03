@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"connectrpc.com/connect"
@@ -151,7 +152,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 		app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
 			Server:       ss.ServerAddr,
 			ClientName:   "mastopoof",
-			Scopes:       "read",
+			Scopes:       "read write push",
 			Website:      "https://github.com/Palats/mastopoof",
 			RedirectURIs: redirectURI,
 		})
@@ -172,8 +173,20 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 		return nil, err
 	}
 
+	authAddr, err := url.Parse(ss.ServerAddr)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unable to parse %s: %w", ss.ServerAddr, err))
+	}
+	authAddr.Path = "/oauth/authorize"
+	q := authAddr.Query()
+	q.Set("client_id", ss.ClientID)
+	q.Set("redirect_uri", redirectURI)
+	q.Set("response_type", "code")
+	q.Set("scope", "read")
+	authAddr.RawQuery = q.Encode()
+
 	return connect.NewResponse(&pb.AuthorizeResponse{
-		AuthorizeAddr: ss.AuthURI,
+		AuthorizeAddr: authAddr.String(),
 	}), nil
 }
 
