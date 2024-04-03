@@ -26,10 +26,9 @@ type Server struct {
 	autoLogin      int64
 	sessionManager *scs.SessionManager
 	selfURL        string
-	getRedirectURI func(string) string
 }
 
-func New(st *storage.Storage, inviteCode string, autoLogin int64, selfURL string, getRedirectURI func(string) string) *Server {
+func New(st *storage.Storage, inviteCode string, autoLogin int64, selfURL string) *Server {
 	sessionManager := scs.New()
 	sessionManager.Store = sqlite3store.New(st.DB)
 	sessionManager.Lifetime = 90 * 24 * time.Hour
@@ -45,7 +44,6 @@ func New(st *storage.Storage, inviteCode string, autoLogin int64, selfURL string
 		inviteCode:     inviteCode,
 		autoLogin:      autoLogin,
 		selfURL:        selfURL,
-		getRedirectURI: getRedirectURI,
 	}
 	return s
 }
@@ -123,7 +121,6 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 	if err := mastodon.ValidateAddress(serverAddr); err != nil {
 		return nil, err
 	}
-	redirectURI := s.getRedirectURI(serverAddr)
 
 	// TODO: split transactions to avoid remote requests in the middle.
 	txn, err := s.st.DB.BeginTx(ctx, nil)
@@ -132,10 +129,10 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 	}
 	defer txn.Rollback()
 
-	ss, err := s.st.ServerState(ctx, txn, serverAddr, redirectURI)
+	ss, err := s.st.ServerState(ctx, txn, serverAddr)
 	if errors.Is(err, storage.ErrNotFound) {
 		glog.Infof("Creating server state for %q", serverAddr)
-		ss, err = s.st.CreateServerState(ctx, txn, serverAddr, redirectURI)
+		ss, err = s.st.CreateServerState(ctx, txn, serverAddr)
 		if err != nil {
 			return nil, err
 		}
@@ -154,7 +151,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 			ClientName:   "mastopoof",
 			Scopes:       "read write push",
 			Website:      "https://github.com/Palats/mastopoof",
-			RedirectURIs: redirectURI,
+			RedirectURIs: ss.RedirectURI,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("unable to register app on server %s: %w", ss.ServerAddr, err)
@@ -162,7 +159,6 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 		ss.ClientID = app.ClientID
 		ss.ClientSecret = app.ClientSecret
 		ss.AuthURI = app.AuthURI
-		ss.RedirectURI = redirectURI
 
 		if err := s.st.SetServerState(ctx, txn, ss); err != nil {
 			return nil, err
@@ -180,7 +176,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 	authAddr.Path = "/oauth/authorize"
 	q := authAddr.Query()
 	q.Set("client_id", ss.ClientID)
-	q.Set("redirect_uri", redirectURI)
+	q.Set("redirect_uri", ss.RedirectURI)
 	q.Set("response_type", "code")
 	q.Set("scope", "read")
 	authAddr.RawQuery = q.Encode()
@@ -203,7 +199,6 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	if err := mastodon.ValidateAddress(serverAddr); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	redirectURI := s.getRedirectURI(serverAddr)
 
 	authCode := req.Msg.AuthCode
 	if authCode == "" {
@@ -217,7 +212,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	}
 	defer txn.Rollback()
 
-	serverState, err := s.st.ServerState(ctx, txn, serverAddr, redirectURI)
+	serverState, err := s.st.ServerState(ctx, txn, serverAddr)
 	if err != nil {
 		// Do not create the server - it should have been created on a previous step. If it is not there,
 		// it is odd, so error out.
@@ -231,7 +226,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 		ClientSecret: serverState.ClientSecret,
 	})
 
-	err = client.AuthenticateToken(ctx, authCode, redirectURI)
+	err = client.AuthenticateToken(ctx, authCode, serverState.RedirectURI)
 	if err != nil {
 		return nil, fmt.Errorf("unable to authenticate on server %s: %w", serverState.ServerAddr, err)
 	}
@@ -401,7 +396,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		return nil, err
 	}
 
-	serverState, err := s.st.ServerState(ctx, txn, accountState.ServerAddr, s.getRedirectURI(accountState.ServerAddr))
+	serverState, err := s.st.ServerState(ctx, txn, accountState.ServerAddr)
 	if err != nil {
 		return nil, err
 	}

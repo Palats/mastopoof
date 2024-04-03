@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 
@@ -51,7 +50,10 @@ func getStorage(ctx context.Context, filename string) (*storage.Storage, *sql.DB
 		return nil, nil, fmt.Errorf("unable to open storage %s: %w", filename, err)
 	}
 
-	st := storage.NewStorage(db)
+	st, err := storage.NewStorage(db, *selfURL)
+	if err != nil {
+		return nil, nil, err
+	}
 	if err := st.Init(ctx); err != nil {
 		return nil, nil, fmt.Errorf("unable to init storage: %w", err)
 	}
@@ -87,39 +89,9 @@ func getMux(st *storage.Storage, autoLogin int64) (*http.ServeMux, error) {
 	mux.Handle("/", http.FileServer(http.FS(content)))
 
 	// Run the backend RPC server.
-	redirectURIFunc, err := redirectURIFunc(*selfURL)
-	if err != nil {
-		return nil, err
-	}
-	s := server.New(st, *inviteCode, autoLogin, *selfURL, redirectURIFunc)
+	s := server.New(st, *inviteCode, autoLogin, *selfURL)
 	s.RegisterOn(mux)
 	return mux, nil
-}
-
-func redirectURIFunc(target string) (func(string) string, error) {
-	if target == "" {
-		return func(string) string {
-			return "urn:ietf:wg:oauth:2.0:oob"
-		}, nil
-	}
-
-	baseURL, err := url.Parse(target)
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse redirect URI %q: %w", target, err)
-	}
-	baseURL = baseURL.JoinPath("_redirect")
-	glog.Infof("Using redirect URI %s", baseURL)
-
-	return func(serverAddr string) string {
-		// RedirectURI for auth must contain information about the mastodon server
-		// it is about. Otherwise, when getting a code back after auth, the server
-		// cannot know what it is about.
-		u := *baseURL // Make a copy to not modify the base URL.
-		q := u.Query()
-		q.Set("host", serverAddr)
-		u.RawQuery = q.Encode()
-		return u.String()
-	}, nil
 }
 
 func cmdUsers(ctx context.Context, st *storage.Storage) error {
@@ -139,7 +111,7 @@ func cmdUsers(ctx context.Context, st *storage.Storage) error {
 	return nil
 }
 
-func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool, selfURL string) error {
+func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool) error {
 	fmt.Println("# User ID:", uid)
 
 	userState, err := st.UserState(ctx, st.DB, uid)
@@ -156,11 +128,7 @@ func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool
 	fmt.Println("# Server address:", accountState.ServerAddr)
 	fmt.Println("# Last home status ID:", accountState.LastHomeStatusID)
 
-	redirectURIFunc, err := redirectURIFunc(selfURL)
-	if err != nil {
-		return err
-	}
-	serverState, err := st.ServerState(ctx, st.DB, accountState.ServerAddr, redirectURIFunc(accountState.ServerAddr))
+	serverState, err := st.ServerState(ctx, st.DB, accountState.ServerAddr)
 	if err != nil {
 		return err
 	}
@@ -367,7 +335,7 @@ func run(ctx context.Context) error {
 				return err
 			}
 
-			return cmdMe(ctx, st, uid, *showAccount, *selfURL)
+			return cmdMe(ctx, st, uid, *showAccount)
 		},
 	})
 
@@ -409,12 +377,8 @@ func run(ctx context.Context) error {
 			defer db.Close()
 
 			serverAddr := fmt.Sprintf("http://localhost:%d", *port)
-			redirectURIFunc, err := redirectURIFunc(*selfURL)
-			if err != nil {
-				return err
-			}
 
-			_, err = st.CreateServerState(ctx, st.DB, serverAddr, redirectURIFunc(serverAddr))
+			_, err = st.CreateServerState(ctx, st.DB, serverAddr)
 			if err != nil {
 				return fmt.Errorf("unable to create server state: %w", err)
 			}

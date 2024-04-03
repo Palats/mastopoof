@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 
 	"github.com/Palats/mastopoof/backend/mastodon"
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
+	"github.com/golang/glog"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -110,15 +112,42 @@ func IDLess(id1 mastodon.ID, id2 mastodon.ID) bool {
 }
 
 type Storage struct {
-	DB *sql.DB
+	DB              *sql.DB
+	baseRedirectURL *url.URL
 }
 
-func NewStorage(db *sql.DB) *Storage {
-	return &Storage{DB: db}
+func NewStorage(db *sql.DB, selfURL string) (*Storage, error) {
+	s := &Storage{DB: db}
+
+	if selfURL != "" {
+		baseRedirectURL, err := url.Parse(selfURL)
+		if err != nil {
+			return nil, fmt.Errorf("unable to parse self URL %q: %w", selfURL, err)
+		}
+		baseRedirectURL = baseRedirectURL.JoinPath("_redirect")
+		glog.Infof("Using redirect URI %s", baseRedirectURL)
+		s.baseRedirectURL = baseRedirectURL
+	}
+
+	return s, nil
 }
 
 func (st *Storage) Init(ctx context.Context) error {
 	return prepareDB(ctx, st.DB)
+}
+
+func (st *Storage) redirectURI(serverAddr string) string {
+	if st.baseRedirectURL == nil {
+		return "urn:ietf:wg:oauth:2.0:oob"
+	}
+	// RedirectURI for auth must contain information about the mastodon server
+	// it is about. Otherwise, when getting a code back after auth, the server
+	// cannot know what it is about.
+	u := *st.baseRedirectURL // Make a copy to not modify the base URL.
+	q := u.Query()
+	q.Set("host", serverAddr)
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 type ListUserEntry struct {
@@ -194,10 +223,10 @@ func (st *Storage) CreateUser(ctx context.Context, txn SQLQueryable, serverAddr 
 }
 
 // CreateServerState creates a server with the given address.
-func (st *Storage) CreateServerState(ctx context.Context, db SQLQueryable, serverAddr string, redirectURI string) (*ServerState, error) {
+func (st *Storage) CreateServerState(ctx context.Context, db SQLQueryable, serverAddr string) (*ServerState, error) {
 	ss := &ServerState{
 		ServerAddr:  serverAddr,
-		RedirectURI: redirectURI,
+		RedirectURI: st.redirectURI(serverAddr),
 	}
 
 	// Do not use SetServerState(), as it will not fail if that already exists.
@@ -216,8 +245,9 @@ func (st *Storage) CreateServerState(ctx context.Context, db SQLQueryable, serve
 
 // ServerState returns the current ServerState for a given, well, server.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) ServerState(ctx context.Context, db SQLQueryable, serverAddr string, redirectURI string) (*ServerState, error) {
+func (st *Storage) ServerState(ctx context.Context, db SQLQueryable, serverAddr string) (*ServerState, error) {
 	var state string
+	redirectURI := st.redirectURI(serverAddr)
 	err := db.QueryRowContext(ctx,
 		"SELECT state FROM serverstate WHERE server_addr=? AND json_extract(state, '$.redirect_uri')=?",
 		serverAddr, redirectURI).Scan(&state)
