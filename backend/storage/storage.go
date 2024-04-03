@@ -17,7 +17,13 @@ import (
 
 // ServerState contains information about a Mastodon server - most notably, its app registration.
 type ServerState struct {
+	// The storage key for this app registration.
+	// Redundant in storage, but convenient when manipulating the data around.
+	Key string `json:"key"`
+
 	ServerAddr string `json:"server_addr"`
+	// Scopes used when registering the app.
+	Scopes string `json:"scopes"`
 
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
@@ -114,10 +120,20 @@ func IDLess(id1 mastodon.ID, id2 mastodon.ID) bool {
 type Storage struct {
 	DB              *sql.DB
 	baseRedirectURL *url.URL
+	scopes          string
 }
 
-func NewStorage(db *sql.DB, selfURL string) (*Storage, error) {
-	s := &Storage{DB: db}
+// NewStorage creates a new Mastopoof abstraction layer.
+// Parameters:
+//   - `db`: the storage.
+//   - `selfURL`: the address under which the web UI will be known. Needed for
+//     Mastodon app registration purposes.
+//   - `scopes`: List of scopes that will be used, used for Mastodon App registration.
+func NewStorage(db *sql.DB, selfURL string, scopes string) (*Storage, error) {
+	s := &Storage{
+		DB:     db,
+		scopes: scopes,
+	}
 
 	if selfURL != "" {
 		baseRedirectURL, err := url.Parse(selfURL)
@@ -222,10 +238,17 @@ func (st *Storage) CreateUser(ctx context.Context, txn SQLQueryable, serverAddr 
 	return userState, nil
 }
 
+func (st *Storage) serverStateKey(serverAddr string) string {
+	return serverAddr + "--" + st.redirectURI(serverAddr) + "--" + st.scopes
+}
+
 // CreateServerState creates a server with the given address.
 func (st *Storage) CreateServerState(ctx context.Context, db SQLQueryable, serverAddr string) (*ServerState, error) {
+	key := st.serverStateKey(serverAddr)
 	ss := &ServerState{
+		Key:         key,
 		ServerAddr:  serverAddr,
+		Scopes:      st.scopes,
 		RedirectURI: st.redirectURI(serverAddr),
 	}
 
@@ -235,8 +258,8 @@ func (st *Storage) CreateServerState(ctx context.Context, db SQLQueryable, serve
 		return nil, err
 	}
 
-	stmt := `INSERT INTO serverstate(server_addr, state) VALUES(?, ?)`
-	_, err = db.ExecContext(ctx, stmt, ss.ServerAddr, state)
+	stmt := `INSERT INTO serverstate(key, state) VALUES(?, ?)`
+	_, err = db.ExecContext(ctx, stmt, ss.Key, state)
 	if err != nil {
 		return nil, err
 	}
@@ -247,12 +270,11 @@ func (st *Storage) CreateServerState(ctx context.Context, db SQLQueryable, serve
 // Returns wrapped ErrNotFound if no entry exists.
 func (st *Storage) ServerState(ctx context.Context, db SQLQueryable, serverAddr string) (*ServerState, error) {
 	var state string
-	redirectURI := st.redirectURI(serverAddr)
+	key := st.serverStateKey(serverAddr)
 	err := db.QueryRowContext(ctx,
-		"SELECT state FROM serverstate WHERE server_addr=? AND json_extract(state, '$.redirect_uri')=?",
-		serverAddr, redirectURI).Scan(&state)
+		"SELECT state FROM serverstate WHERE key=?", key).Scan(&state)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("no state for server_addr=%s, redirect_uri=%s: %w", serverAddr, redirectURI, ErrNotFound)
+		return nil, fmt.Errorf("no state for server_addr=%s, key=%s: %w", serverAddr, key, ErrNotFound)
 	}
 	if err != nil {
 		return nil, err
@@ -271,9 +293,8 @@ func (st *Storage) SetServerState(ctx context.Context, db SQLQueryable, ss *Serv
 		return err
 	}
 
-	// TODO: Fix schema to have a primary key / unique on `server_addr` maybe.
-	stmt := `UPDATE serverstate SET state = ? WHERE server_addr = ? AND json_extract(state, '$.redirect_uri')=?`
-	_, err = db.ExecContext(ctx, stmt, state, ss.ServerAddr, ss.RedirectURI)
+	stmt := `UPDATE serverstate SET state = ? WHERE key = ?`
+	_, err = db.ExecContext(ctx, stmt, state, ss.Key)
 	if err != nil {
 		return err
 	}

@@ -86,7 +86,7 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 			FROM
 				pragma_table_info(?)
 			ORDER BY
-				cid
+				name
 		`)
 
 		columnsRows, err := db.QueryContext(ctx, query, tableName)
@@ -138,7 +138,7 @@ func TestDBCreate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, err := NewStorage(db, "")
+	st, err := NewStorage(db, "", "read")
 	if err != nil {
 		t.Fatal(err)
 	}

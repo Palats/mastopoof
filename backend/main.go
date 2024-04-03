@@ -40,6 +40,8 @@ var (
 	doFix       = flag.Bool("fix", false, "If set, update streamstate based on computed value.")
 )
 
+const appMastodonScopes = "read write push"
+
 func getStorage(ctx context.Context, filename string) (*storage.Storage, *sql.DB, error) {
 	if filename == "" {
 		return nil, nil, fmt.Errorf("missing database filename; try specifying --db <filename>")
@@ -50,7 +52,7 @@ func getStorage(ctx context.Context, filename string) (*storage.Storage, *sql.DB
 		return nil, nil, fmt.Errorf("unable to open storage %s: %w", filename, err)
 	}
 
-	st, err := storage.NewStorage(db, *selfURL)
+	st, err := storage.NewStorage(db, *selfURL, appMastodonScopes)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -89,7 +91,7 @@ func getMux(st *storage.Storage, autoLogin int64) (*http.ServeMux, error) {
 	mux.Handle("/", http.FileServer(http.FS(content)))
 
 	// Run the backend RPC server.
-	s := server.New(st, *inviteCode, autoLogin, *selfURL)
+	s := server.New(st, *inviteCode, autoLogin, *selfURL, appMastodonScopes)
 	s.RegisterOn(mux)
 	return mux, nil
 }

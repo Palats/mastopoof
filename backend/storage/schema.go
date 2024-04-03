@@ -12,7 +12,7 @@ import (
 
 // schemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const schemaVersion = 10
+const schemaVersion = 12
 
 // refSchema is the database schema as if it was created from scratch. This is
 // used only for comparison with an actual schema, for consistency checking. In
@@ -20,15 +20,21 @@ const schemaVersion = 10
 // progressively, reflecting the evolution of the DB schema - and this refSchema
 // is ignored for that purpose.
 const refSchema = `
+	-- TODO: make strict
+
 	CREATE TABLE accountstate (
 		asid INTEGER PRIMARY KEY,
 		content TEXT NOT NULL,
 		uid TEXT
 	);
 
+	-- TODO: rename to reflect that it is just about Mastodon app registration.
 	CREATE TABLE serverstate (
-		server_addr STRING NOT NULL,
-		state TEXT NOT NULL
+		state TEXT NOT NULL,
+		-- A unique key for the serverstate.
+		-- Made of hash of redirect URI & scopes requested, as each of those
+		-- require a different Mastodon app registration.
+		key TEXT
 	);
 
 	CREATE TABLE statuses (
@@ -301,6 +307,31 @@ func prepareDB(ctx context.Context, db *sql.DB) error {
 			return fmt.Errorf("schema v10: unable to run %q: %w", sqlStmt, err)
 		}
 	}
+
+	if version < 11 {
+		// Change key for server state.
+		// Just drop all existing server registration - that will force a re-login.
+		sqlStmt := `
+			DELETE FROM serverstate;
+			ALTER TABLE serverstate DROP COLUMN server_addr;
+			ALTER TABLE serverstate ADD COLUMN key TEXT;
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("schema v11: unable to run %q: %w", sqlStmt, err)
+		}
+	}
+
+	if version < 12 {
+		// Nuke session state - the update in serverstate warrants it.
+		sqlStmt := `
+			DELETE FROM sessions;
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("schema v12: unable to run %q: %w", sqlStmt, err)
+		}
+	}
+
+	// If adding anything, do not forget to increment the schema version.
 
 	if _, err := txn.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion)); err != nil {
 		return fmt.Errorf("unable to set user_version: %w", err)

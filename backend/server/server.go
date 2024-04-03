@@ -26,9 +26,10 @@ type Server struct {
 	autoLogin      int64
 	sessionManager *scs.SessionManager
 	selfURL        string
+	scopes         string
 }
 
-func New(st *storage.Storage, inviteCode string, autoLogin int64, selfURL string) *Server {
+func New(st *storage.Storage, inviteCode string, autoLogin int64, selfURL string, scopes string) *Server {
 	sessionManager := scs.New()
 	sessionManager.Store = sqlite3store.New(st.DB)
 	sessionManager.Lifetime = 90 * 24 * time.Hour
@@ -44,6 +45,7 @@ func New(st *storage.Storage, inviteCode string, autoLogin int64, selfURL string
 		inviteCode:     inviteCode,
 		autoLogin:      autoLogin,
 		selfURL:        selfURL,
+		scopes:         scopes,
 	}
 	return s
 }
@@ -149,7 +151,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 		app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
 			Server:       ss.ServerAddr,
 			ClientName:   "mastopoof",
-			Scopes:       "read write push",
+			Scopes:       s.scopes,
 			Website:      "https://github.com/Palats/mastopoof",
 			RedirectURIs: ss.RedirectURI,
 		})
