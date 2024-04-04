@@ -19,25 +19,22 @@ type Server struct {
 }
 
 func New(statusesFS fs.FS) (*Server, error) {
-	entries, err := fs.ReadDir(statusesFS, ".")
+	filenames, err := fs.Glob(statusesFS, "*.json")
 	if err != nil {
 		return nil, err
 	}
 
 	var statuses []*mastodon.Status
 
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		glog.Infof("Testserver: including %s", entry.Name())
-		raw, err := fs.ReadFile(statusesFS, entry.Name())
+	for _, filename := range filenames {
+		glog.Infof("Testserver: including %s", filename)
+		raw, err := fs.ReadFile(statusesFS, filename)
 		if err != nil {
-			return nil, fmt.Errorf("unable to open %s: %w", entry.Name(), err)
+			return nil, fmt.Errorf("unable to open %s: %w", filename, err)
 		}
 		status := &mastodon.Status{}
 		if err := json.Unmarshal(raw, status); err != nil {
-			return nil, fmt.Errorf("unable to decode %s as status json: %w", entry.Name(), err)
+			return nil, fmt.Errorf("unable to decode %s as status json: %w", filename, err)
 		}
 		statuses = append(statuses, status)
 	}

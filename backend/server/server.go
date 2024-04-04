@@ -24,7 +24,7 @@ type Server struct {
 	st             *storage.Storage
 	inviteCode     string
 	autoLogin      int64
-	sessionManager *scs.SessionManager
+	SessionManager *scs.SessionManager
 	selfURL        string
 	scopes         string
 }
@@ -41,7 +41,7 @@ func New(st *storage.Storage, inviteCode string, autoLogin int64, selfURL string
 
 	s := &Server{
 		st:             st,
-		sessionManager: sessionManager,
+		SessionManager: sessionManager,
 		inviteCode:     inviteCode,
 		autoLogin:      autoLogin,
 		selfURL:        selfURL,
@@ -51,7 +51,7 @@ func New(st *storage.Storage, inviteCode string, autoLogin int64, selfURL string
 }
 
 func (s *Server) isLogged(ctx context.Context) error {
-	userID := s.sessionManager.GetInt64(ctx, "userid")
+	userID := s.SessionManager.GetInt64(ctx, "userid")
 	if userID == 0 {
 		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("oh noes"))
 	}
@@ -61,7 +61,7 @@ func (s *Server) isLogged(ctx context.Context) error {
 // verifyStdID checks that the logged in user is allowed access to that
 // stream.
 func (s *Server) verifyStID(ctx context.Context, stid int64) (*storage.UserState, error) {
-	userID := s.sessionManager.GetInt64(ctx, "userid")
+	userID := s.SessionManager.GetInt64(ctx, "userid")
 	userState, err := s.st.UserState(ctx, s.st.DB, userID)
 	if err != nil {
 		return nil, err
@@ -73,14 +73,14 @@ func (s *Server) verifyStID(ctx context.Context, stid int64) (*storage.UserState
 }
 
 func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest]) (*connect.Response[pb.LoginResponse], error) {
-	err := s.sessionManager.RenewToken(ctx)
+	err := s.SessionManager.RenewToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to renew token: %w", err)
 	}
 
 	if s.autoLogin > 0 {
 		// TODO: factorize login setup.
-		s.sessionManager.Put(ctx, "userid", s.autoLogin)
+		s.SessionManager.Put(ctx, "userid", s.autoLogin)
 	}
 
 	// Trying to login only based on existing session.
@@ -89,7 +89,7 @@ func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest
 		return connect.NewResponse(&pb.LoginResponse{}), nil
 	}
 
-	uid := s.sessionManager.GetInt64(ctx, "userid")
+	uid := s.SessionManager.GetInt64(ctx, "userid")
 
 	userState, err := s.st.UserState(ctx, s.st.DB, uid)
 	if err != nil {
@@ -102,8 +102,8 @@ func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest
 }
 
 func (s *Server) Logout(ctx context.Context, req *connect.Request[pb.LogoutRequest]) (*connect.Response[pb.LogoutResponse], error) {
-	s.sessionManager.Remove(ctx, "userid")
-	err := s.sessionManager.RenewToken(ctx)
+	s.SessionManager.Remove(ctx, "userid")
+	err := s.SessionManager.RenewToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to renew token: %w", err)
 	}
@@ -116,7 +116,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 			return nil, fmt.Errorf("Invalid invite code")
 		}
 		// TODO: make it less hacky
-		s.sessionManager.Put(ctx, "invitecheck", true)
+		s.SessionManager.Put(ctx, "invitecheck", true)
 	}
 
 	serverAddr := req.Msg.ServerAddr
@@ -191,7 +191,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest]) (*connect.Response[pb.TokenResponse], error) {
 	if s.inviteCode != "" {
 		// TODO: make it less hacky
-		if !s.sessionManager.GetBool(ctx, "invitecheck") {
+		if !s.SessionManager.GetBool(ctx, "invitecheck") {
 			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("missing invite code"))
 		}
 	}
@@ -283,11 +283,11 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	}
 
 	// And mark the session as logged in.
-	err = s.sessionManager.RenewToken(ctx)
+	err = s.SessionManager.RenewToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to renew token: %w", err)
 	}
-	s.sessionManager.Put(ctx, "userid", userState.UID)
+	s.SessionManager.Put(ctx, "userid", userState.UID)
 
 	return connect.NewResponse(&pb.TokenResponse{
 		UserInfo: &pb.UserInfo{DefaultStid: userState.DefaultStID},
@@ -523,6 +523,6 @@ func (s *Server) RedirectHandler(w http.ResponseWriter, req *http.Request) {
 func (s *Server) RegisterOn(mux *http.ServeMux) {
 	api := http.NewServeMux()
 	api.Handle(mastopoofconnect.NewMastopoofHandler(s))
-	mux.Handle("/_rpc/", s.sessionManager.LoadAndSave(http.StripPrefix("/_rpc", api)))
-	mux.Handle("/_redirect", s.sessionManager.LoadAndSave(http.HandlerFunc(s.RedirectHandler)))
+	mux.Handle("/_rpc/", s.SessionManager.LoadAndSave(http.StripPrefix("/_rpc", api)))
+	mux.Handle("/_redirect", s.SessionManager.LoadAndSave(http.HandlerFunc(s.RedirectHandler)))
 }
