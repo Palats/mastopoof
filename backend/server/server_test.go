@@ -1,22 +1,85 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
-	"connectrpc.com/connect"
 	"github.com/Palats/mastopoof/backend/mastodon/testserver"
 	"github.com/Palats/mastopoof/backend/storage"
 	"github.com/Palats/mastopoof/backend/testdata"
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
+	"golang.org/x/net/publicsuffix"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
+
+type Msg[T any] interface {
+	*T
+	proto.Message
+}
+
+type TestClient struct {
+	t        testing.TB
+	client   *http.Client
+	baseAddr string
+}
+
+func NewTestClient(t testing.TB, server *httptest.Server) *TestClient {
+	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{
+		Jar: jar,
+	}
+
+	return &TestClient{
+		t:        t,
+		client:   client,
+		baseAddr: server.URL + "/_rpc/mastopoof.Mastopoof/",
+	}
+}
+
+func Call[TRespMsg any, TResponse Msg[TRespMsg], TRequest proto.Message](testClient *TestClient, method string, req TRequest) TResponse {
+	t := testClient.t
+	t.Helper()
+
+	raw, err := protojson.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpResp, err := testClient.client.Post(testClient.baseAddr+method, "application/json", bytes.NewBuffer(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := httpResp.StatusCode, http.StatusOK; got != want {
+		t.Fatalf("Got status %v, want %v", got, want)
+	}
+
+	b, err := io.ReadAll(httpResp.Body)
+	httpResp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp := TResponse(new(TRespMsg))
+	if err := protojson.Unmarshal(b, resp); err != nil {
+		t.Fatal(err)
+	}
+	return resp
+}
 
 func TestBasic(t *testing.T) {
 	ctx := context.Background()
+	mux := http.NewServeMux()
+
 	selfURL := ""
 	scopes := "read"
 
@@ -25,11 +88,7 @@ func TestBasic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mux := http.NewServeMux()
 	ts.RegisterOn(mux)
-	mastServer := httptest.NewServer(mux)
-	defer mastServer.Close()
-	addr := mastServer.URL
 
 	// Creates mastopoof server.
 	db, err := sql.Open("sqlite3", "file::memory:?cache=shared")
@@ -44,26 +103,21 @@ func TestBasic(t *testing.T) {
 	if err := st.Init(ctx); err != nil {
 		t.Fatal(err)
 	}
-	s := New(st, "invite1", 0 /* autoLogin */, selfURL, scopes)
+	mastopoof := New(st, "invite1", 0 /* autoLogin */, selfURL, scopes)
+	mastopoof.RegisterOn(mux)
 
-	// In the real server, the session token is transported through cookies
-	// on the http layer. Here we're directly attaching it to the context
-	// instead.
-	sessionCtx, err := s.SessionManager.Load(ctx, "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Create the http server
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
 
-	// Get an authorize address.
-	resp, err := s.Authorize(sessionCtx, connect.NewRequest(&pb.AuthorizeRequest{
-		ServerAddr: addr,
+	testClient := NewTestClient(t, httpServer)
+
+	resp := Call[pb.AuthorizeResponse](testClient, "Authorize", &pb.AuthorizeRequest{
+		ServerAddr: httpServer.URL,
 		InviteCode: "invite1",
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
+	})
 
-	u, err := url.Parse(resp.Msg.AuthorizeAddr)
+	u, err := url.Parse(resp.AuthorizeAddr)
 	if err != nil {
 		t.Fatal(err)
 	}
