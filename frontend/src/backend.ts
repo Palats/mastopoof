@@ -95,7 +95,8 @@ export class Backend {
         console.log("last read to", this.streamInfo.lastRead);
         // this.lastRead is always not-undefined at this point, as the method is
         // only called after `setLastRead` which does not allow for it.
-        const promise = this.client.setRead({ stid: BigInt(this.streamInfo.stid!), lastRead: BigInt(this.streamInfo.lastRead!) });
+        // TODO: use "advance" when needed.
+        const promise = this.client.setRead({ stid: BigInt(this.streamInfo.stid!), lastRead: BigInt(this.streamInfo.lastRead!), mode: pb.SetReadRequest_Mode.ABSOLUTE });
         this.lastReadDirty = false;
         const resp = await promise;
         this.updateStreamInfo(resp.streamInfo);

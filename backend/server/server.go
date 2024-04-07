@@ -360,22 +360,43 @@ func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadReq
 		return nil, err
 	}
 
-	streamState, err := s.st.StreamState(ctx, s.st.DB, stid)
+	txn, err := s.st.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer txn.Rollback()
+
+	streamState, err := s.st.StreamState(ctx, txn, stid)
 	if err != nil {
 		return nil, err
 	}
 
-	v := req.Msg.GetLastRead()
-	if v < streamState.FirstPosition-1 || v > streamState.LastPosition {
-		return nil, fmt.Errorf("position %d is invalid", v)
+	oldValue := streamState.LastRead
+
+	requestedValue := req.Msg.GetLastRead()
+	if requestedValue < streamState.FirstPosition-1 || requestedValue > streamState.LastPosition {
+		return nil, fmt.Errorf("position %d is invalid", requestedValue)
 	}
-	streamState.LastRead = v
-	if err := s.st.SetStreamState(ctx, s.st.DB, streamState); err != nil {
-		return nil, err
+
+	switch req.Msg.Mode {
+	case pb.SetReadRequest_ABSOLUTE:
+		streamState.LastRead = requestedValue
+	case pb.SetReadRequest_ADVANCE:
+		if streamState.LastRead < requestedValue {
+			streamState.LastRead = requestedValue
+		}
+	default:
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("Invalid SetRead mode %v", req.Msg.Mode))
+	}
+
+	if streamState.LastRead != oldValue {
+		if err := s.st.SetStreamState(ctx, txn, streamState); err != nil {
+			return nil, err
+		}
 	}
 	return connect.NewResponse(&pb.SetReadResponse{
 		StreamInfo: streamState.ToStreamInfo(),
-	}), nil
+	}), txn.Commit()
 }
 
 func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {

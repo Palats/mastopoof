@@ -163,6 +163,16 @@ message SetReadRequest {
 
     // The stream to set the read marker to.
     int64 stid = 2;
+
+    enum Mode {
+        // Fails.
+        UNKNOWN = 0;
+        // Set the last read position no matter the previous value.
+        ABSOLUTE = 1;
+        // Set the last read position only if it is greater than the previous one.
+        ADVANCE = 2;
+    }
+    Mode mode = 3;
 }
 
 message SetReadResponse {

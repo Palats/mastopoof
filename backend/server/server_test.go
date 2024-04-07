@@ -269,12 +269,42 @@ func TestSetRead(t *testing.T) {
 		t.Errorf("Got last read %d, wanted %d", got, want)
 	}
 
+	// Updating without mode should fail.
+	req := &pb.SetReadRequest{
+		Stid:     userInfo.DefaultStid,
+		LastRead: 2,
+	}
+	if resp, want := Request(env, "SetRead", req), http.StatusBadRequest; resp.StatusCode != want {
+		t.Errorf("Got status code %v, wanted %v", resp.StatusCode, want)
+	}
+
 	// Update last read to another position.
 	lastReadResp := MustCall[pb.SetReadResponse](env, "SetRead", &pb.SetReadRequest{
 		Stid:     userInfo.DefaultStid,
 		LastRead: 2,
+		Mode:     pb.SetReadRequest_ADVANCE,
 	})
 	if got, want := lastReadResp.StreamInfo.LastRead, int64(2); got != want {
+		t.Errorf("Got last read %d, wanted %d", got, want)
+	}
+
+	// Trying to go backward in advance mode should not change things.
+	lastReadResp = MustCall[pb.SetReadResponse](env, "SetRead", &pb.SetReadRequest{
+		Stid:     userInfo.DefaultStid,
+		LastRead: 1,
+		Mode:     pb.SetReadRequest_ADVANCE,
+	})
+	if got, want := lastReadResp.StreamInfo.LastRead, int64(2); got != want {
+		t.Errorf("Got last read %d, wanted %d", got, want)
+	}
+
+	// But backward in absolute mode should be fine.
+	lastReadResp = MustCall[pb.SetReadResponse](env, "SetRead", &pb.SetReadRequest{
+		Stid:     userInfo.DefaultStid,
+		LastRead: 1,
+		Mode:     pb.SetReadRequest_ABSOLUTE,
+	})
+	if got, want := lastReadResp.StreamInfo.LastRead, int64(1); got != want {
 		t.Errorf("Got last read %d, wanted %d", got, want)
 	}
 }
