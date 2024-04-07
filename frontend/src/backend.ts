@@ -39,9 +39,6 @@ export class Backend {
     //  'stream-update': Fired when last-read is changed. Gives a StreamUpdateEvent event.
     public onEvent: EventTarget;
 
-    private lastReadDirty = false;
-    private lastReadQueued = false;
-
     private client: PromiseClient<typeof Mastopoof>;
 
     constructor() {
@@ -62,46 +59,10 @@ export class Backend {
         this.onEvent.dispatchEvent(evt);
     }
 
-    // Update the last-read position on the server. It will be rate limited,
-    // so not all call might be immediately effective. It will always use the last value.
-    public setLastRead(stid: number, position: number) {
-        const old = this.streamInfo;
-        this.streamInfo = old ? old.clone() : new pb.StreamInfo();
-
-        this.streamInfo.lastRead = BigInt(position);
-        this.streamInfo.stid = BigInt(stid);
-        this.lastReadDirty = true;
-        if (!this.lastReadQueued) {
-            this.lastReadQueued = true;
-            requestIdleCallback(() => this.updateLastRead(), { timeout: fuzzy(1000, 0.1) });
-        }
-        const evt = new StreamUpdateEvent("stream-update");
-        evt.prev = old;
-        evt.curr = this.streamInfo;
-        this.onEvent.dispatchEvent(evt);
-    }
-
-    // Internal method used in rate-limiting updates of last-read marker.
-    async updateLastRead() {
-        if (!this.lastReadDirty) {
-            this.lastReadQueued = false;
-            return;
-        }
-        if (!this.streamInfo) {
-            console.error("missing stream info");
-            return;
-        }
-
-        console.log("last read to", this.streamInfo.lastRead);
-        // this.lastRead is always not-undefined at this point, as the method is
-        // only called after `setLastRead` which does not allow for it.
-        // TODO: use "advance" when needed.
-        const promise = this.client.setRead({ stid: BigInt(this.streamInfo.stid!), lastRead: BigInt(this.streamInfo.lastRead!), mode: pb.SetReadRequest_Mode.ABSOLUTE });
-        this.lastReadDirty = false;
-        const resp = await promise;
+    // Update the last-read position on the server.
+    public async setLastRead(stid: bigint, position: bigint) {
+        const resp = await this.client.setRead({ stid: stid, lastRead: position, mode: pb.SetReadRequest_Mode.ABSOLUTE });
         this.updateStreamInfo(resp.streamInfo);
-
-        setTimeout(() => this.updateLastRead(), 1000);
     }
 
     public async list(request: protobuf.PartialMessage<pb.ListRequest>) {
@@ -166,8 +127,8 @@ export class Backend {
         this.onEvent.dispatchEvent(evt);
     }
 
-    public async fetch(stid: number) {
-        const resp = await this.client.fetch({ stid: BigInt(stid) });
+    public async fetch(stid: bigint) {
+        const resp = await this.client.fetch({ stid: stid });
         this.updateStreamInfo(resp.streamInfo);
         return resp;
     }

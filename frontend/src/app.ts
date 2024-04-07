@@ -67,7 +67,7 @@ export class AppRoot extends LitElement {
     if (!stid) {
       throw new Error("missing stid");
     }
-    return html`<mast-stream .stid=${Number(stid)}></mast-stream>`;
+    return html`<mast-stream .stid=${stid}></mast-stream>`;
   }
 
   static styles = [commonCSS, css``];
@@ -83,7 +83,7 @@ declare global {
 // StatusItem represents the state in the UI of a given status.
 interface StatusItem {
   // Position in the stream in the backend.
-  position: number;
+  position: bigint;
   // status, if loaded.
   status: mastodon.Status;
   // The account where this status was obtained from.
@@ -103,7 +103,7 @@ interface StatusItem {
 export class MastStream extends LitElement {
   // Which stream to display.
   // TODO: support changing it.
-  @property({ attribute: false }) stid?: number;
+  @property({ attribute: false }) stid?: bigint;
 
   private items: StatusItem[] = [];
   private perEltItem = new Map<Element, StatusItem>();
@@ -115,7 +115,7 @@ export class MastStream extends LitElement {
 
   // Status with the highest position value which is partially visible on the
   // screen.
-  @state() private lastVisiblePosition?: number;
+  @state() private lastVisiblePosition?: bigint;
 
   @state() private streamInfo?: pb.StreamInfo;
 
@@ -167,8 +167,8 @@ export class MastStream extends LitElement {
     // make things slow.
 
     // Find the boundaries of which statuses are visible.
-    let lastVisiblePosition: number | undefined;
-    let firstVisiblePosition: number | undefined;
+    let lastVisiblePosition: bigint | undefined;
+    let firstVisiblePosition: bigint | undefined;
     for (const item of this.items) {
       if (item.isVisible) {
         if (firstVisiblePosition === undefined) {
@@ -181,7 +181,7 @@ export class MastStream extends LitElement {
 
     // Scan items to see which one have disappeared - i.e., are above the current
     // view and can be marked as seen.
-    let disappearedPosition = 0;
+    let disappearedPosition = 0n;
     for (const item of this.items) {
       if (!item.disappeared) {
         break;
@@ -207,12 +207,12 @@ export class MastStream extends LitElement {
       throw new Error("loading previous status without successful forward loading");
     }
     const position = this.items[0].position;
-    const resp = await backend.list({ stid: BigInt(stid), position: BigInt(position), direction: pb.ListRequest_Direction.BACKWARD })
+    const resp = await backend.list({ stid: stid, position: position, direction: pb.ListRequest_Direction.BACKWARD })
 
     const newItems = [];
     for (let i = 0; i < resp.items.length; i++) {
       const item = resp.items[i];
-      const position = Number(item.position);
+      const position = item.position;
       const status = JSON.parse(item.status!.content) as mastodon.Status;
       newItems.push({
         status: status,
@@ -234,15 +234,15 @@ export class MastStream extends LitElement {
       throw new Error("missing stream id");
     }
 
-    let position = 0;
+    let position = 0n;
     if (this.items.length > 0) {
       position = this.items[this.items.length - 1].position;
     }
-    const resp = await backend.list({ stid: BigInt(stid), position: BigInt(position), direction: pb.ListRequest_Direction.FORWARD })
+    const resp = await backend.list({ stid: stid, position: position, direction: pb.ListRequest_Direction.FORWARD })
 
     for (let i = 0; i < resp.items.length; i++) {
       const item = resp.items[i];
-      const position = Number(item.position);
+      const position = item.position;
       const status = JSON.parse(item.status!.content) as mastodon.Status;
       this.items.push({
         status: status,
@@ -293,23 +293,23 @@ export class MastStream extends LitElement {
       return html`Loading...`;
     }
 
-    let count = 0;
+    let count = 0n;
     if (this.items.length === 0) {
       // Initial loading was done, so if items is empty, it means nothing is available.
-      count = Number(this.streamInfo.remainingPool);
+      count = this.streamInfo.remainingPool;
     } else {
       const lastPosition = this.items[this.items.length - 1].position;
-      const lastVisible = this.lastVisiblePosition ?? 0;
+      const lastVisible = this.lastVisiblePosition ?? 0n;
       // We've got:
       //   - visible statuses which are already on stream but not yet on screen/loaded.
       //   - statuses still in pool and not yet sorted in stream.
-      count = Number(this.streamInfo.remainingPool) + lastPosition - lastVisible;
+      count = this.streamInfo.remainingPool + lastPosition - lastVisible;
     }
 
     let remaining = html`Updating...`;
-    if (count == 0) {
+    if (count == 0n) {
       remaining = html`End of stream`;
-    } else if (count == 1) {
+    } else if (count == 1n) {
       remaining = html`1 remaining status`;
     } else {
       remaining = html`${count} remaining statuses`;
@@ -367,7 +367,7 @@ export class MastStream extends LitElement {
 
     // This function is called only if the initial loading is done - so if there is no items, it means that
     // the stream was empty at that time, and thus we're at its beginning.
-    const isBeginning = this.items.length == 0 || (this.items[0].position === Number(this.streamInfo.firstPosition))
+    const isBeginning = this.items.length == 0 || (this.items[0].position === this.streamInfo.firstPosition)
 
     return html`
       <div class="noanchor contentitem stream-beginning bg-blue-300 centered">
@@ -390,7 +390,7 @@ export class MastStream extends LitElement {
       <div class="noanchor contentitem bg-blue-300 stream-end">
         <div class="centered">
           <div>
-            <button @click=${this.loadNext} ?disabled=${Number(this.streamInfo.remainingPool) === 0}>
+            <button @click=${this.loadNext} ?disabled=${this.streamInfo.remainingPool === 0n}>
               <span class="material-symbols-outlined">arrow_downward</span>
               Load more statuses
               <span class="material-symbols-outlined">arrow_downward</span>
@@ -578,7 +578,7 @@ export class MastStatus extends LitElement {
   item?: StatusItem;
 
   @property({ attribute: false })
-  stid?: number;
+  stid?: bigint;
 
   @property({ type: Boolean })
   isRead: boolean = false;
@@ -595,7 +595,7 @@ export class MastStatus extends LitElement {
       throw new Error("missing stream id");
     }
     // Not sure if doing computation on "position" is fine, but... well.
-    backend.setLastRead(this.stid, this.item?.position - 1);
+    backend.setLastRead(this.stid, this.item?.position - 1n);
   }
 
   render() {
