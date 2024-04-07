@@ -47,7 +47,7 @@ func NewTestClient(t testing.TB, server *httptest.Server) *TestClient {
 	}
 }
 
-func Call[TRespMsg any, TResponse Msg[TRespMsg], TRequest proto.Message](testClient *TestClient, method string, req TRequest) TResponse {
+func Request[TRequest proto.Message](testClient *TestClient, method string, req TRequest) *http.Response {
 	t := testClient.t
 	t.Helper()
 
@@ -59,6 +59,14 @@ func Call[TRespMsg any, TResponse Msg[TRespMsg], TRequest proto.Message](testCli
 	if err != nil {
 		t.Fatal(err)
 	}
+	return httpResp
+}
+
+func MustCall[TRespMsg any, TResponse Msg[TRespMsg], TRequest proto.Message](testClient *TestClient, method string, req TRequest) TResponse {
+	t := testClient.t
+	t.Helper()
+	httpResp := Request(testClient, method, req)
+
 	if got, want := httpResp.StatusCode, http.StatusOK; got != want {
 		t.Fatalf("Got status %v, want %v", got, want)
 	}
@@ -112,11 +120,24 @@ func TestBasic(t *testing.T) {
 
 	testClient := NewTestClient(t, httpServer)
 
-	resp := Call[pb.AuthorizeResponse](testClient, "Authorize", &pb.AuthorizeRequest{
+	// Try authorize with no invite code.
+	req := &pb.AuthorizeRequest{
 		ServerAddr: httpServer.URL,
-		InviteCode: "invite1",
-	})
+		InviteCode: "",
+	}
+	if got, want := Request(testClient, "Authorize", req), http.StatusForbidden; got.StatusCode != want {
+		t.Errorf("Got status %s, want %v", got.Status, want)
+	}
 
+	// Try with invalid code
+	req.InviteCode = "invalid"
+	if got, want := Request(testClient, "Authorize", req), http.StatusForbidden; got.StatusCode != want {
+		t.Errorf("Got status %s, want %v", got.Status, want)
+	}
+
+	// Try with valid invite
+	req.InviteCode = "invite1"
+	resp := MustCall[pb.AuthorizeResponse](testClient, "Authorize", req)
 	u, err := url.Parse(resp.AuthorizeAddr)
 	if err != nil {
 		t.Fatal(err)

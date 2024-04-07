@@ -113,7 +113,7 @@ func (s *Server) Logout(ctx context.Context, req *connect.Request[pb.LogoutReque
 func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.AuthorizeRequest]) (*connect.Response[pb.AuthorizeResponse], error) {
 	if s.inviteCode != "" {
 		if req.Msg.InviteCode != s.inviteCode {
-			return nil, fmt.Errorf("Invalid invite code")
+			return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("Invalid invite code"))
 		}
 		// TODO: make it less hacky
 		s.sessionManager.Put(ctx, "invitecheck", true)
