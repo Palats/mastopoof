@@ -400,6 +400,11 @@ func run(ctx context.Context) error {
 			if err := ts.AddJSONStatuses(testDataFS); err != nil {
 				return err
 			}
+			for i := 0; i < 100; i++ {
+				if err := ts.AddFakeStatus(); err != nil {
+					return err
+				}
+			}
 			ts.RegisterOn(mux)
 
 			addr := fmt.Sprintf(":%d", *port)

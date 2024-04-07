@@ -9,6 +9,7 @@ import (
 )
 
 type Status = gomastodon.Status
+type Account = gomastodon.Account
 type ID = gomastodon.ID
 type Client = gomastodon.Client
 type Config = gomastodon.Config

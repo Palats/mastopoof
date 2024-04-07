@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/Palats/mastopoof/backend/mastodon"
 	"github.com/golang/glog"
@@ -69,6 +70,8 @@ func cmpItems(i1 *Item, i2 *Item) int {
 type Server struct {
 	// Ordered list of Mastodon statuses to serve.
 	items []*Item
+	// To differentiate between each fake status being added.
+	fakeCounter int64
 }
 
 func New() *Server {
@@ -109,6 +112,41 @@ func (s *Server) AddJSONStatuses(statusesFS fs.FS) error {
 		}
 	}
 	return nil
+}
+
+func (s *Server) AddFakeStatus() error {
+	id := "1"
+	if len(s.items) > 0 {
+		id = strconv.FormatInt(s.items[len(s.items)-1].ID+1, 10)
+	}
+	gen := s.fakeCounter
+	s.fakeCounter += 1
+
+	username := fmt.Sprintf("fakeuser%d", gen)
+	status := &mastodon.Status{
+		ID:  mastodon.ID(id),
+		URI: fmt.Sprintf("https://example.com/users/%s/statuses/%s", username, id),
+		URL: fmt.Sprintf("https://example.com/@%s/%s", username, id),
+		Account: mastodon.Account{
+			ID:             mastodon.ID(strconv.FormatInt(gen, 10)),
+			Username:       username,
+			Acct:           fmt.Sprintf("%s@example.com", username),
+			URL:            fmt.Sprintf("https://example.com/%s", username),
+			DisplayName:    fmt.Sprintf("Account of user %s", username),
+			Note:           "Fake user",
+			Avatar:         "http://www.gravatar.com/avatar/?d=mp",
+			AvatarStatic:   "http://www.gravatar.com/avatar/?d=mp",
+			CreatedAt:      time.Now(),
+			StatusesCount:  1,
+			FollowersCount: 1,
+			FollowingCount: 1,
+		},
+		CreatedAt:  time.Now(),
+		Content:    fmt.Sprintf("Status content for fake status %d", gen),
+		Visibility: "public",
+	}
+
+	return s.AddStatus(status)
 }
 
 func (s *Server) RegisterOn(mux *http.ServeMux) {
