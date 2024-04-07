@@ -27,6 +27,7 @@ type Server struct {
 	sessionManager *scs.SessionManager
 	selfURL        string
 	scopes         string
+	client         http.Client
 }
 
 func New(st *storage.Storage, inviteCode string, autoLogin int64, selfURL string, scopes string) *Server {
@@ -149,6 +150,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 		// TODO: update redirect URIs as needed.
 		glog.Infof("Registering app on server %q", serverAddr)
 		app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
+			Client:       s.client,
 			Server:       ss.ServerAddr,
 			ClientName:   "mastopoof",
 			Scopes:       s.scopes,
@@ -227,6 +229,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 		ClientID:     serverState.ClientID,
 		ClientSecret: serverState.ClientSecret,
 	})
+	client.Client = s.client
 
 	err = client.AuthenticateToken(ctx, authCode, serverState.RedirectURI)
 	if err != nil {
@@ -410,6 +413,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		ClientSecret: serverState.ClientSecret,
 		AccessToken:  accountState.AccessToken,
 	})
+	client.Client = s.client
 
 	var statuses []*mastodon.Status
 
