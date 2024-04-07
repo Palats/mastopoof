@@ -59,7 +59,13 @@ export class Backend {
         this.onEvent.dispatchEvent(evt);
     }
 
-    // Update the last-read position on the server.
+    // Advance the last-read position on the server if new position is larger.
+    public async advanceLastRead(stid: bigint, position: bigint) {
+        const resp = await this.client.setRead({ stid: stid, lastRead: position, mode: pb.SetReadRequest_Mode.ADVANCE });
+        this.updateStreamInfo(resp.streamInfo);
+    }
+
+    // Set last-read to the specified value, even if in the past.
     public async setLastRead(stid: bigint, position: bigint) {
         const resp = await this.client.setRead({ stid: stid, lastRead: position, mode: pb.SetReadRequest_Mode.ABSOLUTE });
         this.updateStreamInfo(resp.streamInfo);

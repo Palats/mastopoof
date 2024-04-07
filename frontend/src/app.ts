@@ -192,7 +192,7 @@ export class MastStream extends LitElement {
       if (!this.stid) {
         throw new Error("missing stid");
       }
-      backend.setLastRead(this.stid, disappearedPosition);
+      backend.advanceLastRead(this.stid, disappearedPosition);
     }
   }
 
