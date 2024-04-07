@@ -32,6 +32,7 @@
 
 ### Frontend
  - Split each element class
+ - Detect when "last-read" has been updating in background, and indicate in the UI that something needs to be done.
 
 ### Status Ordering
  - Remove redundant reblogs
