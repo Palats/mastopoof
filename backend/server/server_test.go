@@ -139,6 +139,19 @@ func (env *TestEnv) Close() {
 	}
 }
 
+// Login makes sure that the client is logged on a test user, with some statuses already fetched.
+func (env *TestEnv) Login() *pb.UserInfo {
+	MustCall[pb.AuthorizeResponse](env, "Authorize", &pb.AuthorizeRequest{
+		ServerAddr: env.addr,
+		InviteCode: "invite1",
+	})
+	tokenResp := MustCall[pb.TokenResponse](env, "Token", &pb.TokenRequest{
+		ServerAddr: env.addr,
+		AuthCode:   "foo",
+	})
+	return tokenResp.UserInfo
+}
+
 func Request[TRequest proto.Message](env *TestEnv, method string, req TRequest) *http.Response {
 	t := env.t
 	t.Helper()
@@ -180,7 +193,6 @@ func MustCall[TRespMsg any, TResponse Msg[TRespMsg], TRequest proto.Message](env
 
 func TestBasic(t *testing.T) {
 	ctx := context.Background()
-
 	env := (&TestEnv{
 		t: t,
 	}).Init(ctx)
@@ -233,5 +245,36 @@ func TestBasic(t *testing.T) {
 	})
 	if got, want := len(listResp.Items), fetchResp.FetchedCount; int64(got) != want {
 		t.Errorf("List returned %d statuses, while fetch provided %d", got, want)
+	}
+}
+
+func TestSetRead(t *testing.T) {
+	ctx := context.Background()
+	env := (&TestEnv{
+		t: t,
+	}).Init(ctx)
+	defer env.Close()
+	userInfo := env.Login()
+
+	// Make sure some statuses are in the pool.
+	MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
+		Stid: userInfo.DefaultStid,
+	})
+
+	// Need to start at 0.
+	listResp := MustCall[pb.ListResponse](env, "List", &pb.ListRequest{
+		Stid: userInfo.DefaultStid,
+	})
+	if got, want := listResp.StreamInfo.LastRead, int64(0); got != want {
+		t.Errorf("Got last read %d, wanted %d", got, want)
+	}
+
+	// Update last read to another position.
+	lastReadResp := MustCall[pb.SetReadResponse](env, "SetRead", &pb.SetReadRequest{
+		Stid:     userInfo.DefaultStid,
+		LastRead: 2,
+	})
+	if got, want := lastReadResp.StreamInfo.LastRead, int64(2); got != want {
+		t.Errorf("Got last read %d, wanted %d", got, want)
 	}
 }
