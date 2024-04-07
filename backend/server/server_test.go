@@ -17,6 +17,7 @@ import (
 	"github.com/Palats/mastopoof/backend/storage"
 	"github.com/Palats/mastopoof/backend/testdata"
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
+	"golang.org/x/net/publicsuffix"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -66,32 +67,80 @@ type Msg[T any] interface {
 	proto.Message
 }
 
-type TestClient struct {
-	t        testing.TB
-	client   *http.Client
-	baseAddr string
+type TestEnv struct {
+	// To be provided.
+	t testing.TB
+
+	// Provided after Init.
+	client     *http.Client
+	addr       string
+	rpcAddr    string
+	db         *sql.DB
+	httpServer *httptest.Server
 }
 
-func NewTestClient(t testing.TB, server *httptest.Server) *TestClient {
-	jar, err := cookiejar.New(nil /*&cookiejar.Options{PublicSuffixList: publicsuffix.List}*/)
+func (env *TestEnv) Init(ctx context.Context) *TestEnv {
+	env.t.Helper()
+	mux := http.NewServeMux()
+
+	selfURL := ""
+	scopes := "read"
+
+	// Create Mastodon server.
+	ts, err := testserver.New(testdata.Content())
 	if err != nil {
-		t.Fatal(err)
+		env.t.Fatal(err)
 	}
-	client := server.Client()
-	client.Jar = jar
-	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+	ts.RegisterOn(mux)
+
+	// Creates mastopoof server.
+	env.db, err = sql.Open("sqlite3", "file::memory:?cache=shared")
+	if err != nil {
+		env.t.Fatal(err)
+	}
+	// defer db.Close()
+	st, err := storage.NewStorage(env.db, selfURL, scopes)
+	if err != nil {
+		env.t.Fatal(err)
+	}
+	if err := st.Init(ctx); err != nil {
+		env.t.Fatal(err)
+	}
+	mastopoof := New(st, "invite1", 0 /* autoLogin */, selfURL, scopes)
+	mastopoof.RegisterOn(mux)
+
+	// Create the http server
+	env.httpServer = httptest.NewTLSServer(&LoggingHandler{T: env.t, Handler: mux})
+	// defer httpServer.Close()
+	env.addr = env.httpServer.URL
+	env.rpcAddr = env.httpServer.URL + "/_rpc/mastopoof.Mastopoof/"
+	mastopoof.client = *env.httpServer.Client()
+
+	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
+	if err != nil {
+		env.t.Fatal(err)
+	}
+
+	env.client = env.httpServer.Client()
+	env.client.Jar = jar
+	env.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		return fmt.Errorf("forbidding redirect for %s", req.URL)
 	}
 
-	return &TestClient{
-		t:        t,
-		client:   client,
-		baseAddr: server.URL + "/_rpc/mastopoof.Mastopoof/",
+	return env
+}
+
+func (env *TestEnv) Close() {
+	if env.httpServer != nil {
+		env.httpServer.Close()
+	}
+	if env.db != nil {
+		env.db.Close()
 	}
 }
 
-func Request[TRequest proto.Message](testClient *TestClient, method string, req TRequest) *http.Response {
-	t := testClient.t
+func Request[TRequest proto.Message](env *TestEnv, method string, req TRequest) *http.Response {
+	t := env.t
 	t.Helper()
 
 	raw, err := protojson.Marshal(req)
@@ -99,18 +148,18 @@ func Request[TRequest proto.Message](testClient *TestClient, method string, req 
 		t.Fatal(err)
 	}
 
-	addr := testClient.baseAddr + method
-	httpResp, err := testClient.client.Post(addr, "application/json", bytes.NewBuffer(raw))
+	addr := env.rpcAddr + method
+	httpResp, err := env.client.Post(addr, "application/json", bytes.NewBuffer(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return httpResp
 }
 
-func MustCall[TRespMsg any, TResponse Msg[TRespMsg], TRequest proto.Message](testClient *TestClient, method string, req TRequest) TResponse {
-	t := testClient.t
+func MustCall[TRespMsg any, TResponse Msg[TRespMsg], TRequest proto.Message](env *TestEnv, method string, req TRequest) TResponse {
+	t := env.t
 	t.Helper()
-	httpResp := Request(testClient, method, req)
+	httpResp := Request(env, method, req)
 
 	if got, want := httpResp.StatusCode, http.StatusOK; got != want {
 		t.Fatalf("Got status %v [%s], want %v; body=%s", got, httpResp.Status, want, MustBody(t, httpResp))
@@ -131,59 +180,30 @@ func MustCall[TRespMsg any, TResponse Msg[TRespMsg], TRequest proto.Message](tes
 
 func TestBasic(t *testing.T) {
 	ctx := context.Background()
-	mux := http.NewServeMux()
 
-	selfURL := ""
-	scopes := "read"
-
-	// Create Mastodon server.
-	ts, err := testserver.New(testdata.Content())
-	if err != nil {
-		t.Fatal(err)
-	}
-	ts.RegisterOn(mux)
-
-	// Creates mastopoof server.
-	db, err := sql.Open("sqlite3", "file::memory:?cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	st, err := storage.NewStorage(db, selfURL, scopes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := st.Init(ctx); err != nil {
-		t.Fatal(err)
-	}
-	mastopoof := New(st, "invite1", 0 /* autoLogin */, selfURL, scopes)
-	mastopoof.RegisterOn(mux)
-
-	// Create the http server
-	httpServer := httptest.NewTLSServer(&LoggingHandler{T: t, Handler: mux})
-	defer httpServer.Close()
-	mastopoof.client = *httpServer.Client()
-
-	testClient := NewTestClient(t, httpServer)
+	env := (&TestEnv{
+		t: t,
+	}).Init(ctx)
+	defer env.Close()
 
 	// Try authorize with no invite code.
 	req := &pb.AuthorizeRequest{
-		ServerAddr: httpServer.URL,
+		ServerAddr: env.addr,
 		InviteCode: "",
 	}
-	if got, want := Request(testClient, "Authorize", req), http.StatusForbidden; got.StatusCode != want {
+	if got, want := Request(env, "Authorize", req), http.StatusForbidden; got.StatusCode != want {
 		t.Errorf("Got status %s, want %v", got.Status, want)
 	}
 
 	// Try with invalid code
 	req.InviteCode = "invalid"
-	if got, want := Request(testClient, "Authorize", req), http.StatusForbidden; got.StatusCode != want {
+	if got, want := Request(env, "Authorize", req), http.StatusForbidden; got.StatusCode != want {
 		t.Errorf("Got status %s, want %v", got.Status, want)
 	}
 
 	// Try with valid invite
 	req.InviteCode = "invite1"
-	resp := MustCall[pb.AuthorizeResponse](testClient, "Authorize", req)
+	resp := MustCall[pb.AuthorizeResponse](env, "Authorize", req)
 	u, err := url.Parse(resp.AuthorizeAddr)
 	if err != nil {
 		t.Fatal(err)
@@ -193,8 +213,8 @@ func TestBasic(t *testing.T) {
 	}
 
 	// And now get token
-	MustCall[pb.TokenResponse](testClient, "Token", &pb.TokenRequest{
-		ServerAddr: httpServer.URL,
+	MustCall[pb.TokenResponse](env, "Token", &pb.TokenRequest{
+		ServerAddr: env.addr,
 		AuthCode:   "foo",
 	})
 }
