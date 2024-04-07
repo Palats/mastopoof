@@ -87,13 +87,14 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 	scopes := "read"
 
 	// Create Mastodon server.
-	ts, err := testserver.New(testdata.Content())
-	if err != nil {
+	ts := testserver.New()
+	if err := ts.AddJSONStatuses(testdata.Content()); err != nil {
 		env.t.Fatal(err)
 	}
 	ts.RegisterOn(mux)
 
 	// Creates mastopoof server.
+	var err error
 	env.db, err = sql.Open("sqlite3", "file::memory:?cache=shared")
 	if err != nil {
 		env.t.Fatal(err)

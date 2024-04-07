@@ -396,8 +396,8 @@ func run(ctx context.Context) error {
 			}
 
 			testDataFS := os.DirFS(*testData)
-			ts, err := testserver.New(testDataFS)
-			if err != nil {
+			ts := testserver.New()
+			if err := ts.AddJSONStatuses(testDataFS); err != nil {
 				return err
 			}
 			ts.RegisterOn(mux)

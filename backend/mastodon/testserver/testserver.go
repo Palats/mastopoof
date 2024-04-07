@@ -2,52 +2,113 @@
 package testserver
 
 import (
-	"cmp"
 	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net/http"
 	"slices"
+	"strconv"
 
 	"github.com/Palats/mastopoof/backend/mastodon"
 	"github.com/golang/glog"
 )
 
-type Server struct {
-	// Ordered list of Mastodon statuses to serve.
-	statuses []*mastodon.Status
+func cmpStatusID(s1 *mastodon.Status, s2 *mastodon.Status) int {
+	// TODO: that's horribly inefficient, should be maintained with the status.
+	id1, err := strconv.ParseInt(string(s1.ID), 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	id2, err := strconv.ParseInt(string(s2.ID), 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	if id1 < id2 {
+		return -1
+	}
+	if id1 > id2 {
+		return 1
+	}
+	return 0
 }
 
-func New(statusesFS fs.FS) (*Server, error) {
-	filenames, err := fs.Glob(statusesFS, "*.json")
+func parseID(s *mastodon.Status) (int64, error) {
+	id, err := strconv.ParseInt(string(s.ID), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("unable to parse status ID %q: %w", s.ID, err)
+	}
+	return id, nil
+}
+
+type Item struct {
+	ID     int64
+	Status *mastodon.Status
+}
+
+func newItem(s *mastodon.Status) (*Item, error) {
+	id, err := parseID(s)
 	if err != nil {
 		return nil, err
 	}
+	return &Item{
+		ID:     id,
+		Status: s,
+	}, nil
+}
 
-	var statuses []*mastodon.Status
+func cmpItems(i1 *Item, i2 *Item) int {
+	if i1.ID < i2.ID {
+		return -1
+	}
+	if i1.ID > i2.ID {
+		return 1
+	}
+	return 0
+}
 
+type Server struct {
+	// Ordered list of Mastodon statuses to serve.
+	items []*Item
+}
+
+func New() *Server {
+	return &Server{}
+}
+
+func (s *Server) AddStatus(status *mastodon.Status) error {
+	item, err := newItem(status)
+	if err != nil {
+		return err
+	}
+	idx, found := slices.BinarySearchFunc(s.items, item, cmpItems)
+	if found {
+		return fmt.Errorf("duplicate ID %d", item.ID)
+	}
+	s.items = slices.Insert(s.items, idx, item)
+	return nil
+}
+
+func (s *Server) AddJSONStatuses(statusesFS fs.FS) error {
+	filenames, err := fs.Glob(statusesFS, "*.json")
+	if err != nil {
+		return err
+	}
 	for _, filename := range filenames {
 		glog.Infof("Testserver: including %s", filename)
 		raw, err := fs.ReadFile(statusesFS, filename)
 		if err != nil {
-			return nil, fmt.Errorf("unable to open %s: %w", filename, err)
+			return fmt.Errorf("unable to open %s: %w", filename, err)
 		}
 		status := &mastodon.Status{}
 		if err := json.Unmarshal(raw, status); err != nil {
-			return nil, fmt.Errorf("unable to decode %s as status json: %w", filename, err)
+			return fmt.Errorf("unable to decode %s as status json: %w", filename, err)
 		}
-		statuses = append(statuses, status)
-	}
 
-	slices.SortFunc(statuses, func(a, b *mastodon.Status) int {
-		// TODO: parse into integer
-		return cmp.Compare(a.ID, a.ID)
-	})
-
-	s := &Server{
-		statuses: statuses,
+		if err := s.AddStatus(status); err != nil {
+			return fmt.Errorf("unable to add status from file %s: %w", filename, err)
+		}
 	}
-	return s, nil
+	return nil
 }
 
 func (s *Server) RegisterOn(mux *http.ServeMux) {
@@ -114,5 +175,9 @@ func (s *Server) serverAPIAccountsVerifyCredentials(w http.ResponseWriter, req *
 
 // https://docs.joinmastodon.org/methods/timelines/#home
 func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request) {
-	s.returnJSON(w, req, s.statuses)
+	statuses := []*mastodon.Status{}
+	for _, item := range s.items {
+		statuses = append(statuses, item.Status)
+	}
+	s.returnJSON(w, req, statuses)
 }
