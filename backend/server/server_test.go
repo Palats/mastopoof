@@ -212,9 +212,26 @@ func TestBasic(t *testing.T) {
 		t.Errorf("Got addr path %s, want %s", got, want)
 	}
 
-	// And now get token
-	MustCall[pb.TokenResponse](env, "Token", &pb.TokenRequest{
+	// Now get token
+	tokenResp := MustCall[pb.TokenResponse](env, "Token", &pb.TokenRequest{
 		ServerAddr: env.addr,
 		AuthCode:   "foo",
 	})
+	stid := tokenResp.UserInfo.DefaultStid
+
+	// Fetch a few statuses in the stream.
+	fetchResp := MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
+		Stid: stid,
+	})
+	if got, want := fetchResp.FetchedCount, int64(2); got < want {
+		t.Errorf("Fetched %d statuses, wanted %d", got, want)
+	}
+
+	// Try to list them
+	listResp := MustCall[pb.ListResponse](env, "List", &pb.ListRequest{
+		Stid: stid,
+	})
+	if got, want := len(listResp.Items), fetchResp.FetchedCount; int64(got) != want {
+		t.Errorf("List returned %d statuses, while fetch provided %d", got, want)
+	}
 }
