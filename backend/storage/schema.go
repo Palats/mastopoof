@@ -11,9 +11,9 @@ import (
 	"github.com/mattn/go-mastodon"
 )
 
-// schemaVersion indicates up to which version the database schema was configured.
+// MaxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const schemaVersion = 12
+const MaxSchemaVersion = 12
 
 // refSchema is the database schema as if it was created from scratch. This is
 // used only for comparison with an actual schema, for consistency checking. In
@@ -164,7 +164,10 @@ func (ss *StreamState) ToStreamInfo() *pb.StreamInfo {
 
 // prepareDB creates the schema for the database or update
 // it if needed.
-func prepareDB(ctx context.Context, db *sql.DB) error {
+func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
+	if targetVersion > MaxSchemaVersion {
+		return fmt.Errorf("target version (%d) is higher than max known version (%d)", targetVersion, MaxSchemaVersion)
+	}
 	// Prepare update of the database schema.
 	txn, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -182,17 +185,17 @@ func prepareDB(ctx context.Context, db *sql.DB) error {
 	if err := row.Scan(&version); err != nil {
 		return fmt.Errorf("error parsing user_version: %w", err)
 	}
-	glog.Infof("PRAGMA user_version is %d (target=%v)", version, schemaVersion)
-	if version > schemaVersion {
-		return fmt.Errorf("user_version of DB (%v) is higher than supported schema version (%v)", version, schemaVersion)
+	glog.Infof("PRAGMA user_version is %d (target=%v)", version, targetVersion)
+	if version > targetVersion {
+		return fmt.Errorf("user_version of DB (%v) is higher than target schema version (%v)", version, targetVersion)
 	}
-	if version == schemaVersion {
+	if version == targetVersion {
 		return nil
 	}
 
 	glog.Infof("updating database schema")
 
-	if version < 1 {
+	if version < 1 && targetVersion >= 1 {
 		sqlStmt := `
 			CREATE TABLE IF NOT EXISTS authinfo (
 				-- User ID, starts at 1
@@ -205,7 +208,8 @@ func prepareDB(ctx context.Context, db *sql.DB) error {
 			return fmt.Errorf("schema v1: unable to run %q: %w", sqlStmt, err)
 		}
 	}
-	if version < 2 {
+
+	if version < 2 && targetVersion >= 2 {
 		sqlStmt := `
 			CREATE TABLE IF NOT EXISTS userstate (
 				-- User ID
@@ -228,7 +232,7 @@ func prepareDB(ctx context.Context, db *sql.DB) error {
 		}
 	}
 
-	if version < 3 {
+	if version < 3 && targetVersion >= 3 {
 		// Do backfill of status key
 		sqlStmt := `
 			ALTER TABLE statuses ADD COLUMN uri TEXT
@@ -261,7 +265,7 @@ func prepareDB(ctx context.Context, db *sql.DB) error {
 		}
 	}
 
-	if version < 4 {
+	if version < 4 && targetVersion >= 4 {
 		sqlStmt := `
 			CREATE TABLE listingstate (
 				-- Listing ID. Starts at 1.
@@ -284,7 +288,7 @@ func prepareDB(ctx context.Context, db *sql.DB) error {
 		}
 	}
 
-	if version < 5 {
+	if version < 5 && targetVersion >= 5 {
 		sqlStmt := `
 			ALTER TABLE listingstate RENAME TO streamstate;
 			ALTER TABLE listingcontent RENAME TO streamcontent;
@@ -297,7 +301,7 @@ func prepareDB(ctx context.Context, db *sql.DB) error {
 		}
 	}
 
-	if version < 6 {
+	if version < 6 && targetVersion >= 6 {
 		// Rename field 'lid' in JSON to 'stid'.
 		sqlStmt := `
 			UPDATE streamstate SET state = json_set(
@@ -315,7 +319,7 @@ func prepareDB(ctx context.Context, db *sql.DB) error {
 		}
 	}
 
-	if version < 7 {
+	if version < 7 && targetVersion >= 7 {
 		// Rename 'authinfo' to 'accountstate'.
 		// Change key of accountstate to be an arbitrary key and backfill it.
 		sqlStmt := `
@@ -336,7 +340,7 @@ func prepareDB(ctx context.Context, db *sql.DB) error {
 		}
 	}
 
-	if version < 8 {
+	if version < 8 && targetVersion >= 8 {
 		// Move last_home_status_id from userstate to accountstate;
 		sqlStmt := `
 			UPDATE accountstate SET content = json_set(
@@ -355,7 +359,7 @@ func prepareDB(ctx context.Context, db *sql.DB) error {
 		}
 	}
 
-	if version < 9 {
+	if version < 9 && targetVersion >= 9 {
 		// Split server info.
 		//  Add  serverstate (server_addr, {server_addr, client_id, client_secret, auth_uri, redirect_uri})
 		//  Delete accountstate  {client_id, client_secret, auth_uri, redirect_uri}
@@ -393,7 +397,7 @@ func prepareDB(ctx context.Context, db *sql.DB) error {
 		}
 	}
 
-	if version < 10 {
+	if version < 10 && targetVersion >= 10 {
 		// Add session persistence
 		sqlStmt := `
 			CREATE TABLE sessions (
@@ -409,7 +413,7 @@ func prepareDB(ctx context.Context, db *sql.DB) error {
 		}
 	}
 
-	if version < 11 {
+	if version < 11 && targetVersion >= 11 {
 		// Change key for server state.
 		// Just drop all existing server registration - that will force a re-login.
 		sqlStmt := `
@@ -422,7 +426,7 @@ func prepareDB(ctx context.Context, db *sql.DB) error {
 		}
 	}
 
-	if version < 12 {
+	if version < 12 && targetVersion >= 12 {
 		// Nuke session state - the update in serverstate warrants it.
 		sqlStmt := `
 			DELETE FROM sessions;
@@ -434,7 +438,7 @@ func prepareDB(ctx context.Context, db *sql.DB) error {
 
 	// If adding anything, do not forget to increment the schema version.
 
-	if _, err := txn.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion)); err != nil {
+	if _, err := txn.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d;`, targetVersion)); err != nil {
 		return fmt.Errorf("unable to set user_version: %w", err)
 	}
 

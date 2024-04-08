@@ -74,7 +74,7 @@ func NewStorage(db *sql.DB, selfURL string, scopes string) (*Storage, error) {
 }
 
 func (st *Storage) Init(ctx context.Context) error {
-	return prepareDB(ctx, st.DB)
+	return prepareDB(ctx, st.DB, MaxSchemaVersion)
 }
 
 func (st *Storage) redirectURI(serverAddr string) string {
