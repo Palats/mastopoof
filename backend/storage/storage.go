@@ -9,85 +9,10 @@ import (
 	"net/url"
 
 	"github.com/Palats/mastopoof/backend/mastodon"
-	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	"github.com/golang/glog"
 
 	_ "github.com/mattn/go-sqlite3"
 )
-
-// ServerState contains information about a Mastodon server - most notably, its app registration.
-type ServerState struct {
-	// The storage key for this app registration.
-	// Redundant in storage, but convenient when manipulating the data around.
-	Key string `json:"key"`
-
-	ServerAddr string `json:"server_addr"`
-	// Scopes used when registering the app.
-	Scopes string `json:"scopes"`
-
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-	AuthURI      string `json:"auth_uri"`
-	RedirectURI  string `json:"redirect_uri"`
-}
-
-// AccountState represents information about a mastodon account in the DB.
-type AccountState struct {
-	// AccountState ASID within storage. Just an arbitrary number for primary key.
-	ASID int64 `json:"asid"`
-
-	// The Mastodon server this account is part of.
-	// E.g., `https://mastodon.social`
-	ServerAddr string `json:"server_addr"`
-	// The Mastodon account ID on the server.
-	// E.g., `123456789765432132`
-	AccountID string `json:"account_id"`
-	// The Mastodon username
-	// E.g., `foobar`
-	Username string `json:"username"`
-
-	AccessToken string `json:"access_token"`
-
-	// The user using this mastodon account.
-	UID int64 `json:"uid"`
-	// Last home status ID fetched.
-	LastHomeStatusID mastodon.ID `json:"last_home_status_id"`
-}
-
-// UserState is the state of a Mastopoof user, stored as JSON in the DB.
-type UserState struct {
-	// User ID.
-	UID int64 `json:"uid"`
-
-	// Default stream of that user.
-	DefaultStID int64 `json:"default_stid"`
-}
-
-// StreamState is the state of a single stream, stored as JSON.
-type StreamState struct {
-	// Stream ID.
-	StID int64 `json:"stid"`
-	// User ID this stream belongs to.
-	UID int64 `json:"uid"`
-	// Position of the latest read status in this stream.
-	LastRead int64 `json:"last_read"`
-	// Position of the first status, if any. Usually == 1.
-	FirstPosition int64 `json:"first_position"`
-	// Position of the last status, if any.
-	LastPosition int64 `json:"last_position"`
-	// Remaining statuses in the pool which are not yet added in the stream.
-	Remaining int64 `json:"remaining"`
-}
-
-func (ss *StreamState) ToStreamInfo() *pb.StreamInfo {
-	return &pb.StreamInfo{
-		Stid:          ss.StID,
-		LastRead:      ss.LastRead,
-		FirstPosition: ss.FirstPosition,
-		LastPosition:  ss.LastPosition,
-		RemainingPool: ss.Remaining,
-	}
-}
 
 type SQLQueryable interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row

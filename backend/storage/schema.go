@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	"github.com/golang/glog"
 	"github.com/mattn/go-mastodon"
 )
@@ -22,14 +23,31 @@ const schemaVersion = 12
 const refSchema = `
 	-- TODO: make strict
 
+	-- Mastopoof user information.
+	CREATE TABLE userstate (
+		-- A unique idea for that user.
+		uid INTEGER PRIMARY KEY,
+		-- Serialized JSON UserState
+		state TEXT NOT NULL
+	);
+
+	-- State of a Mastodon account.
 	CREATE TABLE accountstate (
+		-- Unique id.
 		asid INTEGER PRIMARY KEY,
+		-- Serialized JSON AccountState
+		-- TODO: rename to 'state', for consistency.
 		content TEXT NOT NULL,
+		-- The user which owns this account.
+		-- Immutable - even if another user ends up configuring that account,
+		-- a new account state would be created.
 		uid TEXT
 	);
 
+	-- Info about app registration on Mastodon servers.
 	-- TODO: rename to reflect that it is just about Mastodon app registration.
 	CREATE TABLE serverstate (
+		-- Serialized ServerState
 		state TEXT NOT NULL,
 		-- A unique key for the serverstate.
 		-- Made of hash of redirect URI & scopes requested, as each of those
@@ -37,29 +55,112 @@ const refSchema = `
 		key TEXT
 	);
 
+	-- Information about a stream.
+	-- A stream is a series of statuses, attached to a mastopoof user.
+	CREATE TABLE "streamstate" (
+		-- Unique id for this stream.
+		stid INTEGER PRIMARY KEY,
+		-- Serialized StreamState JSON.
+		state TEXT NOT NULL
+	);
+
+	-- Statuses which were obtained from Mastodon.
 	CREATE TABLE statuses (
+		-- A unique ID.
 		sid INTEGER PRIMARY KEY AUTOINCREMENT,
+		-- The Mastopoof account that got that status.
+		-- TODO: change that to a reference to the accountstate / asid.
 		uid INTEGER NOT NULL,
+		-- The status, serialized as JSON.
 		status TEXT NOT NULL,
+		-- The URI of that status.
+		-- TODO: goal is to largely act as a cache, so it might needed to have serverinfo+ID.
 		uri TEXT
 	);
 
+	-- The actual content of a stream. In practice, this links position in the stream to a specific status.
 	CREATE TABLE "streamcontent" (
 		stid INTEGER NOT NULL,
 		sid INTEGER NOT NULL,
+		-- TODO: make that support NULL, so statuses are injected in stream content
+		-- when fetched.
 		position INTEGER NOT NULL
 	);
-
-	CREATE TABLE "streamstate" (
-		stid INTEGER PRIMARY KEY,
-		state TEXT NOT NULL
-	);
-
-	CREATE TABLE userstate (
-		uid INTEGER PRIMARY KEY,
-		state TEXT NOT NULL
-	);
 `
+
+// UserState is the state of a Mastopoof user, stored as JSON in the DB.
+type UserState struct {
+	// User ID.
+	UID int64 `json:"uid"`
+
+	// Default stream of that user.
+	DefaultStID int64 `json:"default_stid"`
+}
+
+// AccountState represents information about a mastodon account in the DB.
+type AccountState struct {
+	// AccountState ASID within storage. Just an arbitrary number for primary key.
+	ASID int64 `json:"asid"`
+
+	// The Mastodon server this account is part of.
+	// E.g., `https://mastodon.social`
+	ServerAddr string `json:"server_addr"`
+	// The Mastodon account ID on the server.
+	// E.g., `123456789765432132`
+	AccountID string `json:"account_id"`
+	// The Mastodon username
+	// E.g., `foobar`
+	Username string `json:"username"`
+
+	AccessToken string `json:"access_token"`
+
+	// The user using this mastodon account.
+	UID int64 `json:"uid"`
+	// Last home status ID fetched.
+	LastHomeStatusID mastodon.ID `json:"last_home_status_id"`
+}
+
+// ServerState contains information about a Mastodon server - most notably, its app registration.
+type ServerState struct {
+	// The storage key for this app registration.
+	// Redundant in storage, but convenient when manipulating the data around.
+	Key string `json:"key"`
+
+	ServerAddr string `json:"server_addr"`
+	// Scopes used when registering the app.
+	Scopes string `json:"scopes"`
+
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+	AuthURI      string `json:"auth_uri"`
+	RedirectURI  string `json:"redirect_uri"`
+}
+
+// StreamState is the state of a single stream, stored as JSON.
+type StreamState struct {
+	// Stream ID.
+	StID int64 `json:"stid"`
+	// User ID this stream belongs to.
+	UID int64 `json:"uid"`
+	// Position of the latest read status in this stream.
+	LastRead int64 `json:"last_read"`
+	// Position of the first status, if any. Usually == 1.
+	FirstPosition int64 `json:"first_position"`
+	// Position of the last status, if any.
+	LastPosition int64 `json:"last_position"`
+	// Remaining statuses in the pool which are not yet added in the stream.
+	Remaining int64 `json:"remaining"`
+}
+
+func (ss *StreamState) ToStreamInfo() *pb.StreamInfo {
+	return &pb.StreamInfo{
+		Stid:          ss.StID,
+		LastRead:      ss.LastRead,
+		FirstPosition: ss.FirstPosition,
+		LastPosition:  ss.LastPosition,
+		RemainingPool: ss.Remaining,
+	}
+}
 
 // prepareDB creates the schema for the database or update
 // it if needed.
