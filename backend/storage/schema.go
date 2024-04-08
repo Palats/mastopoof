@@ -11,9 +11,9 @@ import (
 	"github.com/mattn/go-mastodon"
 )
 
-// MaxSchemaVersion indicates up to which version the database schema was configured.
+// maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const MaxSchemaVersion = 12
+const maxSchemaVersion = 13
 
 // refSchema is the database schema as if it was created from scratch. This is
 // used only for comparison with an actual schema, for consistency checking. In
@@ -36,13 +36,12 @@ const refSchema = `
 		-- Unique id.
 		asid INTEGER PRIMARY KEY,
 		-- Serialized JSON AccountState
-		-- TODO: rename to 'state', for consistency.
-		content TEXT NOT NULL,
+		state TEXT NOT NULL,
 		-- The user which owns this account.
 		-- Immutable - even if another user ends up configuring that account,
 		-- a new account state would be created.
-		uid TEXT
-	);
+		uid TEXT NOT NULL
+	) STRICT;
 
 	-- Info about app registration on Mastodon servers.
 	-- TODO: rename to reflect that it is just about Mastodon app registration.
@@ -165,8 +164,8 @@ func (ss *StreamState) ToStreamInfo() *pb.StreamInfo {
 // prepareDB creates the schema for the database or update
 // it if needed.
 func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
-	if targetVersion > MaxSchemaVersion {
-		return fmt.Errorf("target version (%d) is higher than max known version (%d)", targetVersion, MaxSchemaVersion)
+	if targetVersion > maxSchemaVersion {
+		return fmt.Errorf("target version (%d) is higher than max known version (%d)", targetVersion, maxSchemaVersion)
 	}
 	// Prepare update of the database schema.
 	txn, err := db.BeginTx(ctx, nil)
@@ -433,6 +432,36 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 			return fmt.Errorf("schema v12: unable to run %q: %w", sqlStmt, err)
+		}
+	}
+
+	if version < 13 && targetVersion >= 13 {
+		// Recreate the accountstate table to:
+		//  - Rename content -> state
+		//  - Add "NOT NULL" on uid field
+		//  - Add STRICT
+		sqlStmt := `
+			ALTER TABLE accountstate RENAME TO accountstateold;
+
+			-- State of a Mastodon account.
+			CREATE TABLE accountstate (
+				-- Unique id.
+				asid INTEGER PRIMARY KEY,
+				-- Serialized JSON AccountState
+				state TEXT NOT NULL,
+				-- The user which owns this account.
+				-- Immutable - even if another user ends up configuring that account,
+				-- a new account state would be created.
+				uid TEXT NOT NULL
+			) STRICT;
+
+			INSERT INTO accountstate (asid, state, uid)
+			SELECT asid, CAST(content as TEXT), uid FROM accountstateold;
+
+			DROP TABLE accountstateold;
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("schema v13: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 

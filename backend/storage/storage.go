@@ -74,7 +74,11 @@ func NewStorage(db *sql.DB, selfURL string, scopes string) (*Storage, error) {
 }
 
 func (st *Storage) Init(ctx context.Context) error {
-	return prepareDB(ctx, st.DB, MaxSchemaVersion)
+	return st.initVersion(ctx, maxSchemaVersion)
+}
+
+func (st *Storage) initVersion(ctx context.Context, targetVersion int) error {
+	return prepareDB(ctx, st.DB, targetVersion)
 }
 
 func (st *Storage) redirectURI(serverAddr string) string {
@@ -207,7 +211,7 @@ func (st *Storage) ServerState(ctx context.Context, db SQLQueryable, serverAddr 
 
 	as := &ServerState{}
 	if err := json.Unmarshal([]byte(state), as); err != nil {
-		return nil, fmt.Errorf("unable to decode serverstate content: %v", err)
+		return nil, fmt.Errorf("unable to decode serverstate state: %v", err)
 	}
 	return as, nil
 }
@@ -248,8 +252,8 @@ func (st *Storage) CreateAccountState(ctx context.Context, db SQLQueryable, uid 
 // AccountStateByUID gets a the mastodon account of a mastopoof user identified by its UID.
 // Returns wrapped ErrNotFound if no entry exists.
 func (st *Storage) AccountStateByUID(ctx context.Context, db SQLQueryable, uid int64) (*AccountState, error) {
-	var content string
-	err := db.QueryRowContext(ctx, "SELECT content FROM accountstate WHERE uid=?", uid).Scan(&content)
+	var state string
+	err := db.QueryRowContext(ctx, "SELECT state FROM accountstate WHERE uid=?", uid).Scan(&state)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("no mastodon account for uid=%v: %w", uid, ErrNotFound)
 	}
@@ -258,8 +262,8 @@ func (st *Storage) AccountStateByUID(ctx context.Context, db SQLQueryable, uid i
 	}
 
 	as := &AccountState{}
-	if err := json.Unmarshal([]byte(content), as); err != nil {
-		return nil, fmt.Errorf("unable to decode accountstate content: %v", err)
+	if err := json.Unmarshal([]byte(state), as); err != nil {
+		return nil, fmt.Errorf("unable to decode accountstate state: %v", err)
 	}
 	return as, nil
 }
@@ -267,14 +271,14 @@ func (st *Storage) AccountStateByUID(ctx context.Context, db SQLQueryable, uid i
 // AccountStateByAccountID gets a the mastodon account based on server address and account ID on that server.
 // Returns wrapped ErrNotFound if no entry exists.
 func (st *Storage) AccountStateByAccountID(ctx context.Context, db SQLQueryable, serverAddr string, accountID string) (*AccountState, error) {
-	var content string
+	var state string
 	err := db.QueryRowContext(ctx, `
-		SELECT content
+		SELECT state
 		FROM accountstate
 		WHERE
-			json_extract(content, "$.server_addr") = ?
-			AND json_extract(content, "$.account_id") = ?
-	`, serverAddr, accountID).Scan(&content)
+			json_extract(state, "$.server_addr") = ?
+			AND json_extract(state, "$.account_id") = ?
+	`, serverAddr, accountID).Scan(&state)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("no mastodon account for server=%q, account id=%v: %w", serverAddr, accountID, ErrNotFound)
 	}
@@ -283,21 +287,21 @@ func (st *Storage) AccountStateByAccountID(ctx context.Context, db SQLQueryable,
 	}
 
 	as := &AccountState{}
-	if err := json.Unmarshal([]byte(content), as); err != nil {
-		return nil, fmt.Errorf("unable to decode accountstate content: %v", err)
+	if err := json.Unmarshal([]byte(state), as); err != nil {
+		return nil, fmt.Errorf("unable to decode accountstate state: %v", err)
 	}
 	return as, nil
 }
 
 func (st *Storage) SetAccountState(ctx context.Context, db SQLQueryable, as *AccountState) error {
-	content, err := json.Marshal(as)
+	state, err := json.Marshal(as)
 	if err != nil {
 		return err
 	}
 
 	// TODO: make SetAccountState support only update and verify primary key existin for ON CONFLICT.
-	stmt := `INSERT INTO accountstate(asid, content, uid) VALUES(?, ?, ?) ON CONFLICT(asid) DO UPDATE SET content = ?`
-	_, err = db.ExecContext(ctx, stmt, as.ASID, content, as.UID, content)
+	stmt := `INSERT INTO accountstate(asid, state, uid) VALUES(?, ?, ?) ON CONFLICT(asid) DO UPDATE SET state = ?`
+	_, err = db.ExecContext(ctx, stmt, as.ASID, string(state), as.UID, string(state))
 	if err != nil {
 		return err
 	}
@@ -334,7 +338,7 @@ func (st *Storage) UserState(ctx context.Context, db SQLQueryable, uid int64) (*
 
 	userState := &UserState{}
 	if err := json.Unmarshal([]byte(jsonString), userState); err != nil {
-		return nil, fmt.Errorf("unable to decode userstate content: %v", err)
+		return nil, fmt.Errorf("unable to decode userstate state: %v", err)
 	}
 	return userState, nil
 }
@@ -388,7 +392,7 @@ func (st *Storage) StreamState(ctx context.Context, db SQLQueryable, stid int64)
 
 	streamState := &StreamState{}
 	if err := json.Unmarshal([]byte(jsonString), streamState); err != nil {
-		return nil, fmt.Errorf("unable to decode streamstate content: %v", err)
+		return nil, fmt.Errorf("unable to decode streamstate state: %v", err)
 	}
 	return streamState, nil
 }

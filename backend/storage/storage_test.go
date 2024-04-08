@@ -117,6 +117,8 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 	return schemaDB, nil
 }
 
+// TestDBCreate verifies that a DB created from scratch - i.e., following all
+// update steps - is the same as the canonical schema.
 func TestDBCreate(t *testing.T) {
 	ctx := context.Background()
 
@@ -153,5 +155,59 @@ func TestDBCreate(t *testing.T) {
 	// And compare them.
 	if diff := cmp.Diff(refSch, sch); diff != "" {
 		t.Errorf("DB schema mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestV12ToV13 verifies that accountstate table recreation
+// works (new name for field, strict).
+func TestV12ToV13(t *testing.T) {
+	ctx := context.Background()
+
+	// Prepare at version 12
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := NewStorage(db, "", "read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.initVersion(ctx, 12); err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert some dummy data that will need to be converted
+	// JSON content is likely written as []byte, thus producing BLOB
+	// value - so also test that.
+	sqlStmt := `
+		INSERT INTO accountstate (asid, content, uid) VALUES
+			(2, '{"username": "testuser1", "uid": 1}', 1),
+			(3, CAST('{"username": "testuser2", "uid": 2}' AS BLOB), 2)
+		;
+	`
+	if _, err := db.ExecContext(ctx, sqlStmt); err != nil {
+		t.Fatal(err)
+	}
+
+	// Update to version 13
+	if err := prepareDB(ctx, db, 13); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the account state can be loaded.
+	accountState, err := st.AccountStateByUID(ctx, db, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := accountState.Username, "testuser1"; got != want {
+		t.Errorf("Got username %s, wanted %s", got, want)
+	}
+
+	accountState, err = st.AccountStateByUID(ctx, db, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := accountState.Username, "testuser2"; got != want {
+		t.Errorf("Got username %s, wanted %s", got, want)
 	}
 }
