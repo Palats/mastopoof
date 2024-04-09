@@ -349,7 +349,7 @@ func (st *Storage) SetUserState(ctx context.Context, db SQLQueryable, userState 
 		return err
 	}
 	stmt := `INSERT INTO userstate(uid, state) VALUES(?, ?) ON CONFLICT(uid) DO UPDATE SET state = ?`
-	_, err = db.ExecContext(ctx, stmt, userState.UID, jsonString, jsonString)
+	_, err = db.ExecContext(ctx, stmt, userState.UID, string(jsonString), string(jsonString))
 	if err != nil {
 		return err
 	}

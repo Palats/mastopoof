@@ -13,7 +13,7 @@ import (
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const maxSchemaVersion = 13
+const maxSchemaVersion = 14
 
 // refSchema is the database schema as if it was created from scratch. This is
 // used only for comparison with an actual schema, for consistency checking. In
@@ -29,7 +29,7 @@ const refSchema = `
 		uid INTEGER PRIMARY KEY,
 		-- Serialized JSON UserState
 		state TEXT NOT NULL
-	);
+	) STRICT;
 
 	-- State of a Mastodon account.
 	CREATE TABLE accountstate (
@@ -462,6 +462,29 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 			return fmt.Errorf("schema v13: unable to run %q: %w", sqlStmt, err)
+		}
+	}
+
+	if version < 14 && targetVersion >= 14 {
+		// Convert userstate to STRICT.
+		sqlStmt := `
+			ALTER TABLE userstate RENAME TO userstateold;
+
+			-- Mastopoof user information.
+			CREATE TABLE userstate (
+				-- A unique idea for that user.
+				uid INTEGER PRIMARY KEY,
+				-- Serialized JSON UserState
+				state TEXT NOT NULL
+			) STRICT;
+
+			INSERT INTO userstate (uid, state)
+			SELECT uid, CAST(state as TEXT) FROM userstateold;
+
+			DROP TABLE userstateold;
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("schema v14: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 

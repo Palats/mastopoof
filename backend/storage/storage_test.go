@@ -117,6 +117,47 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 	return schemaDB, nil
 }
 
+type DBTestEnv struct {
+	// -- To be provided
+	// Create the DB up to this version.
+	// If 0, uses the most recent one.
+	targetVersion int
+	// Run this as SQL after setup.
+	sqlInit string
+
+	// -- Available after Init
+	db *sql.DB
+	st *Storage
+}
+
+func (env *DBTestEnv) Init(ctx context.Context, t testing.TB) *DBTestEnv {
+	var err error
+	env.db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := NewStorage(env.db, "", "read")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	v := env.targetVersion
+	if v == 0 {
+		v = maxSchemaVersion
+	}
+	if err := st.initVersion(ctx, v); err != nil {
+		t.Fatal(err)
+	}
+
+	if env.sqlInit != "" {
+		if _, err := env.db.ExecContext(ctx, env.sqlInit); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	return env
+}
+
 // TestDBCreate verifies that a DB created from scratch - i.e., following all
 // update steps - is the same as the canonical schema.
 func TestDBCreate(t *testing.T) {
@@ -136,18 +177,9 @@ func TestDBCreate(t *testing.T) {
 	}
 
 	// Create a mastopoof database.
-	db, err := sql.Open("sqlite3", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	st, err := NewStorage(db, "", "read")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := st.Init(ctx); err != nil {
-		t.Fatal(err)
-	}
-	sch, err := canonicalSchema(ctx, st.DB)
+	env := (&DBTestEnv{}).Init(ctx, t)
+
+	sch, err := canonicalSchema(ctx, env.db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,38 +196,26 @@ func TestV12ToV13(t *testing.T) {
 	ctx := context.Background()
 
 	// Prepare at version 12
-	db, err := sql.Open("sqlite3", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	st, err := NewStorage(db, "", "read")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := st.initVersion(ctx, 12); err != nil {
-		t.Fatal(err)
-	}
+	env := (&DBTestEnv{
+		targetVersion: 12,
+		// Insert some dummy data that will need to be converted
+		// JSON content is likely written as []byte, thus producing BLOB
+		// value - so also test that.
+		sqlInit: `
+			INSERT INTO accountstate (asid, content, uid) VALUES
+				(2, '{"username": "testuser1", "uid": 1}', 1),
+				(3, CAST('{"username": "testuser2", "uid": 2}' AS BLOB), 2)
+			;
+		`,
+	}).Init(ctx, t)
 
-	// Insert some dummy data that will need to be converted
-	// JSON content is likely written as []byte, thus producing BLOB
-	// value - so also test that.
-	sqlStmt := `
-		INSERT INTO accountstate (asid, content, uid) VALUES
-			(2, '{"username": "testuser1", "uid": 1}', 1),
-			(3, CAST('{"username": "testuser2", "uid": 2}' AS BLOB), 2)
-		;
-	`
-	if _, err := db.ExecContext(ctx, sqlStmt); err != nil {
-		t.Fatal(err)
-	}
-
-	// Update to version 13
-	if err := prepareDB(ctx, db, 13); err != nil {
+	// Update to last version
+	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify that the account state can be loaded.
-	accountState, err := st.AccountStateByUID(ctx, db, 1)
+	accountState, err := env.st.AccountStateByUID(ctx, env.db, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,11 +223,52 @@ func TestV12ToV13(t *testing.T) {
 		t.Errorf("Got username %s, wanted %s", got, want)
 	}
 
-	accountState, err = st.AccountStateByUID(ctx, db, 2)
+	accountState, err = env.st.AccountStateByUID(ctx, env.db, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got, want := accountState.Username, "testuser2"; got != want {
 		t.Errorf("Got username %s, wanted %s", got, want)
+	}
+}
+
+// TestV13ToV14 verifies userstate conversion to strict.
+func TestV13ToV14(t *testing.T) {
+	ctx := context.Background()
+
+	// Prepare at version 13
+	env := (&DBTestEnv{
+		targetVersion: 13,
+		// Insert some dummy data that will need to be converted
+		// JSON content is likely written as []byte, thus producing BLOB
+		// value - so also test that.
+		sqlInit: `
+			INSERT INTO userstate (uid, state) VALUES
+				(2, '{"uid": 2}'),
+				(3, CAST('{"uid": 3}' AS BLOB))
+			;
+		`,
+	}).Init(ctx, t)
+
+	// Update to last version.
+	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the account state can be loaded.
+	userState, err := env.st.UserState(ctx, env.db, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := userState.UID, int64(2); got != want {
+		t.Errorf("Got uid %d, wanted %d", got, want)
+	}
+
+	userState, err = env.st.UserState(ctx, env.db, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := userState.UID, int64(3); got != want {
+		t.Errorf("Got uid %d, wanted %d", got, want)
 	}
 }
