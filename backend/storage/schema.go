@@ -51,11 +51,14 @@ const refSchema = `
 		-- A unique key for the serverstate.
 		-- Made of hash of redirect URI & scopes requested, as each of those
 		-- require a different Mastodon app registration.
+		-- TODO: make NOT NULL
 		key TEXT
 	);
 
 	-- Information about a stream.
 	-- A stream is a series of statuses, attached to a mastopoof user.
+	-- This table contains info about the stream, not the statuses
+	-- themselves, nor the ordering.
 	CREATE TABLE "streamstate" (
 		-- Unique id for this stream.
 		stid INTEGER PRIMARY KEY,

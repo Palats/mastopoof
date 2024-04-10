@@ -142,6 +142,35 @@ Favicos sources:
  - https://commons.wikimedia.org/wiki/File:Duck-293474_white_background.jpg
 
 
+## Mastodon protocol
+
+- https://docs.joinmastodon.org/methods/
+- https://docs.joinmastodon.org/entities/
+
+There are 3 server / domains potentially involved:
+ - user domain: The domain of the mastodon account used to access mastodon - i.e., "your account".
+ - status domain: The domain of the person having created the status.
+ - reblogged domain: The domain of the person being reblogged.
+
+About Status:
+ - `id`: only makes sense within the context of the user domainserver; abstract ID, no info about username or server.
+ - `uri`: identifier of that status. Made to be globally unique it seems, incl. across server. On the status domain; e.g., `https://mastodon.cloud/users/slashdot/statuses/112121802622153992`, and on the reblogged domain for the `reblog` part.
+ - `url`: optional - can and will be sometimes empty; link to "HTML" version, according to doc. On the status domain for the containing status, on the reblog domain for the reblogged part.
+
+Account, from the one included in status:
+ - `id`: only within context of server hosting the status? (i.e., by opposition to the server of the account?)
+ - `username`: short username, without the domain.
+ - `acct`: From docs: "The Webfinger account URI. Equal to username for local users, or username@domain for remote users.".
+
+Media attachments
+ - `url`: "The location of the original full-size attachment". Can be a cache link on the user domain.
+ - `preview_url`: "The location of a scaled-down preview of the attachment". Can be a cache link on the user domain.
+   - For `gifv` (and probably others), `preview_url` can be a link to an image
+ - `remote_url`: "The location of the full-size original attachment on the remote website". Can be empty. Probably fairly divers - but can be a link on the status domain when, I think, the media (e.g image) was uploaded there. Or giphy (for example) if the file came from there.
+ - `meta`: for at least video/gifv/image, `small` and `original` keys can contain `width`, `height`, `size` (e.g., "1920x1080"), `aspect` (e.g., 1.7777)
+
+
+
 ## Bigger picture
 ### Significant features
  - Keep track of what was read - no remembering what you've read or not.

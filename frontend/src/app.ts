@@ -612,12 +612,17 @@ export class MastStatus extends LitElement {
     const attachments: TemplateResult[] = [];
     for (const ma of (s.media_attachments ?? [])) {
       if (ma.type === "image") {
+        // TODO: preview_url is probably wrong?
         attachments.push(html`
-          <img src=${ma.preview_url} alt=${ma.description}></img>
+          <img src=${ma.preview_url} alt=${ma.description || ""}></img>
         `);
       } else if (ma.type === "gifv") {
         attachments.push(html`
-          <video controls source=${ma.preview_url} alt=${ma.description}></video>
+          <video controls muted src=${ma.url} alt=${ma.description || nothing}></video>
+        `);
+      } else if (ma.type === "video") {
+        attachments.push(html`
+          <video controls src=${ma.url} alt=${ma.description || nothing}></video>
         `);
       } else {
         attachments.push(html`unsupported attachment type ${ma.type}`);
@@ -751,6 +756,12 @@ export class MastStatus extends LitElement {
     }
 
     .attachments img {
+      max-width: 100%;
+      max-height: 400px;
+    }
+
+    .attachments video {
+      display: block;
       max-width: 100%;
       max-height: 400px;
     }
