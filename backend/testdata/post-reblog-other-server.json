@@ -1,0 +1,182 @@
+{
+    "id": "112248075617386126",
+    "uri": "https://io.mwl.io/users/mwl/statuses/112248072892231250/activity",
+    "url": "",
+    "account": {
+        "id": "109349355347615918",
+        "username": "mwl",
+        "acct": "mwl@io.mwl.io",
+        "display_name": "Michael W Lucas¹ :flan_mail:",
+        "locked": false,
+        "created_at": "2022-11-12T00:00:00Z",
+        "followers_count": 4714,
+        "following_count": 315,
+        "statuses_count": 15345,
+        "note": "<p>¹ Recent books:</p><p>tech - OpenBSD Mastery: Filesystems, DNSSEC Mastery 2/e<br>Fantasy - Prohibition Orcs<br>Mystery - $ git sync murder<br>Collection: Apocalypse Moi</p><p>Pet rats. Martial arts. Punch Nazis &amp; terfs. If it wasn't on Industrial Records it's not industrial music, it's just sparkling noise. He/him. Bangpath old. Gelato!</p>",
+        "url": "https://io.mwl.io/@mwl",
+        "avatar": "https://media.hachyderm.io/cache/accounts/avatars/109/349/355/347/615/918/original/20ac35d904eeb380.jpg",
+        "avatar_static": "https://media.hachyderm.io/cache/accounts/avatars/109/349/355/347/615/918/original/20ac35d904eeb380.jpg",
+        "header": "https://media.hachyderm.io/cache/accounts/headers/109/349/355/347/615/918/original/d4ea479b0d70c249.gif",
+        "header_static": "https://media.hachyderm.io/cache/accounts/headers/109/349/355/347/615/918/static/d4ea479b0d70c249.png",
+        "emojis": [
+            {
+                "shortcode": "flan_mail",
+                "static_url": "https://media.hachyderm.io/cache/custom_emojis/images/000/273/404/static/502073b4abd1752f.png",
+                "url": "https://media.hachyderm.io/cache/custom_emojis/images/000/273/404/original/502073b4abd1752f.png",
+                "visible_in_picker": true
+            }
+        ],
+        "moved": null,
+        "fields": [
+            {
+                "name": "Website",
+                "value": "<a href=\"https://mwl.io\" target=\"_blank\" rel=\"nofollow noopener noreferrer\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">mwl.io</span><span class=\"invisible\"></span></a>",
+                "verified_at": "2024-04-09T23:59:46.562Z"
+            },
+            {
+                "name": "Before asking, read",
+                "value": "<a href=\"https://mwl.io/faq\" target=\"_blank\" rel=\"nofollow noopener noreferrer\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">mwl.io/faq</span><span class=\"invisible\"></span></a>",
+                "verified_at": "2024-04-09T23:59:47.257Z"
+            },
+            {
+                "name": "Bookstore",
+                "value": "<a href=\"https://tiltedwindmillpress.com\" target=\"_blank\" rel=\"nofollow noopener noreferrer\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">tiltedwindmillpress.com</span><span class=\"invisible\"></span></a>",
+                "verified_at": "2024-04-09T23:59:50.25Z"
+            },
+            {
+                "name": "very lame podcast",
+                "value": "<a href=\"https://mwl.io/about/worlds-lamest-podcast\" target=\"_blank\" rel=\"nofollow noopener noreferrer\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"ellipsis\">mwl.io/about/worlds-lamest-pod</span><span class=\"invisible\">cast</span></a>",
+                "verified_at": "2024-04-09T23:59:51.077Z"
+            }
+        ],
+        "bot": false,
+        "discoverable": true,
+        "source": null
+    },
+    "in_reply_to_id": null,
+    "in_reply_to_account_id": null,
+    "reblog": {
+        "id": "112248013046898007",
+        "uri": "https://hackers.town/users/undead/statuses/112248013013887026",
+        "url": "https://hackers.town/@undead/112248013013887026",
+        "account": {
+            "id": "108369335223277730",
+            "username": "undead",
+            "acct": "undead@hackers.town",
+            "display_name": "undead",
+            "locked": true,
+            "created_at": "2020-11-07T00:00:00Z",
+            "followers_count": 99,
+            "following_count": 155,
+            "statuses_count": 1411,
+            "note": "<p>Life looks a lot different when you've ended it and started over again.</p>",
+            "url": "https://hackers.town/@undead",
+            "avatar": "https://media.hachyderm.io/cache/accounts/avatars/108/369/335/223/277/730/original/f42fd4826a7676a9.jpg",
+            "avatar_static": "https://media.hachyderm.io/cache/accounts/avatars/108/369/335/223/277/730/original/f42fd4826a7676a9.jpg",
+            "header": "https://media.hachyderm.io/cache/accounts/headers/108/369/335/223/277/730/original/3c69750837f996bc.jpg",
+            "header_static": "https://media.hachyderm.io/cache/accounts/headers/108/369/335/223/277/730/original/3c69750837f996bc.jpg",
+            "emojis": [],
+            "moved": null,
+            "fields": [
+                {
+                    "name": "pronouns",
+                    "value": "he/him/dude?",
+                    "verified_at": "0001-01-01T00:00:00Z"
+                },
+                {
+                    "name": "site",
+                    "value": "<a href=\"https://bill.undead.today/\" rel=\"nofollow noopener noreferrer\" translate=\"no\" target=\"_blank\"><span class=\"invisible\">https://</span><span class=\"\">bill.undead.today/</span><span class=\"invisible\"></span></a>",
+                    "verified_at": "0001-01-01T00:00:00Z"
+                },
+                {
+                    "name": "mood",
+                    "value": "kittens and impatience",
+                    "verified_at": "0001-01-01T00:00:00Z"
+                },
+                {
+                    "name": "mode",
+                    "value": "cleaning",
+                    "verified_at": "0001-01-01T00:00:00Z"
+                }
+            ],
+            "bot": false,
+            "discoverable": true,
+            "source": null
+        },
+        "in_reply_to_id": null,
+        "in_reply_to_account_id": null,
+        "reblog": null,
+        "content": "<p>Sysadmin Rule #15:  <a href=\"https://mwl.io/archives/23514\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">Today's plans address yesterday's failures.  Failure is a renewable resource.</a></p><p><span class=\"h-card\" translate=\"no\"><a href=\"https://io.mwl.io/@mwl\" class=\"u-url mention\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">@<span>mwl</span></a></span></p>",
+        "created_at": "2024-04-10T17:05:53Z",
+        "emojis": [],
+        "replies_count": 1,
+        "reblogs_count": 8,
+        "favourites_count": 0,
+        "reblogged": false,
+        "favourited": false,
+        "bookmarked": false,
+        "muted": false,
+        "sensitive": false,
+        "spoiler_text": "",
+        "visibility": "public",
+        "media_attachments": [],
+        "mentions": [
+            {
+                "url": "https://io.mwl.io/@mwl",
+                "username": "mwl",
+                "acct": "mwl@io.mwl.io",
+                "id": "109349355347615918"
+            }
+        ],
+        "tags": [],
+        "card": {
+            "url": "https://mwl.io/archives/23514",
+            "title": "40: Failure is a Renewable Resource",
+            "description": "from next month's FreeBSD Journal Letters column.",
+            "image": "https://media.hachyderm.io/cache/preview_cards/images/018/524/654/original/a7d4bd69723a02c0.jpg",
+            "type": "link",
+            "author_name": "",
+            "author_url": "",
+            "provider_name": "60 Seconds of WIP",
+            "provider_url": "",
+            "html": "",
+            "width": 2560,
+            "height": 2560
+        },
+        "poll": null,
+        "application": {
+            "id": "",
+            "redirect_uri": "",
+            "client_id": "",
+            "client_secret": ""
+        },
+        "language": "en",
+        "pinned": null
+    },
+    "content": "",
+    "created_at": "2024-04-10T17:21:06Z",
+    "emojis": [],
+    "replies_count": 0,
+    "reblogs_count": 0,
+    "favourites_count": 0,
+    "reblogged": false,
+    "favourited": false,
+    "bookmarked": false,
+    "muted": false,
+    "sensitive": false,
+    "spoiler_text": "",
+    "visibility": "public",
+    "media_attachments": [],
+    "mentions": [],
+    "tags": [],
+    "card": null,
+    "poll": null,
+    "application": {
+        "id": "",
+        "redirect_uri": "",
+        "client_id": "",
+        "client_secret": ""
+    },
+    "language": "",
+    "pinned": null
+}
