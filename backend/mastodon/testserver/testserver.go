@@ -33,10 +33,10 @@ func cmpStatusID(s1 *mastodon.Status, s2 *mastodon.Status) int {
 	return 0
 }
 
-func parseID(s *mastodon.Status) (int64, error) {
-	id, err := strconv.ParseInt(string(s.ID), 10, 64)
+func parseID(statusID mastodon.ID) (int64, error) {
+	id, err := strconv.ParseInt(string(statusID), 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("unable to parse status ID %q: %w", s.ID, err)
+		return 0, fmt.Errorf("unable to parse status ID %q: %w", statusID, err)
 	}
 	return id, nil
 }
@@ -47,7 +47,7 @@ type Item struct {
 }
 
 func newItem(s *mastodon.Status) (*Item, error) {
-	id, err := parseID(s)
+	id, err := parseID(s.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -76,6 +76,23 @@ type Server struct {
 
 func New() *Server {
 	return &Server{}
+}
+
+func (s *Server) itemIdx(key string) (int, error) {
+	if key == "" {
+		return -1, nil
+	}
+	id, err := parseID(mastodon.ID(key))
+	if err != nil {
+		return -1, fmt.Errorf("%q is not a valid status ID: %w", key, err)
+	}
+
+	item := &Item{ID: id}
+	idx, found := slices.BinarySearchFunc(s.items, item, cmpItems)
+	if !found {
+		return -1, nil
+	}
+	return idx, nil
 }
 
 func (s *Server) AddStatus(status *mastodon.Status) error {
@@ -213,9 +230,71 @@ func (s *Server) serverAPIAccountsVerifyCredentials(w http.ResponseWriter, req *
 
 // https://docs.joinmastodon.org/methods/timelines/#home
 func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request) {
+	maxIDidx, err := s.itemIdx(req.URL.Query().Get("max_id"))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid max_id parameter: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	sinceIDidx, err := s.itemIdx(req.URL.Query().Get("since_id"))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid since_id parameter: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	minIDidx, err := s.itemIdx(req.URL.Query().Get("min_id"))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid min_id parameter: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	limit := 20
+	sLimit := req.URL.Query().Get("limit")
+	if sLimit != "" {
+		l64, err := strconv.ParseInt(sLimit, 10, strconv.IntSize)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("invalid limit parameter: %v", err), http.StatusBadRequest)
+			return
+		}
+		limit = int(l64)
+	}
+
+	firstIdx := 0           // Included
+	lastIdx := len(s.items) // Not included
+	if minIDidx >= 0 {
+		firstIdx = minIDidx
+		if sinceIDidx >= 0 && sinceIDidx > firstIdx {
+			firstIdx = sinceIDidx
+		}
+		// min_id and since_id are not included when set.
+		firstIdx++
+
+		lastIdx = firstIdx + limit
+		if maxIDidx >= 0 && maxIDidx <= lastIdx {
+			lastIdx = maxIDidx
+		}
+		if lastIdx > len(s.items) {
+			lastIdx = len(s.items)
+		}
+	} else {
+		// min_idx is not set, so we go backward from recent statuses.
+		lastIdx = len(s.items)
+		if maxIDidx >= 0 && maxIDidx <= lastIdx {
+			lastIdx = maxIDidx
+		}
+
+		firstIdx = lastIdx - limit
+		if sinceIDidx >= 0 && sinceIDidx >= firstIdx {
+			firstIdx = sinceIDidx + 1
+		}
+		if firstIdx < 0 {
+			firstIdx = 0
+		}
+	}
+
 	statuses := []*mastodon.Status{}
-	for _, item := range s.items {
-		statuses = append(statuses, item.Status)
+	for i := firstIdx; i < lastIdx; i++ {
+		statuses = append(statuses, s.items[i].Status)
 	}
 	s.returnJSON(w, req, statuses)
 }
