@@ -293,6 +293,8 @@ export class MastStream extends LitElement {
     }
 
     let count = 0n;
+    let loadedCount = 0n;
+    let loadedMsg = '';
     if (this.items.length === 0) {
       // Initial loading was done, so if items is empty, it means nothing is available.
       count = this.streamInfo.remainingPool;
@@ -302,16 +304,18 @@ export class MastStream extends LitElement {
       // We've got:
       //   - visible statuses which are already on stream but not yet on screen/loaded.
       //   - statuses still in pool and not yet sorted in stream.
-      count = this.streamInfo.remainingPool + lastPosition - lastVisible;
+      loadedCount = lastPosition - lastVisible;
+      count = this.streamInfo.remainingPool + loadedCount;
+      loadedMsg = loadedCount !== count ? `(${loadedCount} loaded)` : '';
     }
 
     let remaining = html`Updating...`;
     if (count == 0n) {
       remaining = html`End of stream`;
     } else if (count == 1n) {
-      remaining = html`1 remaining status`;
+      remaining = html`1 remaining status ${loadedMsg}`;
     } else {
-      remaining = html`${count} remaining statuses`;
+      remaining = html`${count} remaining statuses ${loadedMsg}`;
     }
 
     return html`
