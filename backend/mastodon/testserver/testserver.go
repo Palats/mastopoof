@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Palats/mastopoof/backend/mastodon"
@@ -96,6 +98,7 @@ func cmpItems(i1 *Item, i2 *Item) int {
 
 type Server struct {
 	// Ordered list of Mastodon statuses to serve.
+	// The list is ordered by increase status.ID - thus meaning oldest status first.
 	items []*Item
 	// To differentiate between each fake status being added.
 	fakeCounter int64
@@ -297,12 +300,57 @@ func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request)
 	}
 
 	statuses := []*mastodon.Status{}
+	// Return statuses from highest ID to lowest - i.e., in reverse chronological order,
+	// which is likely similar to Mastodon.
 	for i := lastIdx - 1; i >= firstIdx; i-- {
 		statuses = append(statuses, s.items[i].Status)
 	}
 
-	// TODO: Set Link response
-	// w.Header().Set("Link", linkHeader)
+	// See https://docs.joinmastodon.org/api/guidelines/#pagination for how `Link` header
+	// is used by Mastodon. 2 links can be provided:
+	//  - `next` should get older results. Older results means lower ID. It seems that only `max_id` is expected on this URL.
+	//  - `prev` should get new results. This means higher ID. It seems that `since_id` and `min_id` are used on this URL.
+	// The idea seems to be that Mastodon returns results in reverse
+	// chronological order - i.e., from most recent to oldest. In turn, it means
+	// that next gives older results.
+	var linkEntries []string
+
+	// 'next' returns older results - thus results with smaller Status ID, which means lower
+	// index in the s.items array. The result is clamped by `max_id`. The `max_id` is excluded
+	// from the result, so that can be directly the oldest status returned here.
+	if firstIdx >= 0 && firstIdx < len(s.items) {
+		var uNext url.URL
+		uNext.Scheme = "https"
+		uNext.Host = "localhost"
+		uNext.Path = "/api/v1/timelines/home"
+		q := uNext.Query()
+		q.Set("max_id", string(s.items[firstIdx].Status.ID))
+		uNext.RawQuery = q.Encode()
+		linkEntries = append(linkEntries, fmt.Sprintf("<%s>; rel=\"next\"", uNext.String()))
+	}
+
+	// 'prev' returns newer results - thus results with higher status ID, which means
+	// higher index in the sorted s.items array.
+	// `min_id` is excluded from the results, so it can be directly the most recent
+	// status which is returned there. Same for `since_id`.
+	// Note that `lastIdx` is excluded from result.
+	if lastIdx-1 >= 0 && lastIdx-1 < len(s.items) {
+		var uPrev url.URL
+		uPrev.Scheme = "https"
+		uPrev.Host = "localhost"
+		uPrev.Path = "/api/v1/timelines/home"
+
+		id := string(s.items[lastIdx-1].Status.ID)
+		q := uPrev.Query()
+		q.Set("min_id", id)
+		q.Set("since_id", id)
+		uPrev.RawQuery = q.Encode()
+		linkEntries = append(linkEntries, fmt.Sprintf("<%s>; rel=\"prev\"", uPrev.String()))
+	}
+
+	if len(linkEntries) > 0 {
+		w.Header().Set("Link", strings.Join(linkEntries, ", "))
+	}
 
 	s.returnJSON(w, req, statuses)
 }

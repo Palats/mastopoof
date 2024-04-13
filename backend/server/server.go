@@ -436,60 +436,58 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	})
 	client.Client = s.client
 
-	var statuses []*mastodon.Status
-
-	fetchCount := 0
 	// TODO: absolutely do not do fetching from server while in a local transaction.
-	// Do multiple fetching, until either up to date, or up to a boundary to avoid infinite loops by mistake.
-	for fetchCount < 10 {
-		// Pagination object is updated by GetTimelimeHome, based on the `Link` header
-		// returned by the API - see https://docs.joinmastodon.org/api/guidelines/#pagination .
-		// On the query:
-		//  - MaxID is an upper bound.
-		//  - MinID will indicate to get statuses starting at that ID - aka, cursor like.
-		//  - SinceID sets a lower bound on the results, but will prioritize recent results. I.e., it will
-		//     return the last $Limit statuses, assuming they are all more recent than SinceID.
-		// On the result, it seems:
-		//  - MinID is set to the most recent ID returned (from the "prev" Link, which is for future statuses)
-		//  - MaxID is set to an older ID (from the "next" Link, which is for older status)
-		//  - SinceID, Limit are empty/0.
-		// See https://github.com/mattn/go-mastodon/blob/9faaa4f0dc23d9001ccd1010a9a51f56ba8d2f9f/mastodon.go#L317
-		// It seems that if MaxID and MinID are identical, it means the end has been reached and some result were given.
-		// And if there is no MaxID, the end has been reached.
-		pg := &mastodon.Pagination{
-			MinID: accountState.LastHomeStatusID,
-		}
-		glog.Infof("Fetching from %s", pg.MinID)
-		timeline, err := client.GetTimelineHome(ctx, pg)
-		if err != nil {
-			return nil, err
-		}
-		glog.Infof("Found %d new status on home timeline", len(timeline))
 
-		statuses = append(statuses, timeline...)
-		for _, status := range timeline {
-			if storage.IDNewer(status.ID, accountState.LastHomeStatusID) {
-				accountState.LastHomeStatusID = status.ID
-			}
-		}
+	// Pagination object is updated by GetTimelimeHome, based on the `Link` header
+	// returned by the API - see https://docs.joinmastodon.org/api/guidelines/#pagination .
+	// On the query:
+	//  - max_id / MaxID is an upper bound, not included.
+	//  - min_id / MinID will indicate to get statuses starting at that ID - aka, cursor like.
+	//  - since_id / SinceID sets a lower bound on the results, but will prioritize recent results. I.e., it will
+	//     return the last $Limit statuses, assuming they are all more recent than SinceID.
+	// On the result, it seems:
+	//  - MinID is set to the most recent ID returned (from the "prev" Link, which is for future statuses)
+	//  - MaxID is set to an older ID (from the "next" Link, which is for older status)
+	//  - SinceID, Limit are empty/0.
+	// See https://github.com/mattn/go-mastodon/blob/9faaa4f0dc23d9001ccd1010a9a51f56ba8d2f9f/mastodon.go#L317
+	// It seems that if MaxID and MinID are identical, it means the end has been reached and some result were given.
+	// And if there is no MaxID, the end has been reached.
+	pg := &mastodon.Pagination{
+		MinID: accountState.LastHomeStatusID,
+	}
+	glog.Infof("Fetching from %s", pg.MinID)
+	timeline, err := client.GetTimelineHome(ctx, pg)
+	if err != nil {
+		return nil, err
+	}
+	glog.Infof("Found %d new status on home timeline", len(timeline))
 
-		fetchCount++
-		// Pagination got updated.
-		if pg.MinID != accountState.LastHomeStatusID {
-			// Either there is a mismatch in the data or no `Link` was returned
-			// - in either case, we don't know enough to safely continue.
-			glog.Infof("no returned MinID / ID mismatch, stopping fetch")
-			break
+	for _, status := range timeline {
+		if storage.IDNewer(status.ID, accountState.LastHomeStatusID) {
+			accountState.LastHomeStatusID = status.ID
 		}
-		if pg.MaxID == "" || pg.MaxID == pg.MinID {
-			// We've reached the end - either nothing was fetched, or just the
-			// latest ones.
-			break
-		}
-		if len(timeline) == 0 {
-			// Nothing was returned, assume it is because we've reached the end.
-			break
-		}
+	}
+
+	resp := &pb.FetchResponse{
+		FetchedCount: int64(len(timeline)),
+		Status:       pb.FetchResponse_MORE,
+	}
+
+	// Pagination got updated.
+	if pg.MinID != accountState.LastHomeStatusID {
+		// Either there is a mismatch in the data or no `Link` was returned
+		// - in either case, we don't know enough to safely continue.
+		glog.Infof("no returned MinID / ID mismatch, stopping fetch")
+		resp.Status = pb.FetchResponse_DONE
+	}
+	if pg.MaxID == "" || pg.MaxID == pg.MinID {
+		// We've reached the end - either nothing was fetched, or just the
+		// latest ones.
+		resp.Status = pb.FetchResponse_DONE
+	}
+	if len(timeline) == 0 {
+		// Nothing was returned, assume it is because we've reached the end.
+		resp.Status = pb.FetchResponse_DONE
 	}
 
 	if err := s.st.SetAccountState(ctx, txn, accountState); err != nil {
@@ -497,15 +495,14 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	}
 
 	// TODO: mess of stream state - there is another version above.
-	streamState, err = s.st.InsertStatuses(ctx, txn, uid, statuses)
+	streamState, err = s.st.InsertStatuses(ctx, txn, uid, timeline)
 	if err != nil {
 		return nil, err
 	}
 
-	return connect.NewResponse(&pb.FetchResponse{
-		FetchedCount: int64(len(statuses)),
-		StreamInfo:   streamState.ToStreamInfo(),
-	}), txn.Commit()
+	resp.StreamInfo = streamState.ToStreamInfo()
+
+	return connect.NewResponse(resp), txn.Commit()
 }
 
 func (s *Server) RedirectHandler(w http.ResponseWriter, req *http.Request) {

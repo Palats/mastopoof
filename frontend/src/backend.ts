@@ -135,8 +135,15 @@ export class Backend {
     }
 
     public async fetch(stid: bigint) {
-        const resp = await this.client.fetch({ stid: stid });
-        this.updateStreamInfo(resp.streamInfo);
-        return resp;
+        // Limit the number of fetch we're requesting.
+        // TODO: do limiting on server side.
+        for (let i = 0; i < 10; i++) {
+            const resp = await this.client.fetch({ stid: stid });
+            console.log(`${resp.fetchedCount} statuses fetched (status=${resp.status}).`);
+            this.updateStreamInfo(resp.streamInfo);
+            if (resp.status !== pb.FetchResponse_Status.MORE) {
+                break;
+            }
+        }
     }
 }

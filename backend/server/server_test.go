@@ -47,8 +47,10 @@ func (h *LoggingHandler) ServeHTTP(writer http.ResponseWriter, req *http.Request
 	respCookie, err := (&http.Request{Header: header}).Cookie("mastopoof")
 	if err == nil {
 		h.T.Logf("HTTP Response %d: Set-Cookie:%v", idx, respCookie)
-	} else {
-		h.T.Logf("HTTP Response %d: no cookie set", idx)
+	}
+
+	if link := writer.Header().Get("Link"); link != "" {
+		h.T.Logf("HTTP Response %d: Link: %v", idx, link)
 	}
 }
 
@@ -73,11 +75,12 @@ type TestEnv struct {
 	StatusesCount int
 
 	// Provided after Init.
-	client     *http.Client
-	addr       string
-	rpcAddr    string
-	db         *sql.DB
-	httpServer *httptest.Server
+	client         *http.Client
+	addr           string
+	rpcAddr        string
+	db             *sql.DB
+	httpServer     *httptest.Server
+	mastodonServer *testserver.Server
 }
 
 func (env *TestEnv) Init(ctx context.Context) *TestEnv {
@@ -88,13 +91,13 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 	scopes := "read"
 
 	// Create Mastodon server.
-	ts := testserver.New()
+	env.mastodonServer = testserver.New()
 	for i := 0; i < int(env.StatusesCount); i++ {
-		if err := ts.AddFakeStatus(); err != nil {
+		if err := env.mastodonServer.AddFakeStatus(); err != nil {
 			env.t.Fatal(err)
 		}
 	}
-	ts.RegisterOn(mux)
+	env.mastodonServer.RegisterOn(mux)
 
 	// Creates mastopoof server.
 	var err error
@@ -322,13 +325,42 @@ func TestMultiFetch(t *testing.T) {
 	defer env.Close()
 	userInfo := env.Login()
 
-	// Read some statuses. We've added quite a lot in mastodon, so first one should pick a few
-	// while still having more to fetch.
+	// Read some statuses. We've added quite a few, but on first fetch,
+	// it just gets the recent ones.
 	resp := MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
 		Stid: userInfo.DefaultStid,
 	})
-	/*if got, want := resp.Status, pb.FetchResponse_MORE; got != want {
+	if got, want := resp.Status, pb.FetchResponse_DONE; got != want {
 		t.Errorf("Got status %v, wanted %v; fetched %d statuses", got, want, resp.FetchedCount)
-	}*/
-	_ = resp
+	}
+
+	// Insert more statuses - enough to require multiple fetches.
+	for i := 0; i < 100; i++ {
+		if err := env.mastodonServer.AddFakeStatus(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Do one fetch, we should indicate a continuation.
+	resp = MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
+		Stid: userInfo.DefaultStid,
+	})
+	if got, want := resp.Status, pb.FetchResponse_MORE; got != want {
+		t.Errorf("Got status %v, wanted %v; fetched %d statuses", got, want, resp.FetchedCount)
+	}
+
+	// And make sure we can continue to fetch until done in not too many iterations.
+	count := 0
+	for {
+		count++
+		resp = MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
+			Stid: userInfo.DefaultStid,
+		})
+		if resp.Status == pb.FetchResponse_DONE {
+			break
+		}
+		if count > 100 {
+			t.Fatal("infinite fetch detected")
+		}
+	}
 }

@@ -187,4 +187,13 @@ message FetchRequest {
 message FetchResponse {
     StreamInfo stream_info = 1;
     int64 fetched_count = 2;
+
+    enum Status {
+        UNKNOWN = 0;
+        // More statuses are likely to be fetcheable right now.
+        MORE = 1;
+        // No more statuses available from Mastodon server right now.
+        DONE = 2;
+    }
+    Status status = 3;
 }
