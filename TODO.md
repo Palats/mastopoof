@@ -52,6 +52,7 @@
 - Have fetch as server RPC
 - Fix management of stream "maintained" metadata - like number of remaining statuses and the like.
 - Rework auth workflow, esp. naming
+- Rate limit fetch from mastodon server.
 
 ### Tests
 - Test creation of empty DB
@@ -67,6 +68,8 @@
  - Detect advance of unread in other device
  - Show button to scroll down to current unread
  - No-connect mode: do not allow any mastodon server query
+ - Initial fetch should not pull 1 month and 12000 statuses
+ - Something to mark everything as read - go to the bottom
 
 ### Done
  - header/footer are confusing compared to the posts

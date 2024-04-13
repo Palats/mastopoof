@@ -293,8 +293,12 @@ func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request)
 	}
 
 	statuses := []*mastodon.Status{}
-	for i := firstIdx; i < lastIdx; i++ {
+	for i := lastIdx - 1; i >= firstIdx; i-- {
 		statuses = append(statuses, s.items[i].Status)
 	}
+
+	// TODO: Set Link response
+	// w.Header().Set("Link", linkHeader)
+
 	s.returnJSON(w, req, statuses)
 }

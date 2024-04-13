@@ -15,7 +15,6 @@ import (
 
 	"github.com/Palats/mastopoof/backend/mastodon/testserver"
 	"github.com/Palats/mastopoof/backend/storage"
-	"github.com/Palats/mastopoof/backend/testdata"
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	"golang.org/x/net/publicsuffix"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -70,6 +69,8 @@ type Msg[T any] interface {
 type TestEnv struct {
 	// To be provided.
 	t testing.TB
+	// Number of statuses to have available on Mastodon side.
+	StatusesCount int
 
 	// Provided after Init.
 	client     *http.Client
@@ -88,8 +89,10 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 
 	// Create Mastodon server.
 	ts := testserver.New()
-	if err := ts.AddJSONStatuses(testdata.Content()); err != nil {
-		env.t.Fatal(err)
+	for i := 0; i < int(env.StatusesCount); i++ {
+		if err := ts.AddFakeStatus(); err != nil {
+			env.t.Fatal(err)
+		}
 	}
 	ts.RegisterOn(mux)
 
@@ -99,7 +102,6 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 	if err != nil {
 		env.t.Fatal(err)
 	}
-	// defer db.Close()
 	st, err := storage.NewStorage(env.db, selfURL, scopes)
 	if err != nil {
 		env.t.Fatal(err)
@@ -112,7 +114,6 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 
 	// Create the http server
 	env.httpServer = httptest.NewTLSServer(&LoggingHandler{T: env.t, Handler: mux})
-	// defer httpServer.Close()
 	env.addr = env.httpServer.URL
 	env.rpcAddr = env.httpServer.URL + "/_rpc/mastopoof.Mastopoof/"
 	mastopoof.client = *env.httpServer.Client()
@@ -195,7 +196,8 @@ func MustCall[TRespMsg any, TResponse Msg[TRespMsg], TRequest proto.Message](env
 func TestBasic(t *testing.T) {
 	ctx := context.Background()
 	env := (&TestEnv{
-		t: t,
+		t:             t,
+		StatusesCount: 10,
 	}).Init(ctx)
 	defer env.Close()
 
@@ -252,7 +254,8 @@ func TestBasic(t *testing.T) {
 func TestSetRead(t *testing.T) {
 	ctx := context.Background()
 	env := (&TestEnv{
-		t: t,
+		t:             t,
+		StatusesCount: 10,
 	}).Init(ctx)
 	defer env.Close()
 	userInfo := env.Login()
@@ -307,5 +310,24 @@ func TestSetRead(t *testing.T) {
 	})
 	if got, want := lastReadResp.StreamInfo.LastRead, int64(1); got != want {
 		t.Errorf("Got last read %d, wanted %d", got, want)
+	}
+}
+
+func TestMultiFetch(t *testing.T) {
+	ctx := context.Background()
+	env := (&TestEnv{
+		t:             t,
+		StatusesCount: 100,
+	}).Init(ctx)
+	defer env.Close()
+	userInfo := env.Login()
+
+	// Read some statuses. We've added quite a lot in mastodon, so first one should pick a few
+	// while still having more to fetch.
+	resp := MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
+		Stid: userInfo.DefaultStid,
+	})
+	if got, want := resp.Status, pb.FetchResponse_MORE; got != want {
+		t.Errorf("Got status %v, wanted %v; fetched %d statuses", got, want, resp.FetchedCount)
 	}
 }
