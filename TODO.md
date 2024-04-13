@@ -1,5 +1,5 @@
 ### Bugs
- - https://hachyderm.io/@lcamtuf@infosec.exchange/112127045987137202 does not show; missing support for "type": "gifv"
+ - Link to boosted status sends to boosted status server when the booster server is the same as the user Mastodon server.
 
 
 ### UI style
@@ -14,7 +14,6 @@
  - Have proper auth UI for copy/pasting code vs automatic redirect.
  - Info when fetching
  - Show last fetch time
- - Automated loading on scroll down.
  - Allow configuration of automated loading
  - Notifications
  - Missing preview of URLs (when no other media in status)
@@ -22,13 +21,10 @@
  - Improve URL look (removing https://, etc.)
  - Threading/replies
  - See full size picture
- - Link to post on own server to allow for +1
  - "scroll to unread"
  - Refresh timestamp (i.e., does not stay at "less then a minute ago")
  - Have a way to link to somewhere specific in the stream (for re-loading context)
  - Improve display of multiple attachments for a post (i.e., not a dumb column)
- - Link to user on local mastodon server
-
 
 ### Frontend
  - Split each element class
@@ -48,7 +44,6 @@
 
 ### Backend
 - Reuse mastodon clients
-- Find a better mechanism to manage the various redirect URI and getting a client when no redirect is needed anyway.
 - Have fetch as server RPC
 - Fix management of stream "maintained" metadata - like number of remaining statuses and the like.
 - Rework auth workflow, esp. naming
@@ -68,7 +63,6 @@
  - Detect advance of unread in other device
  - Show button to scroll down to current unread
  - No-connect mode: do not allow any mastodon server query
- - Initial fetch should not pull 1 month and 12000 statuses
  - Something to mark everything as read - go to the bottom
 
 ### Done
