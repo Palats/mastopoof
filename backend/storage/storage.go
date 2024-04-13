@@ -413,26 +413,31 @@ func (st *Storage) SetStreamState(ctx context.Context, db SQLQueryable, streamSt
 // RecomputeStreamState recreates what it can about StreamState from
 // the state of the DB.
 func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLQueryable, stid int64) (*StreamState, error) {
-	streamState := &StreamState{
-		StID: stid,
-		// UID: kept empty
-		// LastRead: arbitrary, cannot be rebuilt.
+	// Load the original one, as some values are not always recomputable.
+	streamState, err := st.StreamState(ctx, txn, stid)
+	if err != nil {
+		return nil, err
 	}
 
 	// FirstPosition
-	err := txn.QueryRowContext(ctx, "SELECT min(position) FROM streamcontent WHERE stid = ?", stid).Scan(&streamState.FirstPosition)
-	if err == sql.ErrNoRows {
-		streamState.FirstPosition = 0
-	} else if err != nil {
+	var position sql.NullInt64
+	err = txn.QueryRowContext(ctx, "SELECT min(position) FROM streamcontent WHERE stid = ?", stid).Scan(&position)
+	if err != nil {
 		return nil, err
+	}
+	streamState.FirstPosition = 0
+	if position.Valid {
+		streamState.FirstPosition = position.Int64
 	}
 
 	// LastPosition
-	err = txn.QueryRowContext(ctx, "SELECT max(position) FROM streamcontent WHERE stid = ?", stid).Scan(&streamState.LastPosition)
-	if err == sql.ErrNoRows {
-		streamState.LastRead = 0
-	} else if err != nil {
+	err = txn.QueryRowContext(ctx, "SELECT max(position) FROM streamcontent WHERE stid = ?", stid).Scan(&position)
+	if err != nil {
 		return nil, err
+	}
+	streamState.LastPosition = 0
+	if position.Valid {
+		streamState.LastPosition = position.Int64
 	}
 
 	// Remaining
@@ -449,6 +454,11 @@ func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLQueryable, s
 	`, stid).Scan(&streamState.Remaining)
 	if err != nil {
 		return nil, err
+	}
+
+	// LastRead
+	if streamState.LastRead > streamState.LastPosition {
+		streamState.LastRead = streamState.LastPosition
 	}
 
 	return streamState, nil

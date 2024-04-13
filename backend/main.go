@@ -208,6 +208,108 @@ func cmdCheckStreamState(ctx context.Context, st *storage.Storage, stid int64) e
 	}
 	defer txn.Rollback()
 
+	// Stream content - check for duplicates
+	fmt.Println("### Duplicate statuses in stream")
+	rows, err := st.DB.QueryContext(ctx, `
+		WITH counts AS (
+			SELECT
+				sid,
+				MIN(position) as position,
+				COUNT(*) AS count
+			FROM
+				streamcontent
+			WHERE
+				stid = ?
+			GROUP BY
+				sid
+		)
+		SELECT
+			*
+		FROM
+			counts
+		WHERE
+			count > 1
+		ORDER BY count
+		;
+	`, stid)
+	if err != nil {
+		return err
+	}
+
+	for rows.Next() {
+		var sid int64
+		var minPosition int64
+		var count int64
+		if err := rows.Scan(&sid, &minPosition, &count); err != nil {
+			return err
+		}
+		fmt.Printf("Status sid=%d: %d dups\n", sid, count)
+
+		result, err := txn.ExecContext(ctx, `
+			DELETE FROM streamcontent WHERE
+				stid = ?
+				AND sid = ?
+				AND position != ?
+		`, stid, sid, minPosition)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("... deleted %d rows, kept early position %d\n", affected, minPosition)
+	}
+	fmt.Println()
+
+	// Check cross user statuses
+	fmt.Println("### Statuses from another user")
+	streamState, err := st.StreamState(ctx, txn, stid)
+	if err != nil {
+		return fmt.Errorf("unable to get streamstate from DB: %w", err)
+	}
+
+	rows, err = st.DB.QueryContext(ctx, `
+		SELECT
+			sid
+		FROM
+			streamcontent
+		INNER JOIN statuses
+			USING (sid)
+		WHERE
+			streamcontent.stid = ?
+			AND statuses.uid != ?
+		GROUP BY
+			sid
+	`, stid, streamState.UID)
+	if err != nil {
+		return err
+	}
+
+	for rows.Next() {
+		var sid int64
+		if err := rows.Scan(&sid); err != nil {
+			return err
+		}
+		fmt.Printf("Status sid=%d is coming from another user\n", sid)
+
+		result, err := txn.ExecContext(ctx, `
+			DELETE FROM streamcontent WHERE
+				stid = ?
+				AND sid = ?
+		`, stid, sid)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("... deleted %d rows\n", affected)
+	}
+	fmt.Println()
+
+	// Stream state
 	dbStreamState, err := st.StreamState(ctx, txn, stid)
 	if err != nil {
 		return fmt.Errorf("unable to get streamstate from DB: %w", err)
@@ -218,6 +320,7 @@ func cmdCheckStreamState(ctx context.Context, st *storage.Storage, stid int64) e
 	fmt.Println("First position:", dbStreamState.FirstPosition)
 	fmt.Println("Last position:", dbStreamState.LastPosition)
 	fmt.Println("Remaining:", dbStreamState.Remaining)
+	fmt.Println("Last read:", dbStreamState.LastRead)
 	fmt.Println()
 
 	computeStreamState, err := st.RecomputeStreamState(ctx, txn, stid)
@@ -227,23 +330,27 @@ func cmdCheckStreamState(ctx context.Context, st *storage.Storage, stid int64) e
 
 	fmt.Println("### Calculated stream state")
 	fmt.Println("Stream ID:", computeStreamState.StID)
-	fmt.Println("First position:", computeStreamState.FirstPosition)
-	fmt.Println("Last position:", computeStreamState.LastPosition)
-	fmt.Println("Remaining:", computeStreamState.Remaining)
+	fmt.Printf("First position: %d [diff: %+d]\n", computeStreamState.FirstPosition, computeStreamState.FirstPosition-dbStreamState.FirstPosition)
+	fmt.Printf("Last position: %d [diff: %+d]\n", computeStreamState.LastPosition, computeStreamState.LastPosition-dbStreamState.LastPosition)
+	fmt.Printf("Remaining: %d [diff: %+d]\n", computeStreamState.Remaining, computeStreamState.Remaining-dbStreamState.Remaining)
+	fmt.Printf("Last read: %d [diff: %+d]\n", computeStreamState.LastRead, computeStreamState.LastRead-dbStreamState.LastRead)
 	fmt.Println()
 
-	if !*doFix {
-		return nil
-	}
-
-	fmt.Println("Fixing state in DB...")
+	// Do the fix in the transaction - transaction won't be committed in dry run.
 	dbStreamState.FirstPosition = computeStreamState.FirstPosition
 	dbStreamState.LastPosition = computeStreamState.LastPosition
 	dbStreamState.Remaining = computeStreamState.Remaining
 	if err := st.SetStreamState(ctx, txn, dbStreamState); err != nil {
 		return fmt.Errorf("failed to update stream state: %w", err)
 	}
-	return txn.Commit()
+
+	if *doFix {
+		fmt.Println("Applying changes in DB...")
+		return txn.Commit()
+	}
+
+	fmt.Println("Dry run, ignoring changes")
+	return txn.Rollback()
 }
 
 func run(ctx context.Context) error {
