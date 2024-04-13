@@ -441,32 +441,36 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	// Pagination object is updated by GetTimelimeHome, based on the `Link` header
 	// returned by the API - see https://docs.joinmastodon.org/api/guidelines/#pagination .
 	// On the query:
-	//  - max_id / MaxID is an upper bound, not included.
-	//  - min_id / MinID will indicate to get statuses starting at that ID - aka, cursor like.
-	//  - since_id / SinceID sets a lower bound on the results, but will prioritize recent results. I.e., it will
+	//  - max_id (MaxID) is an upper bound, not included.
+	//  - min_id (MinID) will indicate to get statuses starting at that ID - aka, cursor like.
+	//  - since_id (SinceID) sets a lower bound on the results, but will prioritize recent results. I.e., it will
 	//     return the last $Limit statuses, assuming they are all more recent than SinceID.
 	// On the result, it seems:
-	//  - MinID is set to the most recent ID returned (from the "prev" Link, which is for future statuses)
-	//  - MaxID is set to an older ID (from the "next" Link, which is for older status)
-	//  - SinceID, Limit are empty/0.
+	//  - min_id is set to the most recent ID returned (from the "prev" Link, which is for future statuses)
+	//  - max_id is set to an older ID (from the "next" Link, which is for older statuses).
+	//    Set to 0 when no statuses are returned when having reached most recent stuff.
+	//  - since_id, Limit are empty/0.
 	// See https://github.com/mattn/go-mastodon/blob/9faaa4f0dc23d9001ccd1010a9a51f56ba8d2f9f/mastodon.go#L317
-	// It seems that if MaxID and MinID are identical, it means the end has been reached and some result were given.
-	// And if there is no MaxID, the end has been reached.
+	// It seems that if max_id and min_id are identical, it means the end has been reached and some result were given.
+	// And if there is no max_id, the end has been reached.
 	pg := &mastodon.Pagination{
 		MinID: accountState.LastHomeStatusID,
 	}
-	glog.Infof("Fetching from %s", pg.MinID)
+	glog.Infof("Fetching... (max_id:%v, min_id:%v, since_id:%v)", pg.MaxID, pg.MinID, pg.SinceID)
 	timeline, err := client.GetTimelineHome(ctx, pg)
 	if err != nil {
 		return nil, err
 	}
-	glog.Infof("Found %d new status on home timeline", len(timeline))
-
+	boundaries := ""
+	if len(timeline) > 0 {
+		boundaries = fmt.Sprintf(" (%s -- %s)", timeline[0].ID, timeline[len(timeline)-1].ID)
+	}
 	for _, status := range timeline {
 		if storage.IDNewer(status.ID, accountState.LastHomeStatusID) {
 			accountState.LastHomeStatusID = status.ID
 		}
 	}
+	glog.Infof("Found %d new status on home timeline (LastHomeStatusID=%v) (max_id:%v, min_id:%v, since_id:%v)%s", len(timeline), accountState.LastHomeStatusID, pg.MaxID, pg.MinID, pg.SinceID, boundaries)
 
 	resp := &pb.FetchResponse{
 		FetchedCount: int64(len(timeline)),
@@ -499,7 +503,6 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	if err != nil {
 		return nil, err
 	}
-
 	resp.StreamInfo = streamState.ToStreamInfo()
 
 	return connect.NewResponse(resp), txn.Commit()

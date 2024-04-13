@@ -26,8 +26,8 @@ func IDNewer(id1 mastodon.ID, id2 mastodon.ID) bool {
 	// From Mastodon docs https://docs.joinmastodon.org/api/guidelines/#id :
 	//  - Sort by size. Newer statuses will have longer IDs.
 	//  - Sort lexically. Newer statuses will have at least one digit that is higher when compared positionally.
-	if len(id1) > len(id2) {
-		return true
+	if len(id1) != len(id2) {
+		return len(id1) > len(id2)
 	}
 	return id1 > id2
 }

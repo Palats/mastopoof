@@ -318,7 +318,7 @@ func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request)
 	// 'next' returns older results - thus results with smaller Status ID, which means lower
 	// index in the s.items array. The result is clamped by `max_id`. The `max_id` is excluded
 	// from the result, so that can be directly the oldest status returned here.
-	if firstIdx >= 0 && firstIdx < len(s.items) {
+	if firstIdx >= 0 && firstIdx < len(s.items) && firstIdx < lastIdx {
 		var uNext url.URL
 		uNext.Scheme = "https"
 		uNext.Host = "localhost"
@@ -334,7 +334,7 @@ func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request)
 	// `min_id` is excluded from the results, so it can be directly the most recent
 	// status which is returned there. Same for `since_id`.
 	// Note that `lastIdx` is excluded from result.
-	if lastIdx-1 >= 0 && lastIdx-1 < len(s.items) {
+	if lastIdx-1 >= 0 && lastIdx-1 < len(s.items) && firstIdx < lastIdx {
 		var uPrev url.URL
 		uPrev.Scheme = "https"
 		uPrev.Host = "localhost"
@@ -343,7 +343,7 @@ func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request)
 		id := string(s.items[lastIdx-1].Status.ID)
 		q := uPrev.Query()
 		q.Set("min_id", id)
-		q.Set("since_id", id)
+		// Don't set `since_id`, like official Mastodon server.
 		uPrev.RawQuery = q.Encode()
 		linkEntries = append(linkEntries, fmt.Sprintf("<%s>; rel=\"prev\"", uPrev.String()))
 	}

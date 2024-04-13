@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,6 +21,10 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
+
+func init() {
+	flag.Lookup("alsologtostderr").Value.Set("true")
+}
 
 type LoggingHandler struct {
 	T       testing.TB
@@ -326,12 +331,22 @@ func TestMultiFetch(t *testing.T) {
 	userInfo := env.Login()
 
 	// Read some statuses. We've added quite a few, but on first fetch,
-	// it just gets the recent ones.
+	// it just gets the recent ones. That appears has one fetch with continuation
+	// and one empty fetch.
 	resp := MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
+		Stid: userInfo.DefaultStid,
+	})
+	if got, want := resp.Status, pb.FetchResponse_MORE; got != want {
+		t.Errorf("Got status %v, wanted %v; fetched %d statuses", got, want, resp.FetchedCount)
+	}
+	resp = MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
 		Stid: userInfo.DefaultStid,
 	})
 	if got, want := resp.Status, pb.FetchResponse_DONE; got != want {
 		t.Errorf("Got status %v, wanted %v; fetched %d statuses", got, want, resp.FetchedCount)
+	}
+	if resp.FetchedCount != 0 {
+		t.Errorf("Got %d statuses, wanted 0", resp.FetchedCount)
 	}
 
 	// Insert more statuses - enough to require multiple fetches.
