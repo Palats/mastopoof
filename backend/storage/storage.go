@@ -569,16 +569,15 @@ func (st *Storage) PickNext(ctx context.Context, stid int64) (*Item, error) {
 	if err != nil {
 		return nil, err
 	}
-	o, err := st.pickNextInTxn(ctx, stid, txn, streamState)
+	o, err := st.pickNextInTxn(ctx, streamState.UID, txn, streamState)
 	if err != nil {
 		return nil, err
 	}
 	return o, txn.Commit()
 }
 
-func (st *Storage) pickNextInTxn(ctx context.Context, stid int64, txn *sql.Tx, streamState *StreamState) (*Item, error) {
-	// List all statuses which are not listed yet in "streamcontent" for that stream ID.
-	// TODO: document the `streamcontent.stid != ?`
+func (st *Storage) pickNextInTxn(ctx context.Context, uid int64, txn *sql.Tx, streamState *StreamState) (*Item, error) {
+	// List all statuses which are not listed yet in "streamcontent".
 	rows, err := txn.QueryContext(ctx, `
 		SELECT
 			statuses.sid,
@@ -588,9 +587,10 @@ func (st *Storage) pickNextInTxn(ctx context.Context, stid int64, txn *sql.Tx, s
 			LEFT OUTER JOIN streamcontent
 			USING (sid)
 		WHERE
-			(streamcontent.stid IS NULL OR streamcontent.stid != ?)
+			statuses.uid = ?
+			AND streamcontent.sid IS NULL
 		;
-	`, stid)
+	`, uid)
 	if err != nil {
 		return nil, err
 	}
@@ -658,7 +658,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, stid int64, txn *sql.Tx, s
 
 	// Insert the newly selected status in the stream.
 	stmt := `INSERT INTO streamcontent(stid, sid, position) VALUES(?, ?, ?);`
-	_, err = txn.ExecContext(ctx, stmt, stid, selectedID, position)
+	_, err = txn.ExecContext(ctx, stmt, streamState.StID, selectedID, position)
 	if err != nil {
 		return nil, err
 	}
@@ -849,7 +849,7 @@ func (st *Storage) ListForward(ctx context.Context, stid int64, refPosition int6
 
 // InsertStatuses add the given statuses to the user storage.
 // It does not update other info.
-func (st *Storage) InsertStatuses(ctx context.Context, txn *sql.Tx, uid int64, statuses []*mastodon.Status) (*StreamState, error) {
+func (st *Storage) InsertStatuses(ctx context.Context, txn SQLQueryable, uid int64, statuses []*mastodon.Status) (*StreamState, error) {
 	for _, status := range statuses {
 		jsonString, err := json.Marshal(status)
 		if err != nil {

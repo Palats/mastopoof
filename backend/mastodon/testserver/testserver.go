@@ -41,6 +41,33 @@ func parseID(statusID mastodon.ID) (int64, error) {
 	return id, nil
 }
 
+func NewFakeStatus(statusID mastodon.ID, accountID mastodon.ID) *mastodon.Status {
+	username := fmt.Sprintf("fakeuser-%s", accountID)
+	status := &mastodon.Status{
+		ID:  statusID,
+		URI: fmt.Sprintf("https://example.com/users/%s/statuses/%s", username, statusID),
+		URL: fmt.Sprintf("https://example.com/@%s/%s", username, statusID),
+		Account: mastodon.Account{
+			ID:             accountID,
+			Username:       username,
+			Acct:           fmt.Sprintf("%s@example.com", username),
+			URL:            fmt.Sprintf("https://example.com/%s", username),
+			DisplayName:    fmt.Sprintf("Account of user %s", username),
+			Note:           "Fake user",
+			Avatar:         "http://www.gravatar.com/avatar/?d=mp",
+			AvatarStatic:   "http://www.gravatar.com/avatar/?d=mp",
+			CreatedAt:      time.Now(),
+			StatusesCount:  1,
+			FollowersCount: 1,
+			FollowingCount: 1,
+		},
+		CreatedAt:  time.Now(),
+		Content:    fmt.Sprintf("Status content for user %s, status %s", username, statusID),
+		Visibility: "public",
+	}
+	return status
+}
+
 type Item struct {
 	ID     int64
 	Status *mastodon.Status
@@ -139,30 +166,7 @@ func (s *Server) AddFakeStatus() error {
 	gen := s.fakeCounter
 	s.fakeCounter += 1
 
-	username := fmt.Sprintf("fakeuser%d", gen)
-	status := &mastodon.Status{
-		ID:  mastodon.ID(id),
-		URI: fmt.Sprintf("https://example.com/users/%s/statuses/%s", username, id),
-		URL: fmt.Sprintf("https://example.com/@%s/%s", username, id),
-		Account: mastodon.Account{
-			ID:             mastodon.ID(strconv.FormatInt(gen, 10)),
-			Username:       username,
-			Acct:           fmt.Sprintf("%s@example.com", username),
-			URL:            fmt.Sprintf("https://example.com/%s", username),
-			DisplayName:    fmt.Sprintf("Account of user %s", username),
-			Note:           "Fake user",
-			Avatar:         "http://www.gravatar.com/avatar/?d=mp",
-			AvatarStatic:   "http://www.gravatar.com/avatar/?d=mp",
-			CreatedAt:      time.Now(),
-			StatusesCount:  1,
-			FollowersCount: 1,
-			FollowingCount: 1,
-		},
-		CreatedAt:  time.Now(),
-		Content:    fmt.Sprintf("Status content for fake status %d", gen),
-		Visibility: "public",
-	}
-
+	status := NewFakeStatus(mastodon.ID(id), mastodon.ID(strconv.FormatInt(gen, 10)))
 	return s.AddStatus(status)
 }
 

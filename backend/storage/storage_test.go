@@ -4,9 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"testing"
 
+	"github.com/Palats/mastopoof/backend/mastodon/testserver"
 	"github.com/google/go-cmp/cmp"
+	"github.com/mattn/go-mastodon"
 )
 
 type SchemaDB struct {
@@ -136,7 +139,7 @@ func (env *DBTestEnv) Init(ctx context.Context, t testing.TB) *DBTestEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, err := NewStorage(env.db, "", "read")
+	env.st, err = NewStorage(env.db, "", "read")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +148,7 @@ func (env *DBTestEnv) Init(ctx context.Context, t testing.TB) *DBTestEnv {
 	if v == 0 {
 		v = maxSchemaVersion
 	}
-	if err := st.initVersion(ctx, v); err != nil {
+	if err := env.st.initVersion(ctx, v); err != nil {
 		t.Fatal(err)
 	}
 
@@ -270,5 +273,81 @@ func TestV13ToV14(t *testing.T) {
 	}
 	if got, want := userState.UID, int64(3); got != want {
 		t.Errorf("Got uid %d, wanted %d", got, want)
+	}
+}
+
+// TestNoCrossUserStatuses verifies that fetching statuses for a new users does not pick
+// statuses from another user.
+func TestNoCrossUserStatuses(t *testing.T) {
+	ctx := context.Background()
+	env := (&DBTestEnv{}).Init(ctx, t)
+
+	// Create a user and add some statuses.
+	userState1, err := env.st.CreateUser(ctx, env.db, "localhost", "123", "user1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var statuses []*mastodon.Status
+	for i := int64(0); i < 10; i++ {
+		statuses = append(statuses, testserver.NewFakeStatus(mastodon.ID(strconv.FormatInt(i+10, 10)), "123"))
+	}
+	env.st.InsertStatuses(ctx, env.db, userState1.UID, statuses)
+
+	// Create a second user
+	userState2, err := env.st.CreateUser(ctx, env.db, "localhost", "456", "user2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to pick some statuses for user 2.
+	item, err := env.st.PickNext(ctx, userState2.DefaultStID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item != nil {
+		t.Errorf("Got item with status ID %v, should have gotten nothing", item.Status.ID)
+	}
+}
+
+func TestPick(t *testing.T) {
+	ctx := context.Background()
+	env := (&DBTestEnv{}).Init(ctx, t)
+
+	userState1, err := env.st.CreateUser(ctx, env.db, "localhost", "123", "user1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var statuses []*mastodon.Status
+	for i := int64(0); i < 4; i++ {
+		statuses = append(statuses, testserver.NewFakeStatus(mastodon.ID(strconv.FormatInt(i+10, 10)), "123"))
+	}
+	env.st.InsertStatuses(ctx, env.db, userState1.UID, statuses)
+
+	// Make sure the statuses that were inserted are available.
+	foundIDs := map[mastodon.ID]int{}
+	for i := 0; i < len(statuses); i++ {
+		item, err := env.st.PickNext(ctx, userState1.DefaultStID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if item == nil {
+			t.Fatalf("Got no statuses, while one was expected")
+		}
+		foundIDs[item.Status.ID]++
+	}
+	// Verify that each status was returned.
+	for _, status := range statuses {
+		if got, want := foundIDs[status.ID], 1; got != want {
+			t.Errorf("Got %d copy of status %v, wanted %d", got, status.ID, want)
+		}
+	}
+
+	// But no more.
+	item, err := env.st.PickNext(ctx, userState1.DefaultStID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item != nil {
+		t.Errorf("Got status ID %v, while none was expected", item.Status.ID)
 	}
 }
