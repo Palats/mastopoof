@@ -7,9 +7,10 @@ A Mastodon web client.
 One time:
 - Run `npm install` in `frontend/` and in `proto/`
 - Run `npm run gen` to regenerate protobuf modules
+- Run `npm run build` in `frontend` to build the frontend once 
 
 To run:
-- Start `go run main.go --alsologtostderr serve` in `backend/` ; `--self_url http://localhost:5173` to have auth redirection.
+- Start `go run main.go --alsologtostderr serve --db [DBFILE]` in `backend/` ; `--self_url http://localhost:5173` to have auth redirection.
 - Start `npm run dev` in `frontend/`
 
 To use built-in frontend:
