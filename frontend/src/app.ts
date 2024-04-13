@@ -264,7 +264,8 @@ export class MastStream extends LitElement {
       throw new Error("missing stream id");
     }
     console.log("Fetching...");
-    backend.fetch(stid);
+    await backend.fetch(stid);
+    this.loadNext();
   }
 
   updateStatusRef(item: StatusItem, elt?: Element) {
