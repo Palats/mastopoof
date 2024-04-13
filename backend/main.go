@@ -340,6 +340,7 @@ func cmdCheckStreamState(ctx context.Context, st *storage.Storage, stid int64) e
 	dbStreamState.FirstPosition = computeStreamState.FirstPosition
 	dbStreamState.LastPosition = computeStreamState.LastPosition
 	dbStreamState.Remaining = computeStreamState.Remaining
+	dbStreamState.LastRead = computeStreamState.LastRead
 	if err := st.SetStreamState(ctx, txn, dbStreamState); err != nil {
 		return fmt.Errorf("failed to update stream state: %w", err)
 	}

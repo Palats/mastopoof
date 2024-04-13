@@ -447,11 +447,14 @@ func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLQueryable, s
 		SELECT
 			COUNT(*)
 		FROM
-			statuses LEFT OUTER JOIN streamcontent USING (sid)
+			statuses
+			LEFT JOIN streamcontent
+			USING (sid)
 		WHERE
-			(streamcontent.stid IS NULL OR streamcontent.stid != ?)
+			statuses.uid = ?
+			AND streamcontent.stid IS NULL
 		;
-	`, stid).Scan(&streamState.Remaining)
+	`, streamState.UID).Scan(&streamState.Remaining)
 	if err != nil {
 		return nil, err
 	}
