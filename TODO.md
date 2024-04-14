@@ -25,7 +25,6 @@
  - Refresh timestamp (i.e., does not stay at "less then a minute ago")
  - Have a way to link to somewhere specific in the stream (for re-loading context)
  - Improve display of multiple attachments for a post (i.e., not a dumb column)
- - Custom emoji support in status too
 
 ### Frontend
  - Split each element class
