@@ -74,7 +74,7 @@ func getStreamID(ctx context.Context, st *storage.Storage) (int64, error) {
 		return *streamID, nil
 	}
 	if *userID != 0 {
-		userState, err := st.UserState(ctx, st.DB, *userID)
+		userState, err := st.UserState(ctx, nil, *userID)
 		if err != nil {
 			return 0, err
 		}
@@ -100,7 +100,7 @@ func getMux(st *storage.Storage, autoLogin int64) (*http.ServeMux, error) {
 }
 
 func cmdUsers(ctx context.Context, st *storage.Storage) error {
-	userList, err := st.ListUsers(ctx, st.DB)
+	userList, err := st.ListUsers(ctx)
 	if err != nil {
 		return err
 	}
@@ -119,28 +119,28 @@ func cmdUsers(ctx context.Context, st *storage.Storage) error {
 func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool) error {
 	fmt.Println("# User ID:", uid)
 
-	userState, err := st.UserState(ctx, st.DB, uid)
+	userState, err := st.UserState(ctx, nil, uid)
 	if err != nil {
 		return err
 	}
 	fmt.Println("# Default stream ID:", userState.DefaultStID)
 	stid := userState.DefaultStID
 
-	accountState, err := st.AccountStateByUID(ctx, st.DB, uid)
+	accountState, err := st.AccountStateByUID(ctx, nil, uid)
 	if err != nil {
 		return err
 	}
 	fmt.Println("# Server address:", accountState.ServerAddr)
 	fmt.Println("# Last home status ID:", accountState.LastHomeStatusID)
 
-	serverState, err := st.ServerState(ctx, st.DB, accountState.ServerAddr)
+	serverState, err := st.ServerState(ctx, nil, accountState.ServerAddr)
 	if err != nil {
 		return err
 	}
 	fmt.Println("# Auth URI:", serverState.AuthURI)
 	fmt.Println("# Redirect URI:", serverState.RedirectURI)
 
-	streamState, err := st.StreamState(ctx, st.DB, stid)
+	streamState, err := st.StreamState(ctx, nil, stid)
 	if err != nil {
 		return err
 	}
@@ -281,12 +281,12 @@ func cmdTestServe(ctx context.Context) error {
 
 	serverAddr := fmt.Sprintf("http://localhost:%d", *port)
 
-	_, err = st.CreateServerState(ctx, st.DB, serverAddr)
+	_, err = st.CreateServerState(ctx, nil, serverAddr)
 	if err != nil {
 		return fmt.Errorf("unable to create server state: %w", err)
 	}
 
-	userState, err := st.CreateUser(ctx, st.DB, serverAddr, "1234", "testuser1")
+	userState, err := st.CreateUser(ctx, nil, serverAddr, "1234", "testuser1")
 	if err != nil {
 		return fmt.Errorf("unable to create testuser: %w", err)
 	}

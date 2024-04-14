@@ -63,7 +63,7 @@ func (s *Server) isLogged(ctx context.Context) error {
 // stream.
 func (s *Server) verifyStID(ctx context.Context, stid int64) (*storage.UserState, error) {
 	userID := s.sessionManager.GetInt64(ctx, "userid")
-	userState, err := s.st.UserState(ctx, s.st.DB, userID)
+	userState, err := s.st.UserState(ctx, nil, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,7 @@ func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest
 
 	uid := s.sessionManager.GetInt64(ctx, "userid")
 
-	userState, err := s.st.UserState(ctx, s.st.DB, uid)
+	userState, err := s.st.UserState(ctx, nil, uid)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +304,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 		return nil, err
 	}
 
-	accountState, err := s.st.AccountStateByUID(ctx, s.st.DB, userState.UID)
+	accountState, err := s.st.AccountStateByUID(ctx, nil, userState.UID)
 	if err != nil {
 		return nil, err
 	}

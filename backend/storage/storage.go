@@ -100,8 +100,14 @@ type ListUserEntry struct {
 	AccountState *AccountState
 }
 
-func (st *Storage) ListUsers(ctx context.Context, db SQLQueryable) ([]*ListUserEntry, error) {
-	rows, err := db.QueryContext(ctx, `
+func (st *Storage) ListUsers(ctx context.Context) ([]*ListUserEntry, error) {
+	txn, err := st.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer txn.Rollback()
+
+	rows, err := txn.QueryContext(ctx, `
 		SELECT
 			uid
 		FROM
@@ -119,12 +125,12 @@ func (st *Storage) ListUsers(ctx context.Context, db SQLQueryable) ([]*ListUserE
 			return nil, err
 		}
 
-		userState, err := st.UserState(ctx, db, uid)
+		userState, err := st.UserState(ctx, txn, uid)
 		if err != nil {
 			return nil, err
 		}
 
-		accountState, err := st.AccountStateByUID(ctx, db, uid)
+		accountState, err := st.AccountStateByUID(ctx, txn, uid)
 		if err != nil {
 			return nil, err
 		}
@@ -137,12 +143,16 @@ func (st *Storage) ListUsers(ctx context.Context, db SQLQueryable) ([]*ListUserE
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return resp, nil
+	return resp, txn.Commit()
 }
 
 // CreateUser creates a new mastopoof user, with all the necessary bit and pieces.
 // Returns the UID.
 func (st *Storage) CreateUser(ctx context.Context, txn SQLQueryable, serverAddr string, accountID mastodon.ID, username string) (*UserState, error) {
+	if txn == nil {
+		txn = st.DB
+	}
+
 	// Create the local user.
 	userState, err := st.CreateUserState(ctx, txn)
 	if err != nil {
@@ -172,7 +182,10 @@ func (st *Storage) serverStateKey(serverAddr string) string {
 }
 
 // CreateServerState creates a server with the given address.
-func (st *Storage) CreateServerState(ctx context.Context, db SQLQueryable, serverAddr string) (*ServerState, error) {
+func (st *Storage) CreateServerState(ctx context.Context, txn SQLQueryable, serverAddr string) (*ServerState, error) {
+	if txn == nil {
+		txn = st.DB
+	}
 	key := st.serverStateKey(serverAddr)
 	ss := &ServerState{
 		Key:         key,
@@ -188,7 +201,7 @@ func (st *Storage) CreateServerState(ctx context.Context, db SQLQueryable, serve
 	}
 
 	stmt := `INSERT INTO serverstate(key, state) VALUES(?, ?)`
-	_, err = db.ExecContext(ctx, stmt, ss.Key, state)
+	_, err = txn.ExecContext(ctx, stmt, ss.Key, state)
 	if err != nil {
 		return nil, err
 	}
@@ -197,10 +210,13 @@ func (st *Storage) CreateServerState(ctx context.Context, db SQLQueryable, serve
 
 // ServerState returns the current ServerState for a given, well, server.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) ServerState(ctx context.Context, db SQLQueryable, serverAddr string) (*ServerState, error) {
+func (st *Storage) ServerState(ctx context.Context, txn SQLQueryable, serverAddr string) (*ServerState, error) {
+	if txn == nil {
+		txn = st.DB
+	}
 	var state string
 	key := st.serverStateKey(serverAddr)
-	err := db.QueryRowContext(ctx,
+	err := txn.QueryRowContext(ctx,
 		"SELECT state FROM serverstate WHERE key=?", key).Scan(&state)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("no state for server_addr=%s, key=%s: %w", serverAddr, key, ErrNotFound)
@@ -251,9 +267,12 @@ func (st *Storage) CreateAccountState(ctx context.Context, db SQLQueryable, uid 
 
 // AccountStateByUID gets a the mastodon account of a mastopoof user identified by its UID.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) AccountStateByUID(ctx context.Context, db SQLQueryable, uid int64) (*AccountState, error) {
+func (st *Storage) AccountStateByUID(ctx context.Context, txn SQLQueryable, uid int64) (*AccountState, error) {
+	if txn == nil {
+		txn = st.DB
+	}
 	var state string
-	err := db.QueryRowContext(ctx, "SELECT state FROM accountstate WHERE uid=?", uid).Scan(&state)
+	err := txn.QueryRowContext(ctx, "SELECT state FROM accountstate WHERE uid=?", uid).Scan(&state)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("no mastodon account for uid=%v: %w", uid, ErrNotFound)
 	}
@@ -326,9 +345,12 @@ func (st *Storage) CreateUserState(ctx context.Context, db SQLQueryable) (*UserS
 
 // UserState returns information about a given mastopoof user.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) UserState(ctx context.Context, db SQLQueryable, uid int64) (*UserState, error) {
+func (st *Storage) UserState(ctx context.Context, txn SQLQueryable, uid int64) (*UserState, error) {
+	if txn == nil {
+		txn = st.DB
+	}
 	var jsonString string
-	err := db.QueryRowContext(ctx, "SELECT state FROM userstate WHERE uid = ?", uid).Scan(&jsonString)
+	err := txn.QueryRowContext(ctx, "SELECT state FROM userstate WHERE uid = ?", uid).Scan(&jsonString)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("no user for uid=%v: %w", uid, ErrNotFound)
 	}
@@ -380,9 +402,12 @@ func (st *Storage) CreateStreamState(ctx context.Context, db SQLQueryable, userI
 	return stid, nil
 }
 
-func (st *Storage) StreamState(ctx context.Context, db SQLQueryable, stid int64) (*StreamState, error) {
+func (st *Storage) StreamState(ctx context.Context, txn SQLQueryable, stid int64) (*StreamState, error) {
+	if txn == nil {
+		txn = st.DB
+	}
 	var jsonString string
-	err := db.QueryRowContext(ctx, "SELECT state FROM streamstate WHERE stid = ?", stid).Scan(&jsonString)
+	err := txn.QueryRowContext(ctx, "SELECT state FROM streamstate WHERE stid = ?", stid).Scan(&jsonString)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("stream with stid=%d not found", stid)
 	}

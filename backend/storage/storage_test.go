@@ -218,7 +218,7 @@ func TestV12ToV13(t *testing.T) {
 	}
 
 	// Verify that the account state can be loaded.
-	accountState, err := env.st.AccountStateByUID(ctx, env.db, 1)
+	accountState, err := env.st.AccountStateByUID(ctx, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestV12ToV13(t *testing.T) {
 		t.Errorf("Got username %s, wanted %s", got, want)
 	}
 
-	accountState, err = env.st.AccountStateByUID(ctx, env.db, 2)
+	accountState, err = env.st.AccountStateByUID(ctx, nil, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func TestV13ToV14(t *testing.T) {
 	}
 
 	// Verify that the account state can be loaded.
-	userState, err := env.st.UserState(ctx, env.db, 2)
+	userState, err := env.st.UserState(ctx, nil, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestV13ToV14(t *testing.T) {
 		t.Errorf("Got uid %d, wanted %d", got, want)
 	}
 
-	userState, err = env.st.UserState(ctx, env.db, 3)
+	userState, err = env.st.UserState(ctx, nil, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func TestNoCrossUserStatuses(t *testing.T) {
 	env := (&DBTestEnv{}).Init(ctx, t)
 
 	// Create a user and add some statuses.
-	userState1, err := env.st.CreateUser(ctx, env.db, "localhost", "123", "user1")
+	userState1, err := env.st.CreateUser(ctx, nil, "localhost", "123", "user1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestNoCrossUserStatuses(t *testing.T) {
 	env.st.InsertStatuses(ctx, env.db, userState1.UID, statuses)
 
 	// Create a second user
-	userState2, err := env.st.CreateUser(ctx, env.db, "localhost", "456", "user2")
+	userState2, err := env.st.CreateUser(ctx, nil, "localhost", "456", "user2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +313,7 @@ func TestPick(t *testing.T) {
 	ctx := context.Background()
 	env := (&DBTestEnv{}).Init(ctx, t)
 
-	userState1, err := env.st.CreateUser(ctx, env.db, "localhost", "123", "user1")
+	userState1, err := env.st.CreateUser(ctx, nil, "localhost", "123", "user1")
 	if err != nil {
 		t.Fatal(err)
 	}
