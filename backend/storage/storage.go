@@ -95,6 +95,31 @@ func (st *Storage) redirectURI(serverAddr string) string {
 	return u.String()
 }
 
+// CleanAbortTxn signals that the transaction must not be committed, but that it
+// is not an error.
+var CleanAbortTxn = errors.New("transaction cancellation requested")
+
+// InTxn runs the provided code in a DB transaction.
+// If `f` returns an error matching `CleanAbortTxn` (using `errors.Is`), the transaction is rolledback, but InTxn return nil
+// If `f` returns another non-nil error, the transaction will be aborted and the error is returned.
+// If the function returns nil, the transaction is committed.
+func (st *Storage) InTxn(ctx context.Context, f func(ctx context.Context, txn SQLQueryable) error) error {
+	txn, err := st.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer txn.Rollback()
+
+	err = f(ctx, txn)
+	if errors.Is(err, CleanAbortTxn) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return txn.Commit()
+}
+
 type ListUserEntry struct {
 	UserState    *UserState
 	AccountState *AccountState
