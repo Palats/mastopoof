@@ -2,3 +2,8 @@ secrets
 mastopoof.db
 tmp/
 proto/gen/
+
+# Frontend build output
+prod/
+# sqlite files
+backend/*.db
