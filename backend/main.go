@@ -213,102 +213,15 @@ func cmdCheckStreamState(ctx context.Context, st *storage.Storage, stid int64) e
 
 	// Stream content - check for duplicates
 	fmt.Println("### Duplicate statuses in stream")
-	rows, err := st.DB.QueryContext(ctx, `
-		WITH counts AS (
-			SELECT
-				sid,
-				MIN(position) as position,
-				COUNT(*) AS count
-			FROM
-				streamcontent
-			WHERE
-				stid = ?
-			GROUP BY
-				sid
-		)
-		SELECT
-			*
-		FROM
-			counts
-		WHERE
-			count > 1
-		ORDER BY count
-		;
-	`, stid)
-	if err != nil {
+	if err := st.FixDuplicateStatuses(ctx, txn, stid); err != nil {
 		return err
-	}
-
-	for rows.Next() {
-		var sid int64
-		var minPosition int64
-		var count int64
-		if err := rows.Scan(&sid, &minPosition, &count); err != nil {
-			return err
-		}
-		fmt.Printf("Status sid=%d: %d dups\n", sid, count)
-
-		result, err := txn.ExecContext(ctx, `
-			DELETE FROM streamcontent WHERE
-				stid = ?
-				AND sid = ?
-				AND position != ?
-		`, stid, sid, minPosition)
-		if err != nil {
-			return err
-		}
-		affected, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		fmt.Printf("... deleted %d rows, kept early position %d\n", affected, minPosition)
 	}
 	fmt.Println()
 
 	// Check cross user statuses
 	fmt.Println("### Statuses from another user")
-	streamState, err := st.StreamState(ctx, txn, stid)
-	if err != nil {
-		return fmt.Errorf("unable to get streamstate from DB: %w", err)
-	}
-
-	rows, err = st.DB.QueryContext(ctx, `
-		SELECT
-			sid
-		FROM
-			streamcontent
-		INNER JOIN statuses
-			USING (sid)
-		WHERE
-			streamcontent.stid = ?
-			AND statuses.uid != ?
-		GROUP BY
-			sid
-	`, stid, streamState.UID)
-	if err != nil {
+	if err := st.FixCrossStatuses(ctx, txn, stid); err != nil {
 		return err
-	}
-
-	for rows.Next() {
-		var sid int64
-		if err := rows.Scan(&sid); err != nil {
-			return err
-		}
-		fmt.Printf("Status sid=%d is coming from another user\n", sid)
-
-		result, err := txn.ExecContext(ctx, `
-			DELETE FROM streamcontent WHERE
-				stid = ?
-				AND sid = ?
-		`, stid, sid)
-		if err != nil {
-			return err
-		}
-		affected, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		fmt.Printf("... deleted %d rows\n", affected)
 	}
 	fmt.Println()
 
