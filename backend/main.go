@@ -83,7 +83,7 @@ func getStreamID(ctx context.Context, st *storage.Storage) (int64, error) {
 	return 0, errors.New("no streamID / user ID specified")
 }
 
-func getMux(st *storage.Storage, autoLogin int64) (*http.ServeMux, error) {
+func getMux(st *storage.Storage, db *sql.DB, autoLogin int64) (*http.ServeMux, error) {
 	mux := http.NewServeMux()
 
 	// Serve frontend content (html, js, etc.).
@@ -94,7 +94,7 @@ func getMux(st *storage.Storage, autoLogin int64) (*http.ServeMux, error) {
 	mux.Handle("/", http.FileServer(http.FS(content)))
 
 	// Run the backend RPC server.
-	s := server.New(st, *inviteCode, autoLogin, *selfURL, appMastodonScopes)
+	s := server.New(st, server.NewSessionManager(db), *inviteCode, autoLogin, *selfURL, appMastodonScopes)
 	s.RegisterOn(mux)
 	return mux, nil
 }
@@ -291,7 +291,7 @@ func cmdTestServe(ctx context.Context) error {
 		return fmt.Errorf("unable to create testuser: %w", err)
 	}
 
-	mux, err := getMux(st, userState.UID)
+	mux, err := getMux(st, db, userState.UID)
 	if err != nil {
 		return err
 	}
@@ -500,7 +500,7 @@ func run(ctx context.Context) error {
 				return err
 			}
 
-			mux, err := getMux(st, uid)
+			mux, err := getMux(st, db, uid)
 			if err != nil {
 				return err
 			}

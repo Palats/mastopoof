@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +21,18 @@ import (
 	"github.com/Palats/mastopoof/proto/gen/mastopoof/mastopoofconnect"
 )
 
+func NewSessionManager(db *sql.DB) *scs.SessionManager {
+	sessionManager := scs.New()
+	sessionManager.Store = sqlite3store.New(db)
+	sessionManager.Lifetime = 90 * 24 * time.Hour
+	sessionManager.Cookie.Name = "mastopoof"
+	// Need Lax and not Strict for oauth redirections
+	// https://stackoverflow.com/a/42220786
+	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
+	sessionManager.Cookie.Secure = true
+	return sessionManager
+}
+
 type Server struct {
 	st             *storage.Storage
 	inviteCode     string
@@ -30,16 +43,7 @@ type Server struct {
 	client         http.Client
 }
 
-func New(st *storage.Storage, inviteCode string, autoLogin int64, selfURL string, scopes string) *Server {
-	sessionManager := scs.New()
-	sessionManager.Store = sqlite3store.New(st.DB)
-	sessionManager.Lifetime = 90 * 24 * time.Hour
-	sessionManager.Cookie.Name = "mastopoof"
-	// Need Lax and not Strict for oauth redirections
-	// https://stackoverflow.com/a/42220786
-	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
-	sessionManager.Cookie.Secure = true
-
+func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode string, autoLogin int64, selfURL string, scopes string) *Server {
 	s := &Server{
 		st:             st,
 		sessionManager: sessionManager,
