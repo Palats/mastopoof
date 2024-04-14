@@ -117,7 +117,7 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 	if err := st.Init(ctx); err != nil {
 		env.t.Fatal(err)
 	}
-	mastopoof := New(st, "invite1", 0 /* autoLogin */, selfURL, scopes)
+	mastopoof := New(st, NewSessionManager(env.db), "invite1", 0 /* autoLogin */, selfURL, scopes)
 	mastopoof.RegisterOn(mux)
 
 	// Create the http server
