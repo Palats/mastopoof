@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Palats/mastopoof/backend/mastodon"
@@ -97,6 +98,7 @@ func cmpItems(i1 *Item, i2 *Item) int {
 }
 
 type Server struct {
+	m sync.Mutex
 	// Ordered list of Mastodon statuses to serve.
 	// The list is ordered by increase status.ID - thus meaning oldest status first.
 	items []*Item
@@ -125,7 +127,7 @@ func (s *Server) itemIdx(key string) (int, error) {
 	return idx, nil
 }
 
-func (s *Server) AddStatus(status *mastodon.Status) error {
+func (s *Server) addStatus(status *mastodon.Status) error {
 	item, err := newItem(status)
 	if err != nil {
 		return err
@@ -139,6 +141,9 @@ func (s *Server) AddStatus(status *mastodon.Status) error {
 }
 
 func (s *Server) AddJSONStatuses(statusesFS fs.FS) error {
+	s.m.Lock()
+	defer s.m.Unlock()
+
 	filenames, err := fs.Glob(statusesFS, "*.json")
 	if err != nil {
 		return err
@@ -154,7 +159,7 @@ func (s *Server) AddJSONStatuses(statusesFS fs.FS) error {
 			return fmt.Errorf("unable to decode %s as status json: %w", filename, err)
 		}
 
-		if err := s.AddStatus(status); err != nil {
+		if err := s.addStatus(status); err != nil {
 			return fmt.Errorf("unable to add status from file %s: %w", filename, err)
 		}
 	}
@@ -162,6 +167,9 @@ func (s *Server) AddJSONStatuses(statusesFS fs.FS) error {
 }
 
 func (s *Server) AddFakeStatus() error {
+	s.m.Lock()
+	defer s.m.Unlock()
+
 	id := "1"
 	if len(s.items) > 0 {
 		id = strconv.FormatInt(s.items[len(s.items)-1].ID+1, 10)
@@ -170,7 +178,7 @@ func (s *Server) AddFakeStatus() error {
 	s.fakeCounter += 1
 
 	status := NewFakeStatus(mastodon.ID(id), mastodon.ID(strconv.FormatInt(gen, 10)))
-	return s.AddStatus(status)
+	return s.addStatus(status)
 }
 
 func (s *Server) RegisterOn(mux *http.ServeMux) {
@@ -192,6 +200,9 @@ func (s *Server) returnJSON(w http.ResponseWriter, _ *http.Request, data any) {
 
 // https://docs.joinmastodon.org/methods/oauth/#token
 func (s *Server) serveOAuthToken(w http.ResponseWriter, req *http.Request) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
 	s.returnJSON(w, req, map[string]any{
 		"access_token": "ZA-Yj3aBD8U8Cm7lKUp-lm9O9BmDgdhHzDeqsY8tlL0",
 		"token_type":   "Bearer",
@@ -202,6 +213,9 @@ func (s *Server) serveOAuthToken(w http.ResponseWriter, req *http.Request) {
 
 // https://docs.joinmastodon.org/methods/apps/#create
 func (s *Server) serveAPIApps(w http.ResponseWriter, req *http.Request) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
 	s.returnJSON(w, req, map[string]any{
 		"id":            "1234",
 		"name":          "test app",
@@ -214,6 +228,9 @@ func (s *Server) serveAPIApps(w http.ResponseWriter, req *http.Request) {
 
 // https://docs.joinmastodon.org/methods/accounts/#verify_credentials
 func (s *Server) serverAPIAccountsVerifyCredentials(w http.ResponseWriter, req *http.Request) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
 	s.returnJSON(w, req, map[string]any{
 		"id":              "14715",
 		"username":        "testuser1",
@@ -237,6 +254,9 @@ func (s *Server) serverAPIAccountsVerifyCredentials(w http.ResponseWriter, req *
 
 // https://docs.joinmastodon.org/methods/timelines/#home
 func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
 	maxIDidx, err := s.itemIdx(req.URL.Query().Get("max_id"))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("invalid max_id parameter: %v", err), http.StatusBadRequest)

@@ -8,8 +8,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
+	"strings"
 
+	"github.com/c-bata/go-prompt"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
@@ -354,6 +357,125 @@ func cmdCheckStreamState(ctx context.Context, st *storage.Storage, stid int64) e
 	return txn.Rollback()
 }
 
+var spaces = regexp.MustCompile(`\s+`)
+
+func cmdTestServe(ctx context.Context) error {
+	st, db, err := getStorage(ctx, "file::memory:?cache=shared")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	serverAddr := fmt.Sprintf("http://localhost:%d", *port)
+
+	_, err = st.CreateServerState(ctx, st.DB, serverAddr)
+	if err != nil {
+		return fmt.Errorf("unable to create server state: %w", err)
+	}
+
+	userState, err := st.CreateUser(ctx, st.DB, serverAddr, "1234", "testuser1")
+	if err != nil {
+		return fmt.Errorf("unable to create testuser: %w", err)
+	}
+
+	mux, err := getMux(st, userState.UID)
+	if err != nil {
+		return err
+	}
+
+	testDataFS := os.DirFS(*testData)
+	ts := testserver.New()
+	if err := ts.AddJSONStatuses(testDataFS); err != nil {
+		return err
+	}
+	ts.RegisterOn(mux)
+
+	addr := fmt.Sprintf(":%d", *port)
+	fmt.Printf("Listening on %s...\n", addr)
+	go func() {
+		err := http.ListenAndServe(addr, h2c.NewHandler(mux, &http2.Server{}))
+		glog.Exit(err)
+	}()
+
+	// Everything is started, let's have a prompt to allow to fiddle with
+	// the test server.
+
+	fmt.Println()
+	fmt.Println("<tab> to see command list")
+
+	executor := func(text string) {
+		glog.Infof("prompt input: %v", text)
+		var cmds [][]string
+		// Support multiple commands separated by semi-colon.
+		for _, sub := range strings.Split(text, ";") {
+			// Remove comments.
+			if idx := strings.Index(sub, "#"); idx >= 0 {
+				sub = sub[:idx]
+			}
+			var words []string
+			for _, w := range spaces.Split(sub, -1) {
+				if w != "" {
+					words = append(words, w)
+				}
+			}
+			if len(words) > 0 {
+				cmds = append(cmds, words)
+			}
+		}
+
+		for _, words := range cmds {
+			cmd := words[0]
+			args := words[1:]
+			switch cmd {
+			case "fake-statuses":
+				if len(args) > 1 {
+					fmt.Printf("At most one parameter allowed")
+					break
+				}
+				count := int64(10)
+				if len(args) > 0 {
+					count, err = strconv.ParseInt(args[0], 10, 64)
+					if err != nil {
+						fmt.Printf("unable to parse %s: %v", args[0], err)
+						break
+					}
+				}
+				for i := int64(0); i < count; i++ {
+					ts.AddFakeStatus()
+				}
+				fmt.Printf("Added %d fake statuses.\n", count)
+			case "exit":
+				if len(args) > 0 {
+					fmt.Printf("'exit' does not take parameters")
+					break
+				}
+				glog.Exit(0)
+			default:
+				fmt.Printf("Unknown command %q\n", cmd)
+			}
+		}
+
+	}
+	completer := func(d prompt.Document) []prompt.Suggest {
+		s := []prompt.Suggest{
+			{Text: "fake-statuses", Description: "Add fake statuses; opt: number of statuses"},
+			{Text: "exit", Description: "Shutdown"},
+		}
+		return prompt.FilterHasPrefix(s, d.GetWordBeforeCursor(), true)
+	}
+	p := prompt.New(
+		executor,
+		completer,
+		prompt.OptionPrefix(">>> "),
+		prompt.OptionAddKeyBind(prompt.KeyBind{
+			Key: prompt.ControlC,
+			Fn:  func(b *prompt.Buffer) { os.Exit(0) },
+		}),
+	)
+	p.Run()
+	return errors.New("prompt has exited")
+}
+
 func run(ctx context.Context) error {
 	var rootCmd = &cobra.Command{
 		Use:   "mastopoof",
@@ -480,45 +602,7 @@ func run(ctx context.Context) error {
 		Short: "Run mastopoof backend server with a fake mastodon server",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx, "file::memory:?cache=shared")
-			if err != nil {
-				return err
-			}
-			defer db.Close()
-
-			serverAddr := fmt.Sprintf("http://localhost:%d", *port)
-
-			_, err = st.CreateServerState(ctx, st.DB, serverAddr)
-			if err != nil {
-				return fmt.Errorf("unable to create server state: %w", err)
-			}
-
-			userState, err := st.CreateUser(ctx, st.DB, serverAddr, "1234", "testuser1")
-			if err != nil {
-				return fmt.Errorf("unable to create testuser: %w", err)
-			}
-
-			mux, err := getMux(st, userState.UID)
-			if err != nil {
-				return err
-			}
-
-			testDataFS := os.DirFS(*testData)
-			ts := testserver.New()
-			if err := ts.AddJSONStatuses(testDataFS); err != nil {
-				return err
-			}
-			for i := 0; i < 100; i++ {
-				if err := ts.AddFakeStatus(); err != nil {
-					return err
-				}
-			}
-			ts.RegisterOn(mux)
-
-			addr := fmt.Sprintf(":%d", *port)
-			fmt.Printf("Listening on %s...\n", addr)
-			return http.ListenAndServe(addr, h2c.NewHandler(mux, &http2.Server{}))
-
+			return cmdTestServe(ctx)
 		},
 	})
 
