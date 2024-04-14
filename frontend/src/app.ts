@@ -549,35 +549,31 @@ function localStatusURL(item: StatusItem): string {
   return `${item.account.serverAddr}/@${item.status.account.acct}/${item.status.id}`;
 }
 
-function expandEmojisToStr(msg: string, emojis?: mastodon.CustomEmoji[]) {
+function expandEmojis(msg: string, emojis?: mastodon.CustomEmoji[]): TemplateResult {
   if (!emojis) {
-    return [msg];
+    return html`${msg}`;
   }
+
   const perCode = new Map<string, mastodon.CustomEmoji>();
   for (const emoji of emojis) {
     perCode.set(emoji.shortcode, emoji);
   }
 
   const parts = msg.split(/:([^:]+):/);
-  const result: string[] = [];
+  const result: TemplateResult[] = [];
   for (let i = 0; i < parts.length; i += 2) {
-    result.push(parts[i]);
+    result.push(html`${parts[i]}`);
     if (i + 1 < parts.length) {
       const code = parts[i + 1];
       const emoji = perCode.get(code);
       if (emoji) {
-        result.push(`<img class="emoji" src="${emoji.url}" alt="emoji: ${emoji.shortcode}"></img>`);
+        result.push(html`<img class="emoji" src="${emoji.url}" alt="emoji: ${emoji.shortcode}"></img>`);
       } else {
-        result.push(`:${code}:`);
+        result.push(html`:${code}:`);
       }
     }
   }
-  return result;
-}
-
-function expandEmojis(msg: string, emojis?: mastodon.CustomEmoji[]): TemplateResult {
-  const result = expandEmojisToStr(msg, emojis);
-  return html`${result.map( (x) => html`${unsafeHTML(x)}`)}`;
+  return html`${result}`;
 }
 
 @customElement('mast-status')
@@ -670,7 +666,7 @@ export class MastStatus extends LitElement {
           </div>
         `: nothing}
         <div class="content">
-          ${unsafeHTML(expandEmojisToStr(s.content, s.emojis).join(''))}
+          ${unsafeHTML(s.content)}
         </div>
         <div class="attachments">
           ${attachments}
