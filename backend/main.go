@@ -178,96 +178,85 @@ func cmdPickNext(ctx context.Context, st *storage.Storage, stid int64) error {
 }
 
 func cmdSetRead(ctx context.Context, st *storage.Storage, stid int64, position int64) error {
-	txn, err := st.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer txn.Rollback()
+	return st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
+		streamState, err := st.StreamState(ctx, txn, stid)
+		if err != nil {
+			return err
+		}
 
-	streamState, err := st.StreamState(ctx, txn, stid)
-	if err != nil {
-		return err
-	}
+		fmt.Println("Current position:", streamState.LastRead)
+		if position < 0 {
+			streamState.LastRead += -position
+		} else {
+			streamState.LastRead = position
+		}
+		fmt.Println("New position:", streamState.LastRead)
 
-	fmt.Println("Current position:", streamState.LastRead)
-	if position < 0 {
-		streamState.LastRead += -position
-	} else {
-		streamState.LastRead = position
-	}
-	fmt.Println("New position:", streamState.LastRead)
-
-	if err := st.SetStreamState(ctx, txn, streamState); err != nil {
-		return err
-	}
-
-	return txn.Commit()
+		return st.SetStreamState(ctx, txn, streamState)
+	})
 }
 
 func cmdCheckStreamState(ctx context.Context, st *storage.Storage, stid int64) error {
-	txn, err := st.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer txn.Rollback()
+	return st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
 
-	// Stream content - check for duplicates
-	fmt.Println("### Duplicate statuses in stream")
-	if err := st.FixDuplicateStatuses(ctx, txn, stid); err != nil {
-		return err
-	}
-	fmt.Println()
+		// Stream content - check for duplicates
+		fmt.Println("### Duplicate statuses in stream")
+		if err := st.FixDuplicateStatuses(ctx, txn, stid); err != nil {
+			return err
+		}
+		fmt.Println()
 
-	// Check cross user statuses
-	fmt.Println("### Statuses from another user")
-	if err := st.FixCrossStatuses(ctx, txn, stid); err != nil {
-		return err
-	}
-	fmt.Println()
+		// Check cross user statuses
+		fmt.Println("### Statuses from another user")
+		if err := st.FixCrossStatuses(ctx, txn, stid); err != nil {
+			return err
+		}
+		fmt.Println()
 
-	// Stream state
-	dbStreamState, err := st.StreamState(ctx, txn, stid)
-	if err != nil {
-		return fmt.Errorf("unable to get streamstate from DB: %w", err)
-	}
+		// Stream state
+		dbStreamState, err := st.StreamState(ctx, txn, stid)
+		if err != nil {
+			return fmt.Errorf("unable to get streamstate from DB: %w", err)
+		}
 
-	fmt.Println("### Stream state in database")
-	fmt.Println("Stream ID:", dbStreamState.StID)
-	fmt.Println("First position:", dbStreamState.FirstPosition)
-	fmt.Println("Last position:", dbStreamState.LastPosition)
-	fmt.Println("Remaining:", dbStreamState.Remaining)
-	fmt.Println("Last read:", dbStreamState.LastRead)
-	fmt.Println()
+		fmt.Println("### Stream state in database")
+		fmt.Println("Stream ID:", dbStreamState.StID)
+		fmt.Println("First position:", dbStreamState.FirstPosition)
+		fmt.Println("Last position:", dbStreamState.LastPosition)
+		fmt.Println("Remaining:", dbStreamState.Remaining)
+		fmt.Println("Last read:", dbStreamState.LastRead)
+		fmt.Println()
 
-	computeStreamState, err := st.RecomputeStreamState(ctx, txn, stid)
-	if err != nil {
-		return fmt.Errorf("unable to calculate streamstate: %w", err)
-	}
+		computeStreamState, err := st.RecomputeStreamState(ctx, txn, stid)
+		if err != nil {
+			return fmt.Errorf("unable to calculate streamstate: %w", err)
+		}
 
-	fmt.Println("### Calculated stream state")
-	fmt.Println("Stream ID:", computeStreamState.StID)
-	fmt.Printf("First position: %d [diff: %+d]\n", computeStreamState.FirstPosition, computeStreamState.FirstPosition-dbStreamState.FirstPosition)
-	fmt.Printf("Last position: %d [diff: %+d]\n", computeStreamState.LastPosition, computeStreamState.LastPosition-dbStreamState.LastPosition)
-	fmt.Printf("Remaining: %d [diff: %+d]\n", computeStreamState.Remaining, computeStreamState.Remaining-dbStreamState.Remaining)
-	fmt.Printf("Last read: %d [diff: %+d]\n", computeStreamState.LastRead, computeStreamState.LastRead-dbStreamState.LastRead)
-	fmt.Println()
+		fmt.Println("### Calculated stream state")
+		fmt.Println("Stream ID:", computeStreamState.StID)
+		fmt.Printf("First position: %d [diff: %+d]\n", computeStreamState.FirstPosition, computeStreamState.FirstPosition-dbStreamState.FirstPosition)
+		fmt.Printf("Last position: %d [diff: %+d]\n", computeStreamState.LastPosition, computeStreamState.LastPosition-dbStreamState.LastPosition)
+		fmt.Printf("Remaining: %d [diff: %+d]\n", computeStreamState.Remaining, computeStreamState.Remaining-dbStreamState.Remaining)
+		fmt.Printf("Last read: %d [diff: %+d]\n", computeStreamState.LastRead, computeStreamState.LastRead-dbStreamState.LastRead)
+		fmt.Println()
 
-	// Do the fix in the transaction - transaction won't be committed in dry run.
-	dbStreamState.FirstPosition = computeStreamState.FirstPosition
-	dbStreamState.LastPosition = computeStreamState.LastPosition
-	dbStreamState.Remaining = computeStreamState.Remaining
-	dbStreamState.LastRead = computeStreamState.LastRead
-	if err := st.SetStreamState(ctx, txn, dbStreamState); err != nil {
-		return fmt.Errorf("failed to update stream state: %w", err)
-	}
+		// Do the fix in the transaction - transaction won't be committed in dry run.
+		dbStreamState.FirstPosition = computeStreamState.FirstPosition
+		dbStreamState.LastPosition = computeStreamState.LastPosition
+		dbStreamState.Remaining = computeStreamState.Remaining
+		dbStreamState.LastRead = computeStreamState.LastRead
+		if err := st.SetStreamState(ctx, txn, dbStreamState); err != nil {
+			return fmt.Errorf("failed to update stream state: %w", err)
+		}
 
-	if *doFix {
-		fmt.Println("Applying changes in DB...")
-		return txn.Commit()
-	}
+		if *doFix {
+			fmt.Println("Applying changes in DB...")
+			return nil
+		}
 
-	fmt.Println("Dry run, ignoring changes")
-	return txn.Rollback()
+		fmt.Println("Dry run, ignoring changes")
+		return storage.CleanAbortTxn
+	})
 }
 
 var spaces = regexp.MustCompile(`\s+`)
