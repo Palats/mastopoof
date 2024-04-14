@@ -467,6 +467,112 @@ func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLQueryable, s
 	return streamState, nil
 }
 
+// FixDuplicateStatuses look for statuses which have been inserted
+// twice in a given stream. It keeps only the oldest entry.
+func (st *Storage) FixDuplicateStatuses(ctx context.Context, txn SQLQueryable, stid int64) error {
+	rows, err := txn.QueryContext(ctx, `
+		WITH counts AS (
+			SELECT
+				sid,
+				MIN(position) as position,
+				COUNT(*) AS count
+			FROM
+				streamcontent
+			WHERE
+				stid = ?
+			GROUP BY
+				sid
+		)
+		SELECT
+			*
+		FROM
+			counts
+		WHERE
+			count > 1
+		ORDER BY count
+		;
+	`, stid)
+	if err != nil {
+		return err
+	}
+
+	for rows.Next() {
+		var sid int64
+		var minPosition int64
+		var count int64
+		if err := rows.Scan(&sid, &minPosition, &count); err != nil {
+			return err
+		}
+		fmt.Printf("Status sid=%d: %d dups\n", sid, count)
+
+		result, err := txn.ExecContext(ctx, `
+			DELETE FROM streamcontent WHERE
+				stid = ?
+				AND sid = ?
+				AND position != ?
+		`, stid, sid, minPosition)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("... deleted %d rows, kept early position %d\n", affected, minPosition)
+	}
+
+	return nil
+}
+
+// FixCrossStatuses looks for statuses coming from another user.
+// It removes all of them.
+func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLQueryable, stid int64) error {
+	streamState, err := st.StreamState(ctx, txn, stid)
+	if err != nil {
+		return fmt.Errorf("unable to get streamstate from DB: %w", err)
+	}
+
+	rows, err := txn.QueryContext(ctx, `
+		SELECT
+			sid
+		FROM
+			streamcontent
+		INNER JOIN statuses
+			USING (sid)
+		WHERE
+			streamcontent.stid = ?
+			AND statuses.uid != ?
+		GROUP BY
+			sid
+	`, stid, streamState.UID)
+	if err != nil {
+		return err
+	}
+
+	for rows.Next() {
+		var sid int64
+		if err := rows.Scan(&sid); err != nil {
+			return err
+		}
+		fmt.Printf("Status sid=%d is coming from another user\n", sid)
+
+		result, err := txn.ExecContext(ctx, `
+			DELETE FROM streamcontent WHERE
+				stid = ?
+				AND sid = ?
+		`, stid, sid)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("... deleted %d rows\n", affected)
+	}
+	return nil
+}
+
 func (st *Storage) ClearApp(ctx context.Context) error {
 	txn, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
