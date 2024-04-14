@@ -43,7 +43,7 @@ func IDLess(id1 mastodon.ID, id2 mastodon.ID) bool {
 }
 
 type Storage struct {
-	DB              *sql.DB
+	db              *sql.DB
 	baseRedirectURL *url.URL
 	scopes          string
 }
@@ -56,7 +56,7 @@ type Storage struct {
 //   - `scopes`: List of scopes that will be used, used for Mastodon App registration.
 func NewStorage(db *sql.DB, selfURL string, scopes string) (*Storage, error) {
 	s := &Storage{
-		DB:     db,
+		db:     db,
 		scopes: scopes,
 	}
 
@@ -78,7 +78,7 @@ func (st *Storage) Init(ctx context.Context) error {
 }
 
 func (st *Storage) initVersion(ctx context.Context, targetVersion int) error {
-	return prepareDB(ctx, st.DB, targetVersion)
+	return prepareDB(ctx, st.db, targetVersion)
 }
 
 func (st *Storage) redirectURI(serverAddr string) string {
@@ -104,7 +104,7 @@ var CleanAbortTxn = errors.New("transaction cancellation requested")
 // If `f` returns another non-nil error, the transaction will be aborted and the error is returned.
 // If the function returns nil, the transaction is committed.
 func (st *Storage) InTxn(ctx context.Context, f func(ctx context.Context, txn SQLQueryable) error) error {
-	txn, err := st.DB.BeginTx(ctx, nil)
+	txn, err := st.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -126,7 +126,7 @@ type ListUserEntry struct {
 }
 
 func (st *Storage) ListUsers(ctx context.Context) ([]*ListUserEntry, error) {
-	txn, err := st.DB.BeginTx(ctx, nil)
+	txn, err := st.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func (st *Storage) ListUsers(ctx context.Context) ([]*ListUserEntry, error) {
 // Returns the UID.
 func (st *Storage) CreateUser(ctx context.Context, txn SQLQueryable, serverAddr string, accountID mastodon.ID, username string) (*UserState, error) {
 	if txn == nil {
-		txn = st.DB
+		txn = st.db
 	}
 
 	// Create the local user.
@@ -209,7 +209,7 @@ func (st *Storage) serverStateKey(serverAddr string) string {
 // CreateServerState creates a server with the given address.
 func (st *Storage) CreateServerState(ctx context.Context, txn SQLQueryable, serverAddr string) (*ServerState, error) {
 	if txn == nil {
-		txn = st.DB
+		txn = st.db
 	}
 	key := st.serverStateKey(serverAddr)
 	ss := &ServerState{
@@ -237,7 +237,7 @@ func (st *Storage) CreateServerState(ctx context.Context, txn SQLQueryable, serv
 // Returns wrapped ErrNotFound if no entry exists.
 func (st *Storage) ServerState(ctx context.Context, txn SQLQueryable, serverAddr string) (*ServerState, error) {
 	if txn == nil {
-		txn = st.DB
+		txn = st.db
 	}
 	var state string
 	key := st.serverStateKey(serverAddr)
@@ -294,7 +294,7 @@ func (st *Storage) CreateAccountState(ctx context.Context, db SQLQueryable, uid 
 // Returns wrapped ErrNotFound if no entry exists.
 func (st *Storage) AccountStateByUID(ctx context.Context, txn SQLQueryable, uid int64) (*AccountState, error) {
 	if txn == nil {
-		txn = st.DB
+		txn = st.db
 	}
 	var state string
 	err := txn.QueryRowContext(ctx, "SELECT state FROM accountstate WHERE uid=?", uid).Scan(&state)
@@ -372,7 +372,7 @@ func (st *Storage) CreateUserState(ctx context.Context, db SQLQueryable) (*UserS
 // Returns wrapped ErrNotFound if no entry exists.
 func (st *Storage) UserState(ctx context.Context, txn SQLQueryable, uid int64) (*UserState, error) {
 	if txn == nil {
-		txn = st.DB
+		txn = st.db
 	}
 	var jsonString string
 	err := txn.QueryRowContext(ctx, "SELECT state FROM userstate WHERE uid = ?", uid).Scan(&jsonString)
@@ -429,7 +429,7 @@ func (st *Storage) CreateStreamState(ctx context.Context, db SQLQueryable, userI
 
 func (st *Storage) StreamState(ctx context.Context, txn SQLQueryable, stid int64) (*StreamState, error) {
 	if txn == nil {
-		txn = st.DB
+		txn = st.db
 	}
 	var jsonString string
 	err := txn.QueryRowContext(ctx, "SELECT state FROM streamstate WHERE stid = ?", stid).Scan(&jsonString)
@@ -624,7 +624,7 @@ func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLQueryable, stid 
 }
 
 func (st *Storage) ClearApp(ctx context.Context) error {
-	txn, err := st.DB.BeginTx(ctx, nil)
+	txn, err := st.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -638,7 +638,7 @@ func (st *Storage) ClearApp(ctx context.Context) error {
 }
 
 func (st *Storage) ClearStream(ctx context.Context, stid int64) error {
-	txn, err := st.DB.BeginTx(ctx, nil)
+	txn, err := st.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -665,7 +665,7 @@ func (st *Storage) ClearStream(ctx context.Context, stid int64) error {
 }
 
 func (st *Storage) ClearPoolAndStream(ctx context.Context, uid int64) error {
-	txn, err := st.DB.BeginTx(ctx, nil)
+	txn, err := st.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -719,7 +719,7 @@ type Item struct {
 // PickNext
 // Return (nil, nil) if there is no next status.
 func (st *Storage) PickNext(ctx context.Context, stid int64) (*Item, error) {
-	txn, err := st.DB.BeginTx(ctx, nil)
+	txn, err := st.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -840,7 +840,7 @@ func (st *Storage) ListBackward(ctx context.Context, stid int64, refPosition int
 		return nil, fmt.Errorf("invalid position %d", refPosition)
 	}
 
-	txn, err := st.DB.BeginTx(ctx, nil)
+	txn, err := st.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -865,7 +865,7 @@ func (st *Storage) ListBackward(ctx context.Context, stid int64, refPosition int
 	maxCount := 10
 
 	// Fetch what is currently available after refPosition
-	rows, err := st.DB.QueryContext(ctx, `
+	rows, err := st.db.QueryContext(ctx, `
 		SELECT
 			streamcontent.position,
 			statuses.status
@@ -920,7 +920,7 @@ func (st *Storage) ListForward(ctx context.Context, stid int64, refPosition int6
 		return nil, fmt.Errorf("invalid position %d", refPosition)
 	}
 
-	txn, err := st.DB.BeginTx(ctx, nil)
+	txn, err := st.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -950,7 +950,7 @@ func (st *Storage) ListForward(ctx context.Context, stid int64, refPosition int6
 	maxCount := 10
 
 	// Fetch what is currently available after refPosition
-	rows, err := st.DB.QueryContext(ctx, `
+	rows, err := st.db.QueryContext(ctx, `
 		SELECT
 			streamcontent.position,
 			statuses.status
