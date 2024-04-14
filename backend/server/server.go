@@ -130,50 +130,49 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 	}
 
 	// TODO: split transactions to avoid remote requests in the middle.
-	txn, err := s.st.DB.BeginTx(ctx, nil)
+
+	var ss *storage.ServerState
+	err := s.st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
+		var err error
+		ss, err = s.st.ServerState(ctx, txn, serverAddr)
+		if errors.Is(err, storage.ErrNotFound) {
+			glog.Infof("Creating server state for %q", serverAddr)
+			ss, err = s.st.CreateServerState(ctx, txn, serverAddr)
+			if err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+
+		// If the server has no registration info, do it now.
+		if ss.AuthURI == "" {
+			// TODO: rate limiting to avoid abuse.
+			// TODO: garbage collection of unused ones.
+			// TODO: update redirect URIs as needed.
+			glog.Infof("Registering app on server %q", serverAddr)
+			app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
+				Client:       s.client,
+				Server:       ss.ServerAddr,
+				ClientName:   "mastopoof",
+				Scopes:       s.scopes,
+				Website:      "https://github.com/Palats/mastopoof",
+				RedirectURIs: ss.RedirectURI,
+			})
+			if err != nil {
+				return fmt.Errorf("unable to register app on server %s: %w", ss.ServerAddr, err)
+			}
+			ss.ClientID = app.ClientID
+			ss.ClientSecret = app.ClientSecret
+			ss.AuthURI = app.AuthURI
+
+			if err := s.st.SetServerState(ctx, txn, ss); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, err
-	}
-	defer txn.Rollback()
-
-	ss, err := s.st.ServerState(ctx, txn, serverAddr)
-	if errors.Is(err, storage.ErrNotFound) {
-		glog.Infof("Creating server state for %q", serverAddr)
-		ss, err = s.st.CreateServerState(ctx, txn, serverAddr)
-		if err != nil {
-			return nil, err
-		}
-	} else if err != nil {
-		return nil, err
-	}
-
-	// If the server has no registration info, do it now.
-	if ss.AuthURI == "" {
-		// TODO: rate limiting to avoid abuse.
-		// TODO: garbage collection of unused ones.
-		// TODO: update redirect URIs as needed.
-		glog.Infof("Registering app on server %q", serverAddr)
-		app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
-			Client:       s.client,
-			Server:       ss.ServerAddr,
-			ClientName:   "mastopoof",
-			Scopes:       s.scopes,
-			Website:      "https://github.com/Palats/mastopoof",
-			RedirectURIs: ss.RedirectURI,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("unable to register app on server %s: %w", ss.ServerAddr, err)
-		}
-		ss.ClientID = app.ClientID
-		ss.ClientSecret = app.ClientSecret
-		ss.AuthURI = app.AuthURI
-
-		if err := s.st.SetServerState(ctx, txn, ss); err != nil {
-			return nil, err
-		}
-	}
-
-	if err := txn.Commit(); err != nil {
 		return nil, err
 	}
 
@@ -213,79 +212,78 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("missing authcode"))
 	}
 
+	var userState *storage.UserState
+
 	// TODO: split transactions to avoid remote requests in the middle.
-	txn, err := s.st.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer txn.Rollback()
+	err := s.st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
+		serverState, err := s.st.ServerState(ctx, txn, serverAddr)
+		if err != nil {
+			// Do not create the server - it should have been created on a previous step. If it is not there,
+			// it is odd, so error out.
+			return err
+		}
 
-	serverState, err := s.st.ServerState(ctx, txn, serverAddr)
-	if err != nil {
-		// Do not create the server - it should have been created on a previous step. If it is not there,
-		// it is odd, so error out.
-		return nil, err
-	}
+		// TODO: Re-use mastodon clients.
+		client := mastodon.NewClient(&mastodon.Config{
+			Server:       serverState.ServerAddr,
+			ClientID:     serverState.ClientID,
+			ClientSecret: serverState.ClientSecret,
+		})
+		client.Client = s.client
 
-	// TODO: Re-use mastodon clients.
-	client := mastodon.NewClient(&mastodon.Config{
-		Server:       serverState.ServerAddr,
-		ClientID:     serverState.ClientID,
-		ClientSecret: serverState.ClientSecret,
+		err = client.AuthenticateToken(ctx, authCode, serverState.RedirectURI)
+		if err != nil {
+			return fmt.Errorf("unable to authenticate on server %s: %w", serverState.ServerAddr, err)
+		}
+
+		// Now get info about the mastodon mastodonAccount so we can match it
+		// to a local mastodonAccount.
+		mastodonAccount, err := client.GetAccountCurrentUser(ctx)
+		if err != nil {
+			return err
+		}
+		accountID := mastodonAccount.ID
+		if accountID == "" {
+			return errors.New("missing account ID")
+		}
+		username := mastodonAccount.Username
+
+		// Find the account state (Mastodon).
+		accountState, err := s.st.AccountStateByAccountID(ctx, txn, serverAddr, string(accountID))
+		if errors.Is(err, storage.ErrNotFound) {
+			// No mastodon account - and the way to find actual user is through the mastodon
+			// account, so it means we need to create a user and then we can create
+			// the mastodon account state.
+			userState, err := s.st.CreateUser(ctx, txn, serverAddr, accountID, username)
+			if err != nil {
+				return err
+			}
+
+			// And load the account state properly now it is created.
+			accountState, err = s.st.AccountStateByUID(ctx, txn, userState.UID)
+			if err != nil {
+				return fmt.Errorf("unable to re-read account state: %w", err)
+			}
+		} else if err != nil {
+			return err
+		}
+
+		// Get the userState
+		// TODO: don't re-read it if it was just created
+		userState, err = s.st.UserState(ctx, txn, accountState.UID)
+		if err != nil {
+			return err
+		}
+
+		// Now, let's write the access token we got in the account state.
+		accountState.AccessToken = client.Config.AccessToken
+		if err := s.st.SetAccountState(ctx, txn, accountState); err != nil {
+			return err
+		}
+
+		return nil
 	})
-	client.Client = s.client
-
-	err = client.AuthenticateToken(ctx, authCode, serverState.RedirectURI)
 	if err != nil {
-		return nil, fmt.Errorf("unable to authenticate on server %s: %w", serverState.ServerAddr, err)
-	}
-
-	// Now get info about the mastodon mastodonAccount so we can match it
-	// to a local mastodonAccount.
-	mastodonAccount, err := client.GetAccountCurrentUser(ctx)
-	if err != nil {
-		return nil, err
-	}
-	accountID := mastodonAccount.ID
-	if accountID == "" {
-		return nil, errors.New("missing account ID")
-	}
-	username := mastodonAccount.Username
-
-	// Find the account state (Mastodon).
-	accountState, err := s.st.AccountStateByAccountID(ctx, txn, serverAddr, string(accountID))
-	if errors.Is(err, storage.ErrNotFound) {
-		// No mastodon account - and the way to find actual user is through the mastodon
-		// account, so it means we need to create a user and then we can create
-		// the mastodon account state.
-		userState, err := s.st.CreateUser(ctx, txn, serverAddr, accountID, username)
-		if err != nil {
-			return nil, err
-		}
-
-		// And load the account state properly now it is created.
-		accountState, err = s.st.AccountStateByUID(ctx, txn, userState.UID)
-		if err != nil {
-			return nil, fmt.Errorf("unable to re-read account state: %w", err)
-		}
-	} else if err != nil {
-		return nil, err
-	}
-
-	// Get the userState
-	// TODO: don't re-read it if it was just created
-	userState, err := s.st.UserState(ctx, txn, accountState.UID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Now, let's write the access token we got in the account state.
-	accountState.AccessToken = client.Config.AccessToken
-	if err := s.st.SetAccountState(ctx, txn, accountState); err != nil {
-		return nil, err
-	}
-
-	if err := txn.Commit(); err != nil {
 		return nil, err
 	}
 
@@ -364,43 +362,46 @@ func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadReq
 		return nil, err
 	}
 
-	txn, err := s.st.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer txn.Rollback()
+	var streamState *storage.StreamState
+	err := s.st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
+		var err error
+		streamState, err = s.st.StreamState(ctx, txn, stid)
+		if err != nil {
+			return err
+		}
 
-	streamState, err := s.st.StreamState(ctx, txn, stid)
-	if err != nil {
-		return nil, err
-	}
+		oldValue := streamState.LastRead
 
-	oldValue := streamState.LastRead
+		requestedValue := req.Msg.GetLastRead()
+		if requestedValue < streamState.FirstPosition-1 || requestedValue > streamState.LastPosition {
+			return fmt.Errorf("position %d is invalid", requestedValue)
+		}
 
-	requestedValue := req.Msg.GetLastRead()
-	if requestedValue < streamState.FirstPosition-1 || requestedValue > streamState.LastPosition {
-		return nil, fmt.Errorf("position %d is invalid", requestedValue)
-	}
-
-	switch req.Msg.Mode {
-	case pb.SetReadRequest_ABSOLUTE:
-		streamState.LastRead = requestedValue
-	case pb.SetReadRequest_ADVANCE:
-		if streamState.LastRead < requestedValue {
+		switch req.Msg.Mode {
+		case pb.SetReadRequest_ABSOLUTE:
 			streamState.LastRead = requestedValue
+		case pb.SetReadRequest_ADVANCE:
+			if streamState.LastRead < requestedValue {
+				streamState.LastRead = requestedValue
+			}
+		default:
+			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("Invalid SetRead mode %v", req.Msg.Mode))
 		}
-	default:
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("Invalid SetRead mode %v", req.Msg.Mode))
+
+		if streamState.LastRead != oldValue {
+			if err := s.st.SetStreamState(ctx, txn, streamState); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	if streamState.LastRead != oldValue {
-		if err := s.st.SetStreamState(ctx, txn, streamState); err != nil {
-			return nil, err
-		}
-	}
 	return connect.NewResponse(&pb.SetReadResponse{
 		StreamInfo: streamState.ToStreamInfo(),
-	}), txn.Commit()
+	}), nil
 }
 
 func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {
@@ -409,107 +410,107 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		return nil, err
 	}
 
-	txn, err := s.st.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer txn.Rollback()
-
-	streamState, err := s.st.StreamState(ctx, txn, stid)
-	if err != nil {
-		return nil, err
-	}
-	uid := streamState.UID
-
-	accountState, err := s.st.AccountStateByUID(ctx, txn, uid)
-	if err != nil {
-		return nil, err
-	}
-
-	serverState, err := s.st.ServerState(ctx, txn, accountState.ServerAddr)
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO: Re-use mastodon clients.
-	client := mastodon.NewClient(&mastodon.Config{
-		Server:       serverState.ServerAddr,
-		ClientID:     serverState.ClientID,
-		ClientSecret: serverState.ClientSecret,
-		AccessToken:  accountState.AccessToken,
-	})
-	client.Client = s.client
-
-	// TODO: absolutely do not do fetching from server while in a local transaction.
-
-	// Pagination object is updated by GetTimelimeHome, based on the `Link` header
-	// returned by the API - see https://docs.joinmastodon.org/api/guidelines/#pagination .
-	// On the query:
-	//  - max_id (MaxID) is an upper bound, not included.
-	//  - min_id (MinID) will indicate to get statuses starting at that ID - aka, cursor like.
-	//  - since_id (SinceID) sets a lower bound on the results, but will prioritize recent results. I.e., it will
-	//     return the last $Limit statuses, assuming they are all more recent than SinceID.
-	// On the result, it seems:
-	//  - min_id is set to the most recent ID returned (from the "prev" Link, which is for future statuses)
-	//  - max_id is set to an older ID (from the "next" Link, which is for older statuses).
-	//    Set to 0 when no statuses are returned when having reached most recent stuff.
-	//  - since_id, Limit are empty/0.
-	// See https://github.com/mattn/go-mastodon/blob/9faaa4f0dc23d9001ccd1010a9a51f56ba8d2f9f/mastodon.go#L317
-	// It seems that if max_id and min_id are identical, it means the end has been reached and some result were given.
-	// And if there is no max_id, the end has been reached.
-	pg := &mastodon.Pagination{
-		MinID: accountState.LastHomeStatusID,
-	}
-	glog.Infof("Fetching... (max_id:%v, min_id:%v, since_id:%v)", pg.MaxID, pg.MinID, pg.SinceID)
-	timeline, err := client.GetTimelineHome(ctx, pg)
-	if err != nil {
-		return nil, err
-	}
-	boundaries := ""
-	if len(timeline) > 0 {
-		boundaries = fmt.Sprintf(" (%s -- %s)", timeline[0].ID, timeline[len(timeline)-1].ID)
-	}
-	for _, status := range timeline {
-		if storage.IDNewer(status.ID, accountState.LastHomeStatusID) {
-			accountState.LastHomeStatusID = status.ID
-		}
-	}
-	glog.Infof("Found %d new status on home timeline (LastHomeStatusID=%v) (max_id:%v, min_id:%v, since_id:%v)%s", len(timeline), accountState.LastHomeStatusID, pg.MaxID, pg.MinID, pg.SinceID, boundaries)
-
 	resp := &pb.FetchResponse{
-		FetchedCount: int64(len(timeline)),
-		Status:       pb.FetchResponse_MORE,
+		Status: pb.FetchResponse_MORE,
 	}
 
-	// Pagination got updated.
-	if pg.MinID != accountState.LastHomeStatusID {
-		// Either there is a mismatch in the data or no `Link` was returned
-		// - in either case, we don't know enough to safely continue.
-		glog.Infof("no returned MinID / ID mismatch, stopping fetch")
-		resp.Status = pb.FetchResponse_DONE
-	}
-	if pg.MaxID == "" || pg.MaxID == pg.MinID {
-		// We've reached the end - either nothing was fetched, or just the
-		// latest ones.
-		resp.Status = pb.FetchResponse_DONE
-	}
-	if len(timeline) == 0 {
-		// Nothing was returned, assume it is because we've reached the end.
-		resp.Status = pb.FetchResponse_DONE
-	}
+	err := s.st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
+		streamState, err := s.st.StreamState(ctx, txn, stid)
+		if err != nil {
+			return err
+		}
+		uid := streamState.UID
 
-	if err := s.st.SetAccountState(ctx, txn, accountState); err != nil {
-		return nil, err
-	}
+		accountState, err := s.st.AccountStateByUID(ctx, txn, uid)
+		if err != nil {
+			return err
+		}
 
-	// TODO: mess of stream state - there is another version above.
-	streamState, err = s.st.InsertStatuses(ctx, txn, uid, timeline)
+		serverState, err := s.st.ServerState(ctx, txn, accountState.ServerAddr)
+		if err != nil {
+			return err
+		}
+
+		// TODO: Re-use mastodon clients.
+		client := mastodon.NewClient(&mastodon.Config{
+			Server:       serverState.ServerAddr,
+			ClientID:     serverState.ClientID,
+			ClientSecret: serverState.ClientSecret,
+			AccessToken:  accountState.AccessToken,
+		})
+		client.Client = s.client
+
+		// TODO: absolutely do not do fetching from server while in a local transaction.
+
+		// Pagination object is updated by GetTimelimeHome, based on the `Link` header
+		// returned by the API - see https://docs.joinmastodon.org/api/guidelines/#pagination .
+		// On the query:
+		//  - max_id (MaxID) is an upper bound, not included.
+		//  - min_id (MinID) will indicate to get statuses starting at that ID - aka, cursor like.
+		//  - since_id (SinceID) sets a lower bound on the results, but will prioritize recent results. I.e., it will
+		//     return the last $Limit statuses, assuming they are all more recent than SinceID.
+		// On the result, it seems:
+		//  - min_id is set to the most recent ID returned (from the "prev" Link, which is for future statuses)
+		//  - max_id is set to an older ID (from the "next" Link, which is for older statuses).
+		//    Set to 0 when no statuses are returned when having reached most recent stuff.
+		//  - since_id, Limit are empty/0.
+		// See https://github.com/mattn/go-mastodon/blob/9faaa4f0dc23d9001ccd1010a9a51f56ba8d2f9f/mastodon.go#L317
+		// It seems that if max_id and min_id are identical, it means the end has been reached and some result were given.
+		// And if there is no max_id, the end has been reached.
+		pg := &mastodon.Pagination{
+			MinID: accountState.LastHomeStatusID,
+		}
+		glog.Infof("Fetching... (max_id:%v, min_id:%v, since_id:%v)", pg.MaxID, pg.MinID, pg.SinceID)
+		timeline, err := client.GetTimelineHome(ctx, pg)
+		if err != nil {
+			return err
+		}
+		boundaries := ""
+		if len(timeline) > 0 {
+			boundaries = fmt.Sprintf(" (%s -- %s)", timeline[0].ID, timeline[len(timeline)-1].ID)
+		}
+		for _, status := range timeline {
+			if storage.IDNewer(status.ID, accountState.LastHomeStatusID) {
+				accountState.LastHomeStatusID = status.ID
+			}
+		}
+		glog.Infof("Found %d new status on home timeline (LastHomeStatusID=%v) (max_id:%v, min_id:%v, since_id:%v)%s", len(timeline), accountState.LastHomeStatusID, pg.MaxID, pg.MinID, pg.SinceID, boundaries)
+
+		resp.FetchedCount = int64(len(timeline))
+
+		// Pagination got updated.
+		if pg.MinID != accountState.LastHomeStatusID {
+			// Either there is a mismatch in the data or no `Link` was returned
+			// - in either case, we don't know enough to safely continue.
+			glog.Infof("no returned MinID / ID mismatch, stopping fetch")
+			resp.Status = pb.FetchResponse_DONE
+		}
+		if pg.MaxID == "" || pg.MaxID == pg.MinID {
+			// We've reached the end - either nothing was fetched, or just the
+			// latest ones.
+			resp.Status = pb.FetchResponse_DONE
+		}
+		if len(timeline) == 0 {
+			// Nothing was returned, assume it is because we've reached the end.
+			resp.Status = pb.FetchResponse_DONE
+		}
+
+		if err := s.st.SetAccountState(ctx, txn, accountState); err != nil {
+			return err
+		}
+
+		// TODO: mess of stream state - there is another version above.
+		streamState, err = s.st.InsertStatuses(ctx, txn, uid, timeline)
+		if err != nil {
+			return err
+		}
+		resp.StreamInfo = streamState.ToStreamInfo()
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	resp.StreamInfo = streamState.ToStreamInfo()
-
-	return connect.NewResponse(resp), txn.Commit()
+	return connect.NewResponse(resp), nil
 }
 
 func (s *Server) RedirectHandler(w http.ResponseWriter, req *http.Request) {

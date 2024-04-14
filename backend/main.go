@@ -198,7 +198,6 @@ func cmdSetRead(ctx context.Context, st *storage.Storage, stid int64, position i
 
 func cmdCheckStreamState(ctx context.Context, st *storage.Storage, stid int64) error {
 	return st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
-
 		// Stream content - check for duplicates
 		fmt.Println("### Duplicate statuses in stream")
 		if err := st.FixDuplicateStatuses(ctx, txn, stid); err != nil {
