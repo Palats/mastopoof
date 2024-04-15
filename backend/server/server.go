@@ -36,14 +36,14 @@ func NewSessionManager(db *sql.DB) *scs.SessionManager {
 type Server struct {
 	st             *storage.Storage
 	inviteCode     string
-	autoLogin      int64
+	autoLogin      storage.UID
 	sessionManager *scs.SessionManager
 	selfURL        string
 	scopes         string
 	client         http.Client
 }
 
-func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode string, autoLogin int64, selfURL string, scopes string) *Server {
+func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode string, autoLogin storage.UID, selfURL string, scopes string) *Server {
 	s := &Server{
 		st:             st,
 		sessionManager: sessionManager,
@@ -55,8 +55,18 @@ func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode str
 	return s
 }
 
+func (s *Server) sessionUserID(ctx context.Context) storage.UID {
+	return storage.UID(s.sessionManager.GetInt64(ctx, "userid"))
+}
+
+func (s *Server) setSessionUserID(ctx context.Context, uid storage.UID) {
+	// `uid`` must be converted from `UID` to `int64`, otherwise session manager
+	// has trouble serializing it.
+	s.sessionManager.Put(ctx, "userid", int64(uid))
+}
+
 func (s *Server) isLogged(ctx context.Context) error {
-	userID := s.sessionManager.GetInt64(ctx, "userid")
+	userID := s.sessionUserID(ctx)
 	if userID == 0 {
 		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("oh noes"))
 	}
@@ -65,8 +75,8 @@ func (s *Server) isLogged(ctx context.Context) error {
 
 // verifyStdID checks that the logged in user is allowed access to that
 // stream.
-func (s *Server) verifyStID(ctx context.Context, stid int64) (*storage.UserState, error) {
-	userID := s.sessionManager.GetInt64(ctx, "userid")
+func (s *Server) verifyStID(ctx context.Context, stid storage.StID) (*storage.UserState, error) {
+	userID := s.sessionUserID(ctx)
 	userState, err := s.st.UserState(ctx, nil, userID)
 	if err != nil {
 		return nil, err
@@ -85,7 +95,7 @@ func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest
 
 	if s.autoLogin > 0 {
 		// TODO: factorize login setup.
-		s.sessionManager.Put(ctx, "userid", s.autoLogin)
+		s.setSessionUserID(ctx, s.autoLogin)
 	}
 
 	// Trying to login only based on existing session.
@@ -94,15 +104,13 @@ func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest
 		return connect.NewResponse(&pb.LoginResponse{}), nil
 	}
 
-	uid := s.sessionManager.GetInt64(ctx, "userid")
-
-	userState, err := s.st.UserState(ctx, nil, uid)
+	userState, err := s.st.UserState(ctx, nil, s.sessionUserID(ctx))
 	if err != nil {
 		return nil, err
 	}
 
 	return connect.NewResponse(&pb.LoginResponse{
-		UserInfo: &pb.UserInfo{DefaultStid: userState.DefaultStID},
+		UserInfo: &pb.UserInfo{DefaultStid: int64(userState.DefaultStID)},
 	}), nil
 }
 
@@ -204,7 +212,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	// TODO: sanitization of server addr to be factorized with Authorize.
 	serverAddr := req.Msg.ServerAddr
 	if err := mastodon.ValidateAddress(serverAddr); err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unable to validate address %s: %w", serverAddr, err))
 	}
 
 	authCode := req.Msg.AuthCode
@@ -220,7 +228,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 		if err != nil {
 			// Do not create the server - it should have been created on a previous step. If it is not there,
 			// it is odd, so error out.
-			return err
+			return fmt.Errorf("unable to load server state for addr %s: %w", serverAddr, err)
 		}
 
 		// TODO: Re-use mastodon clients.
@@ -240,7 +248,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 		// to a local mastodonAccount.
 		mastodonAccount, err := client.GetAccountCurrentUser(ctx)
 		if err != nil {
-			return err
+			return fmt.Errorf("failure whena calling Mastodon AccountCurrentUser: %w", err)
 		}
 		accountID := mastodonAccount.ID
 		if accountID == "" {
@@ -256,7 +264,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 			// the mastodon account state.
 			userState, accountState, _, err = s.st.CreateUser(ctx, txn, serverAddr, accountID, username)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to create user %s/%s@%s: %w", accountID, username, serverAddr, err)
 			}
 		} else if err != nil {
 			return err
@@ -266,19 +274,19 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 		// TODO: don't re-read it if it was just created
 		userState, err = s.st.UserState(ctx, txn, accountState.UID)
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to load userstate for UID %d: %w", accountState.UID, err)
 		}
 
 		// Now, let's write the access token we got in the account state.
 		accountState.AccessToken = client.Config.AccessToken
 		if err := s.st.SetAccountState(ctx, txn, accountState); err != nil {
-			return err
+			return fmt.Errorf("failed to set account state %d: %w", accountState.ASID, err)
 		}
 
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Token txn failed: %w", err)
 	}
 
 	// And mark the session as logged in.
@@ -286,15 +294,15 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	if err != nil {
 		return nil, fmt.Errorf("unable to renew token: %w", err)
 	}
-	s.sessionManager.Put(ctx, "userid", userState.UID)
+	s.setSessionUserID(ctx, userState.UID)
 
 	return connect.NewResponse(&pb.TokenResponse{
-		UserInfo: &pb.UserInfo{DefaultStid: userState.DefaultStID},
+		UserInfo: &pb.UserInfo{DefaultStid: int64(userState.DefaultStID)},
 	}), nil
 }
 
 func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest]) (*connect.Response[pb.ListResponse], error) {
-	stid := req.Msg.Stid
+	stid := storage.StID(req.Msg.Stid)
 	userState, err := s.verifyStID(ctx, stid)
 	if err != nil {
 		return nil, err
@@ -351,7 +359,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 }
 
 func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadRequest]) (*connect.Response[pb.SetReadResponse], error) {
-	stid := req.Msg.Stid
+	stid := storage.StID(req.Msg.Stid)
 	if _, err := s.verifyStID(ctx, stid); err != nil {
 		return nil, err
 	}
@@ -399,7 +407,7 @@ func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadReq
 }
 
 func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {
-	stid := req.Msg.Stid
+	stid := storage.StID(req.Msg.Stid)
 	if _, err := s.verifyStID(ctx, stid); err != nil {
 		return nil, err
 	}

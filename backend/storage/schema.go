@@ -86,19 +86,23 @@ const refSchema = `
 	);
 `
 
+type UID int64
+
 // UserState is the state of a Mastopoof user, stored as JSON in the DB.
 type UserState struct {
 	// User ID.
-	UID int64 `json:"uid"`
+	UID UID `json:"uid"`
 
 	// Default stream of that user.
-	DefaultStID int64 `json:"default_stid"`
+	DefaultStID StID `json:"default_stid"`
 }
+
+type ASID int64
 
 // AccountState represents information about a mastodon account in the DB.
 type AccountState struct {
 	// AccountState ASID within storage. Just an arbitrary number for primary key.
-	ASID int64 `json:"asid"`
+	ASID ASID `json:"asid"`
 
 	// The Mastodon server this account is part of.
 	// E.g., `https://mastodon.social`
@@ -113,7 +117,7 @@ type AccountState struct {
 	AccessToken string `json:"access_token"`
 
 	// The user using this mastodon account.
-	UID int64 `json:"uid"`
+	UID UID `json:"uid"`
 	// Last home status ID fetched.
 	LastHomeStatusID mastodon.ID `json:"last_home_status_id"`
 }
@@ -134,12 +138,14 @@ type ServerState struct {
 	RedirectURI  string `json:"redirect_uri"`
 }
 
+type StID int64
+
 // StreamState is the state of a single stream, stored as JSON.
 type StreamState struct {
 	// Stream ID.
-	StID int64 `json:"stid"`
+	StID StID `json:"stid"`
 	// User ID this stream belongs to.
-	UID int64 `json:"uid"`
+	UID UID `json:"uid"`
 	// Position of the latest read status in this stream.
 	LastRead int64 `json:"last_read"`
 	// Position of the first status, if any. Usually == 1.
@@ -152,7 +158,7 @@ type StreamState struct {
 
 func (ss *StreamState) ToStreamInfo() *pb.StreamInfo {
 	return &pb.StreamInfo{
-		Stid:          ss.StID,
+		Stid:          int64(ss.StID),
 		LastRead:      ss.LastRead,
 		FirstPosition: ss.FirstPosition,
 		LastPosition:  ss.LastPosition,

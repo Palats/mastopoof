@@ -154,7 +154,7 @@ func (st *Storage) ListUsers(ctx context.Context) ([]*ListUserEntry, error) {
 		}
 
 		for rows.Next() {
-			var uid int64
+			var uid UID
 			if err := rows.Scan(&uid); err != nil {
 				return err
 			}
@@ -183,7 +183,6 @@ func (st *Storage) ListUsers(ctx context.Context) ([]*ListUserEntry, error) {
 }
 
 // CreateUser creates a new mastopoof user, with all the necessary bit and pieces.
-// Returns the UID.
 func (st *Storage) CreateUser(ctx context.Context, txn SQLQueryable, serverAddr string, accountID mastodon.ID, username string) (*UserState, *AccountState, *StreamState, error) {
 	var userState *UserState
 	var accountState *AccountState
@@ -285,7 +284,7 @@ func (st *Storage) SetServerState(ctx context.Context, txn SQLQueryable, ss *Ser
 }
 
 // CreateAccountState creates a new account for the given UID and assign it an ASID.
-func (st *Storage) CreateAccountState(ctx context.Context, txn SQLQueryable, uid int64, serverAddr string, accountID string, username string) (*AccountState, error) {
+func (st *Storage) CreateAccountState(ctx context.Context, txn SQLQueryable, uid UID, serverAddr string, accountID string, username string) (*AccountState, error) {
 	var as *AccountState
 	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
 		var asid sql.NullInt64
@@ -296,7 +295,7 @@ func (st *Storage) CreateAccountState(ctx context.Context, txn SQLQueryable, uid
 
 		as = &AccountState{
 			// DB is empty, consider previous asid is zero, to get first real entry at 1.
-			ASID:       asid.Int64 + 1,
+			ASID:       ASID(asid.Int64) + 1,
 			UID:        uid,
 			ServerAddr: serverAddr,
 			AccountID:  accountID,
@@ -312,7 +311,7 @@ func (st *Storage) CreateAccountState(ctx context.Context, txn SQLQueryable, uid
 
 // AccountStateByUID gets a the mastodon account of a mastopoof user identified by its UID.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) AccountStateByUID(ctx context.Context, txn SQLQueryable, uid int64) (*AccountState, error) {
+func (st *Storage) AccountStateByUID(ctx context.Context, txn SQLQueryable, uid UID) (*AccountState, error) {
 	as := &AccountState{}
 	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
 		var state string
@@ -391,7 +390,7 @@ func (st *Storage) CreateUserState(ctx context.Context, txn SQLQueryable) (*User
 			return fmt.Errorf("unable to create new user: %w", err)
 		}
 		// If DB is empty, consider previous uid is zero, to get first real entry at 1.
-		userState.UID = uid.Int64 + 1
+		userState.UID = UID(uid.Int64) + 1
 		return st.SetUserState(ctx, txn, userState)
 	})
 	if err != nil {
@@ -402,7 +401,7 @@ func (st *Storage) CreateUserState(ctx context.Context, txn SQLQueryable) (*User
 
 // UserState returns information about a given mastopoof user.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) UserState(ctx context.Context, txn SQLQueryable, uid int64) (*UserState, error) {
+func (st *Storage) UserState(ctx context.Context, txn SQLQueryable, uid UID) (*UserState, error) {
 	userState := &UserState{}
 	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
 		var jsonString string
@@ -438,7 +437,7 @@ func (st *Storage) SetUserState(ctx context.Context, txn SQLQueryable, userState
 }
 
 // CreateStreamState creates a new stream for the given user and return the stream ID (stid).
-func (st *Storage) CreateStreamState(ctx context.Context, txn SQLQueryable, userID int64) (*StreamState, error) {
+func (st *Storage) CreateStreamState(ctx context.Context, txn SQLQueryable, uid UID) (*StreamState, error) {
 	var streamState *StreamState
 
 	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
@@ -450,8 +449,8 @@ func (st *Storage) CreateStreamState(ctx context.Context, txn SQLQueryable, user
 
 		streamState = &StreamState{
 			// Pick the largest existing (or 0) stream ID and just add one to create a new one.
-			StID: stid.Int64 + 1,
-			UID:  userID,
+			StID: StID(stid.Int64 + 1),
+			UID:  uid,
 		}
 		return st.SetStreamState(ctx, txn, streamState)
 	})
@@ -461,7 +460,7 @@ func (st *Storage) CreateStreamState(ctx context.Context, txn SQLQueryable, user
 	return streamState, nil
 }
 
-func (st *Storage) StreamState(ctx context.Context, txn SQLQueryable, stid int64) (*StreamState, error) {
+func (st *Storage) StreamState(ctx context.Context, txn SQLQueryable, stid StID) (*StreamState, error) {
 	streamState := &StreamState{}
 	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
 		var jsonString string
@@ -498,7 +497,7 @@ func (st *Storage) SetStreamState(ctx context.Context, txn SQLQueryable, streamS
 
 // RecomputeStreamState recreates what it can about StreamState from
 // the state of the DB.
-func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLQueryable, stid int64) (*StreamState, error) {
+func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLQueryable, stid StID) (*StreamState, error) {
 	if txn == nil {
 		return nil, errors.New("missing transaction")
 	}
@@ -562,7 +561,7 @@ func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLQueryable, s
 
 // FixDuplicateStatuses look for statuses which have been inserted
 // twice in a given stream. It keeps only the oldest entry.
-func (st *Storage) FixDuplicateStatuses(ctx context.Context, txn SQLQueryable, stid int64) error {
+func (st *Storage) FixDuplicateStatuses(ctx context.Context, txn SQLQueryable, stid StID) error {
 	if txn == nil {
 		return errors.New("missing transaction")
 	}
@@ -623,7 +622,7 @@ func (st *Storage) FixDuplicateStatuses(ctx context.Context, txn SQLQueryable, s
 
 // FixCrossStatuses looks for statuses coming from another user.
 // It removes all of them.
-func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLQueryable, stid int64) error {
+func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLQueryable, stid StID) error {
 	if txn == nil {
 		return errors.New("missing transaction")
 	}
@@ -685,7 +684,7 @@ func (st *Storage) ClearApp(ctx context.Context) error {
 	})
 }
 
-func (st *Storage) ClearStream(ctx context.Context, stid int64) error {
+func (st *Storage) ClearStream(ctx context.Context, stid StID) error {
 	return st.InTxn(ctx, func(ctx context.Context, txn SQLQueryable) error {
 		// Remove everything from the stream.
 		if _, err := txn.ExecContext(ctx, `DELETE FROM streamcontent WHERE stid = ?`, stid); err != nil {
@@ -704,7 +703,7 @@ func (st *Storage) ClearStream(ctx context.Context, stid int64) error {
 	})
 }
 
-func (st *Storage) ClearPoolAndStream(ctx context.Context, uid int64) error {
+func (st *Storage) ClearPoolAndStream(ctx context.Context, uid UID) error {
 	return st.InTxn(ctx, func(ctx context.Context, txn SQLQueryable) error {
 		userState, err := st.UserState(ctx, txn, uid)
 		if err != nil {
@@ -750,7 +749,7 @@ type Item struct {
 
 // PickNext
 // Return (nil, nil) if there is no next status.
-func (st *Storage) PickNext(ctx context.Context, stid int64) (*Item, error) {
+func (st *Storage) PickNext(ctx context.Context, stid StID) (*Item, error) {
 	var item *Item
 	err := st.InTxn(ctx, func(ctx context.Context, txn SQLQueryable) error {
 		streamState, err := st.StreamState(ctx, txn, stid)
@@ -878,7 +877,7 @@ type ListResult struct {
 
 // ListBackward get statuses before the provided position.
 // refPosition must be strictly positive - i.e., refer to an actual position.
-func (st *Storage) ListBackward(ctx context.Context, stid int64, refPosition int64) (*ListResult, error) {
+func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int64) (*ListResult, error) {
 	if refPosition < 1 {
 		return nil, fmt.Errorf("invalid position %d", refPosition)
 	}
@@ -957,7 +956,7 @@ func (st *Storage) ListBackward(ctx context.Context, stid int64, refPosition int
 // ListForward get statuses after the provided position.
 // It can triage things in the stream if necessary.
 // If refPosition is 0, gives data around the provided position.
-func (st *Storage) ListForward(ctx context.Context, stid int64, refPosition int64) (*ListResult, error) {
+func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64) (*ListResult, error) {
 	if refPosition < 0 {
 		return nil, fmt.Errorf("invalid position %d", refPosition)
 	}
@@ -1050,7 +1049,7 @@ func (st *Storage) ListForward(ctx context.Context, stid int64, refPosition int6
 
 // InsertStatuses add the given statuses to the user storage.
 // It updates `streamState` IN PLACE.
-func (st *Storage) InsertStatuses(ctx context.Context, txn SQLQueryable, asid int64, streamState *StreamState, statuses []*mastodon.Status) error {
+func (st *Storage) InsertStatuses(ctx context.Context, txn SQLQueryable, asid ASID, streamState *StreamState, statuses []*mastodon.Status) error {
 	for _, status := range statuses {
 		jsonBytes, err := json.Marshal(status)
 		if err != nil {

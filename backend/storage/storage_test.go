@@ -265,7 +265,7 @@ func TestV13ToV14(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := userState.UID, int64(2); got != want {
+	if got, want := userState.UID, UID(2); got != want {
 		t.Errorf("Got uid %d, wanted %d", got, want)
 	}
 
@@ -273,7 +273,7 @@ func TestV13ToV14(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := userState.UID, int64(3); got != want {
+	if got, want := userState.UID, UID(3); got != want {
 		t.Errorf("Got uid %d, wanted %d", got, want)
 	}
 }
@@ -398,9 +398,9 @@ func TestCreateStreamStateIncreases(t *testing.T) {
 	// Prepare at version 14
 	env := (&DBTestEnv{}).Init(ctx, t)
 
-	seenUIDs := map[int64]bool{}
-	seenASIDs := map[int64]bool{}
-	seenStIDs := map[int64]bool{}
+	seenUIDs := map[UID]bool{}
+	seenASIDs := map[ASID]bool{}
+	seenStIDs := map[StID]bool{}
 	for i := 1; i < 5; i++ {
 		userState, accountState, streamState, err := env.st.CreateUser(ctx, nil, "localhost", mastodon.ID(fmt.Sprintf("%d", i)), fmt.Sprintf("user%d", i))
 		if err != nil {

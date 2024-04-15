@@ -65,16 +65,16 @@ func getStorage(ctx context.Context, filename string) (*storage.Storage, *sql.DB
 	return st, db, nil
 }
 
-func getUserID(_ context.Context, _ *storage.Storage) (int64, error) {
-	return *userID, nil
+func getUserID(_ context.Context, _ *storage.Storage) (storage.UID, error) {
+	return storage.UID(*userID), nil
 }
 
-func getStreamID(ctx context.Context, st *storage.Storage) (int64, error) {
+func getStreamID(ctx context.Context, st *storage.Storage) (storage.StID, error) {
 	if *streamID != 0 {
-		return *streamID, nil
+		return storage.StID(*streamID), nil
 	}
 	if *userID != 0 {
-		userState, err := st.UserState(ctx, nil, *userID)
+		userState, err := st.UserState(ctx, nil, storage.UID(*userID))
 		if err != nil {
 			return 0, err
 		}
@@ -83,7 +83,7 @@ func getStreamID(ctx context.Context, st *storage.Storage) (int64, error) {
 	return 0, errors.New("no streamID / user ID specified")
 }
 
-func getMux(st *storage.Storage, db *sql.DB, autoLogin int64) (*http.ServeMux, error) {
+func getMux(st *storage.Storage, db *sql.DB, autoLogin storage.UID) (*http.ServeMux, error) {
 	mux := http.NewServeMux()
 
 	// Serve frontend content (html, js, etc.).
@@ -116,7 +116,7 @@ func cmdUsers(ctx context.Context, st *storage.Storage) error {
 	return nil
 }
 
-func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool) error {
+func cmdMe(ctx context.Context, st *storage.Storage, uid storage.UID, showAccount bool) error {
 	fmt.Println("# User ID:", uid)
 
 	userState, err := st.UserState(ctx, nil, uid)
@@ -168,7 +168,7 @@ func cmdMe(ctx context.Context, st *storage.Storage, uid int64, showAccount bool
 	return nil
 }
 
-func cmdPickNext(ctx context.Context, st *storage.Storage, stid int64) error {
+func cmdPickNext(ctx context.Context, st *storage.Storage, stid storage.StID) error {
 	ost, err := st.PickNext(ctx, stid)
 	if err != nil {
 		return err
@@ -177,7 +177,7 @@ func cmdPickNext(ctx context.Context, st *storage.Storage, stid int64) error {
 	return nil
 }
 
-func cmdSetRead(ctx context.Context, st *storage.Storage, stid int64, position int64) error {
+func cmdSetRead(ctx context.Context, st *storage.Storage, stid storage.StID, position int64) error {
 	return st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
 		streamState, err := st.StreamState(ctx, txn, stid)
 		if err != nil {
@@ -196,7 +196,7 @@ func cmdSetRead(ctx context.Context, st *storage.Storage, stid int64, position i
 	})
 }
 
-func cmdCheckStreamState(ctx context.Context, st *storage.Storage, stid int64) error {
+func cmdCheckStreamState(ctx context.Context, st *storage.Storage, stid storage.StID) error {
 	return st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
 		// Stream content - check for duplicates
 		fmt.Println("### Duplicate statuses in stream")

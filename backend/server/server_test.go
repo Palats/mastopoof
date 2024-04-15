@@ -60,6 +60,7 @@ func (h *LoggingHandler) ServeHTTP(writer http.ResponseWriter, req *http.Request
 }
 
 func MustBody(t testing.TB, r *http.Response) string {
+	t.Helper()
 	b, err := io.ReadAll(r.Body)
 	r.Body.Close()
 	if err != nil {
@@ -181,11 +182,11 @@ func Request[TRequest proto.Message](env *TestEnv, method string, req TRequest) 
 
 func MustCall[TRespMsg any, TResponse Msg[TRespMsg], TRequest proto.Message](env *TestEnv, method string, req TRequest) TResponse {
 	t := env.t
-	t.Helper()
 	httpResp := Request(env, method, req)
 
 	if got, want := httpResp.StatusCode, http.StatusOK; got != want {
-		t.Fatalf("Got status %v [%s], want %v; body=%s", got, httpResp.Status, want, MustBody(t, httpResp))
+		body := MustBody(t, httpResp)
+		t.Fatalf("Got status %v [%s], want %v; body=%s", got, httpResp.Status, want, body)
 	}
 
 	b, err := io.ReadAll(httpResp.Body)

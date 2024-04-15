@@ -49,7 +49,6 @@
 - Rework auth workflow, esp. naming
 - Rate limit fetch from mastodon server.
 - Store statuses in stream on fetch time instead of picking time
-- Use custom type for IDs (uid, stid, asid, sid) to avoid mixing up parameters
 
 ### Tests
 - Test creation of empty DB
@@ -92,3 +91,4 @@
  - Link to mentions to own server (instead of user original server)
  - Show reblog timestamp
  - Fix width on narrow screen on status with long URLs
+ - Use custom type for IDs (uid, stid, asid, sid) to avoid mixing up parameters

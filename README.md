@@ -7,7 +7,7 @@ A Mastodon web client.
 One time:
 - Run `npm install` in `frontend/` and in `proto/`
 - Run `npm run gen` to regenerate protobuf modules
-- Run `npm run build` in `frontend` to build the frontend once 
+- Run `npm run build` in `frontend` to build the frontend once
 
 To run:
 - Start `go run main.go --alsologtostderr serve --db [DBFILE]` in `backend/` ; `--self_url http://localhost:5173` to have auth redirection.
@@ -41,7 +41,7 @@ curl --header 'Content-Type: application/json' --data '{"msg": "plop"}' http://l
 ### Release
 
 ```
-(cd proto && npm run gen ) && (cd frontend && npm run build) && (cd backend && go build) && cp -f backend/backend prod/backend
+(cd proto && npm run gen ) && (cd frontend && npm run build) && (cd backend && go build) && (cd backend && go test ./...) && cp -f backend/backend prod/backend
 ```
 
 ## Internals
