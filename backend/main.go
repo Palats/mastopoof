@@ -274,7 +274,7 @@ func cmdTestServe(ctx context.Context) error {
 		return fmt.Errorf("unable to create server state: %w", err)
 	}
 
-	userState, err := st.CreateUser(ctx, nil, serverAddr, "1234", "testuser1")
+	userState, _, _, err := st.CreateUser(ctx, nil, serverAddr, "1234", "testuser1")
 	if err != nil {
 		return fmt.Errorf("unable to create testuser: %w", err)
 	}

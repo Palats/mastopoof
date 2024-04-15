@@ -13,7 +13,7 @@ import (
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const maxSchemaVersion = 14
+const maxSchemaVersion = 15
 
 // refSchema is the database schema as if it was created from scratch. This is
 // used only for comparison with an actual schema, for consistency checking. In
@@ -25,7 +25,7 @@ const refSchema = `
 
 	-- Mastopoof user information.
 	CREATE TABLE userstate (
-		-- A unique idea for that user.
+		-- A unique id for that user.
 		uid INTEGER PRIMARY KEY,
 		-- Serialized JSON UserState
 		state TEXT NOT NULL
@@ -71,14 +71,10 @@ const refSchema = `
 		-- A unique ID.
 		sid INTEGER PRIMARY KEY AUTOINCREMENT,
 		-- The Mastopoof account that got that status.
-		-- TODO: change that to a reference to the accountstate / asid.
-		uid INTEGER NOT NULL,
+		asid INTEGER NOT NULL,
 		-- The status, serialized as JSON.
-		status TEXT NOT NULL,
-		-- The URI of that status.
-		-- TODO: goal is to largely act as a cache, so it might needed to have serverinfo+ID.
-		uri TEXT
-	);
+		status TEXT NOT NULL
+	) STRICT;
 
 	-- The actual content of a stream. In practice, this links position in the stream to a specific status.
 	CREATE TABLE "streamcontent" (
@@ -488,6 +484,55 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 			return fmt.Errorf("schema v14: unable to run %q: %w", sqlStmt, err)
+		}
+	}
+
+	if version < 15 && targetVersion >= 15 {
+		// Convert statuses to STRICT.
+		// Change uid -> asid.
+		// Remove uri.
+
+		// Verify that we're not losing statuses.
+		var beforeCount int64
+		err := txn.QueryRowContext(ctx, "SELECT COUNT(*) FROM statuses").Scan(&beforeCount)
+		if err != nil {
+			return err
+		}
+
+		sqlStmt := `
+			ALTER TABLE statuses RENAME TO statusesold;
+
+			CREATE TABLE statuses (
+				-- A unique ID.
+				sid INTEGER PRIMARY KEY AUTOINCREMENT,
+				-- The Mastopoof account that got that status.
+				asid INTEGER NOT NULL,
+				-- The status, serialized as JSON.
+				status TEXT NOT NULL
+			) STRICT;
+
+			INSERT INTO statuses (sid, asid, status)
+				SELECT
+			 		statusesold.sid,
+					accountstate.asid,
+					CAST(statusesold.status as TEXT)
+				FROM statusesold
+				JOIN accountstate USING (uid)
+			;
+
+			DROP TABLE statusesold;
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("schema v15: unable to run %q: %w", sqlStmt, err)
+		}
+
+		var afterCount int64
+		err = txn.QueryRowContext(ctx, "SELECT COUNT(*) FROM statuses").Scan(&afterCount)
+		if err != nil {
+			return err
+		}
+		if beforeCount != afterCount {
+			return fmt.Errorf("Got %d statuses after update, %d before", afterCount, beforeCount)
 		}
 	}
 

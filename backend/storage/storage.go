@@ -184,8 +184,10 @@ func (st *Storage) ListUsers(ctx context.Context) ([]*ListUserEntry, error) {
 
 // CreateUser creates a new mastopoof user, with all the necessary bit and pieces.
 // Returns the UID.
-func (st *Storage) CreateUser(ctx context.Context, txn SQLQueryable, serverAddr string, accountID mastodon.ID, username string) (*UserState, error) {
+func (st *Storage) CreateUser(ctx context.Context, txn SQLQueryable, serverAddr string, accountID mastodon.ID, username string) (*UserState, *AccountState, *StreamState, error) {
 	var userState *UserState
+	var accountState *AccountState
+	var streamState *StreamState
 	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
 		// Create the local user.
 		var err error
@@ -194,23 +196,23 @@ func (st *Storage) CreateUser(ctx context.Context, txn SQLQueryable, serverAddr 
 			return err
 		}
 		// Create the mastodon account state.
-		_, err = st.CreateAccountState(ctx, txn, userState.UID, serverAddr, string(accountID), username)
+		accountState, err = st.CreateAccountState(ctx, txn, userState.UID, serverAddr, string(accountID), username)
 		if err != nil {
 			return err
 		}
 
 		// Create a stream.
-		stID, err := st.CreateStreamState(ctx, txn, userState.UID)
+		streamState, err = st.CreateStreamState(ctx, txn, userState.UID)
 		if err != nil {
 			return err
 		}
-		userState.DefaultStID = stID
+		userState.DefaultStID = streamState.StID
 		return st.SetUserState(ctx, txn, userState)
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
-	return userState, nil
+	return userState, accountState, streamState, nil
 }
 
 func (st *Storage) serverStateKey(serverAddr string) string {
@@ -436,29 +438,27 @@ func (st *Storage) SetUserState(ctx context.Context, txn SQLQueryable, userState
 }
 
 // CreateStreamState creates a new stream for the given user and return the stream ID (stid).
-// TODO: return the stream state object.
-func (st *Storage) CreateStreamState(ctx context.Context, txn SQLQueryable, userID int64) (int64, error) {
-	var stid int64
+func (st *Storage) CreateStreamState(ctx context.Context, txn SQLQueryable, userID int64) (*StreamState, error) {
+	var streamState *StreamState
 
 	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
-		err := txn.QueryRowContext(ctx, "SELECT stid FROM streamstate ORDER BY stid LIMIT 1").Scan(&stid)
-		if err != nil && err != sql.ErrNoRows {
+		var stid sql.NullInt64
+		err := txn.QueryRowContext(ctx, "SELECT MAX(stid) FROM streamstate").Scan(&stid)
+		if err != nil {
 			return err
 		}
 
-		// Pick the largest existing (or 0) stream ID and just add one to create a new one.
-		stid += 1
-
-		stream := &StreamState{
-			StID: stid,
+		streamState = &StreamState{
+			// Pick the largest existing (or 0) stream ID and just add one to create a new one.
+			StID: stid.Int64 + 1,
 			UID:  userID,
 		}
-		return st.SetStreamState(ctx, txn, stream)
+		return st.SetStreamState(ctx, txn, streamState)
 	})
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return stid, nil
+	return streamState, nil
 }
 
 func (st *Storage) StreamState(ctx context.Context, txn SQLQueryable, stid int64) (*StreamState, error) {
@@ -531,8 +531,10 @@ func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLQueryable, s
 	}
 
 	// Remaining
-	// The `streamcontent.stid != ?` is necessary to avoid interference from other streams.
-	// TODO: document the `streamcontent.stid != ?`
+	accountState, err := st.AccountStateByUID(ctx, txn, streamState.UID)
+	if err != nil {
+		return nil, err
+	}
 	err = txn.QueryRowContext(ctx, `
 		SELECT
 			COUNT(*)
@@ -541,10 +543,11 @@ func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLQueryable, s
 			LEFT JOIN streamcontent
 			USING (sid)
 		WHERE
-			statuses.uid = ?
+			statuses.asid = ?
+			-- That match for entries in statuses which have no corresponding stream content.
 			AND streamcontent.stid IS NULL
 		;
-	`, streamState.UID).Scan(&streamState.Remaining)
+	`, accountState.ASID).Scan(&streamState.Remaining)
 	if err != nil {
 		return nil, err
 	}
@@ -628,6 +631,10 @@ func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLQueryable, stid 
 	if err != nil {
 		return fmt.Errorf("unable to get streamstate from DB: %w", err)
 	}
+	accountState, err := st.AccountStateByUID(ctx, txn, streamState.UID)
+	if err != nil {
+		return err
+	}
 
 	rows, err := txn.QueryContext(ctx, `
 		SELECT
@@ -638,10 +645,10 @@ func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLQueryable, stid 
 			USING (sid)
 		WHERE
 			streamcontent.stid = ?
-			AND statuses.uid != ?
+			AND statuses.asid != ?
 		GROUP BY
 			sid
-	`, stid, streamState.UID)
+	`, stid, accountState.ASID)
 	if err != nil {
 		return err
 	}
@@ -704,10 +711,6 @@ func (st *Storage) ClearPoolAndStream(ctx context.Context, uid int64) error {
 			return err
 		}
 
-		// Remove all statuses.
-		if _, err := txn.ExecContext(ctx, `DELETE FROM statuses WHERE uid = ?`, uid); err != nil {
-			return err
-		}
 		// Reset the fetch-from-server state.
 		accountState, err := st.AccountStateByUID(ctx, txn, uid)
 		if err != nil {
@@ -718,6 +721,10 @@ func (st *Storage) ClearPoolAndStream(ctx context.Context, uid int64) error {
 			return err
 		}
 
+		// Remove all statuses.
+		if _, err := txn.ExecContext(ctx, `DELETE FROM statuses WHERE asid = ?`, accountState.ASID); err != nil {
+			return err
+		}
 		// Remove everything from the stream.
 		stid := userState.DefaultStID
 		if _, err := txn.ExecContext(ctx, `DELETE FROM streamcontent WHERE stid = ?`, stid); err != nil {
@@ -750,7 +757,7 @@ func (st *Storage) PickNext(ctx context.Context, stid int64) (*Item, error) {
 		if err != nil {
 			return err
 		}
-		item, err = st.pickNextInTxn(ctx, streamState.UID, txn, streamState)
+		item, err = st.pickNextInTxn(ctx, txn, streamState)
 		if err != nil {
 			return err
 		}
@@ -762,7 +769,16 @@ func (st *Storage) PickNext(ctx context.Context, stid int64) (*Item, error) {
 	return item, nil
 }
 
-func (st *Storage) pickNextInTxn(ctx context.Context, uid int64, txn SQLQueryable, streamState *StreamState) (*Item, error) {
+// pickNextInTxn adds a new status from the pool to the stream.
+// It updates streamState IN PLACE.
+func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLQueryable, streamState *StreamState) (*Item, error) {
+	// TODO: remove that, as it looks it up for every pick. Should disappear when
+	// moving to inserting into the stream immediately on fetch.
+	accountState, err := st.AccountStateByUID(ctx, txn, streamState.UID)
+	if err != nil {
+		return nil, err
+	}
+
 	// List all statuses which are not listed yet in "streamcontent".
 	rows, err := txn.QueryContext(ctx, `
 		SELECT
@@ -773,10 +789,10 @@ func (st *Storage) pickNextInTxn(ctx context.Context, uid int64, txn SQLQueryabl
 			LEFT OUTER JOIN streamcontent
 			USING (sid)
 		WHERE
-			statuses.uid = ?
+			statuses.asid = ?
 			AND streamcontent.sid IS NULL
 		;
-	`, uid)
+	`, accountState.ASID)
 	if err != nil {
 		return nil, err
 	}
@@ -1013,7 +1029,7 @@ func (st *Storage) ListForward(ctx context.Context, stid int64, refPosition int6
 		for len(result.Items) < maxCount {
 			// If we're here, it means we've reached the end of the current stream,
 			// so we need to try to inject new items.
-			ost, err := st.pickNextInTxn(ctx, stid, txn, streamState)
+			ost, err := st.pickNextInTxn(ctx, txn, streamState)
 			if err != nil {
 				return err
 			}
@@ -1033,33 +1049,25 @@ func (st *Storage) ListForward(ctx context.Context, stid int64, refPosition int6
 }
 
 // InsertStatuses add the given statuses to the user storage.
-// It does not update other info.
-func (st *Storage) InsertStatuses(ctx context.Context, txn SQLQueryable, uid int64, statuses []*mastodon.Status) (*StreamState, error) {
+// It updates `streamState` IN PLACE.
+func (st *Storage) InsertStatuses(ctx context.Context, txn SQLQueryable, asid int64, streamState *StreamState, statuses []*mastodon.Status) error {
 	for _, status := range statuses {
-		jsonString, err := json.Marshal(status)
+		jsonBytes, err := json.Marshal(status)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		// TODO: batching
-		stmt := `INSERT INTO statuses(uid, uri, status) VALUES(?, ?, ?)`
-		_, err = txn.ExecContext(ctx, stmt, uid, status.URI, jsonString)
+		stmt := `INSERT INTO statuses(asid, status) VALUES(?, ?)`
+		_, err = txn.ExecContext(ctx, stmt, asid, string(jsonBytes))
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 
 	// Keep stats up-to-date for the stream.
-	userState, err := st.UserState(ctx, txn, uid)
-	if err != nil {
-		return nil, err
-	}
-	streamState, err := st.StreamState(ctx, txn, userState.DefaultStID)
-	if err != nil {
-		return nil, err
-	}
 	streamState.Remaining += int64(len(statuses))
 	if err := st.SetStreamState(ctx, txn, streamState); err != nil {
-		return nil, err
+		return err
 	}
-	return streamState, nil
+	return nil
 }

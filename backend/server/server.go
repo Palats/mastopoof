@@ -254,15 +254,9 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 			// No mastodon account - and the way to find actual user is through the mastodon
 			// account, so it means we need to create a user and then we can create
 			// the mastodon account state.
-			userState, err := s.st.CreateUser(ctx, txn, serverAddr, accountID, username)
+			userState, accountState, _, err = s.st.CreateUser(ctx, txn, serverAddr, accountID, username)
 			if err != nil {
 				return err
-			}
-
-			// And load the account state properly now it is created.
-			accountState, err = s.st.AccountStateByUID(ctx, txn, userState.UID)
-			if err != nil {
-				return fmt.Errorf("unable to re-read account state: %w", err)
 			}
 		} else if err != nil {
 			return err
@@ -421,6 +415,8 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		}
 		uid := streamState.UID
 
+		// For support for having multiple Mastodon account, this would
+		// need to list the accounts and do the fetching from each account.
 		accountState, err := s.st.AccountStateByUID(ctx, txn, uid)
 		if err != nil {
 			return err
@@ -499,9 +495,8 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 			return err
 		}
 
-		// TODO: mess of stream state - there is another version above.
-		streamState, err = s.st.InsertStatuses(ctx, txn, uid, timeline)
-		if err != nil {
+		// InsertStatuses updates streamState IN PLACE.
+		if err := s.st.InsertStatuses(ctx, txn, accountState.ASID, streamState, timeline); err != nil {
 			return err
 		}
 		resp.StreamInfo = streamState.ToStreamInfo()

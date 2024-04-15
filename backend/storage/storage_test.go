@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/Palats/mastopoof/backend/mastodon/testserver"
@@ -134,6 +135,7 @@ type DBTestEnv struct {
 }
 
 func (env *DBTestEnv) Init(ctx context.Context, t testing.TB) *DBTestEnv {
+	t.Helper()
 	var err error
 	env.db, err = sql.Open("sqlite3", ":memory:")
 	if err != nil {
@@ -283,24 +285,25 @@ func TestNoCrossUserStatuses(t *testing.T) {
 	env := (&DBTestEnv{}).Init(ctx, t)
 
 	// Create a user and add some statuses.
-	userState1, err := env.st.CreateUser(ctx, nil, "localhost", "123", "user1")
+	_, accountState1, streamState1, err := env.st.CreateUser(ctx, nil, "localhost", "123", "user1")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	var statuses []*mastodon.Status
 	for i := int64(0); i < 10; i++ {
 		statuses = append(statuses, testserver.NewFakeStatus(mastodon.ID(strconv.FormatInt(i+10, 10)), "123"))
 	}
-	env.st.InsertStatuses(ctx, env.db, userState1.UID, statuses)
+	env.st.InsertStatuses(ctx, env.db, accountState1.ASID, streamState1, statuses)
 
 	// Create a second user
-	userState2, err := env.st.CreateUser(ctx, nil, "localhost", "456", "user2")
+	_, _, streamState2, err := env.st.CreateUser(ctx, nil, "localhost", "456", "user2")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Try to pick some statuses for user 2.
-	item, err := env.st.PickNext(ctx, userState2.DefaultStID)
+	item, err := env.st.PickNext(ctx, streamState2.StID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +316,7 @@ func TestPick(t *testing.T) {
 	ctx := context.Background()
 	env := (&DBTestEnv{}).Init(ctx, t)
 
-	userState1, err := env.st.CreateUser(ctx, nil, "localhost", "123", "user1")
+	_, accountState1, streamState1, err := env.st.CreateUser(ctx, nil, "localhost", "123", "user1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,12 +324,12 @@ func TestPick(t *testing.T) {
 	for i := int64(0); i < 4; i++ {
 		statuses = append(statuses, testserver.NewFakeStatus(mastodon.ID(strconv.FormatInt(i+10, 10)), "123"))
 	}
-	env.st.InsertStatuses(ctx, env.db, userState1.UID, statuses)
+	env.st.InsertStatuses(ctx, env.db, accountState1.ASID, streamState1, statuses)
 
 	// Make sure the statuses that were inserted are available.
 	foundIDs := map[mastodon.ID]int{}
 	for i := 0; i < len(statuses); i++ {
-		item, err := env.st.PickNext(ctx, userState1.DefaultStID)
+		item, err := env.st.PickNext(ctx, streamState1.StID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -343,11 +346,80 @@ func TestPick(t *testing.T) {
 	}
 
 	// But no more.
-	item, err := env.st.PickNext(ctx, userState1.DefaultStID)
+	item, err := env.st.PickNext(ctx, streamState1.StID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if item != nil {
 		t.Errorf("Got status ID %v, while none was expected", item.Status.ID)
+	}
+}
+
+// TestV14ToV15 verifies statuses conversion to strict
+// and change of uid->asid.
+func TestV14ToV15(t *testing.T) {
+	ctx := context.Background()
+
+	// Prepare at version 14
+	env := (&DBTestEnv{
+		targetVersion: 14,
+		// Insert some dummy data that will need to be converted
+		// JSON content is likely written as []byte, thus producing BLOB
+		// value - so also test that.
+		sqlInit: `
+			INSERT INTO statuses (sid, uid, status, uri) VALUES
+				(2, 4, '{"id": "234"}', 'uri1'),
+				(3, 4, CAST('{"id": "465"}' as BLOB), 'uri1')
+			;
+		`,
+	}).Init(ctx, t)
+
+	// Try update to last version.
+	// There is no user defined, so it should fine to do the uid->asid conversion.
+	if got, want := prepareDB(ctx, env.db, maxSchemaVersion), "after update"; !strings.Contains(got.Error(), want) {
+		t.Errorf("Got error '%v', but needed error about missing statuses", got)
+	}
+
+	_, err := env.st.CreateAccountState(ctx, nil, 4, "localhost", "123", "user1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestCreateStateStateIncreases verifies that stream IDs
+// are not accidently reused.
+func TestCreateStreamStateIncreases(t *testing.T) {
+	ctx := context.Background()
+
+	// Prepare at version 14
+	env := (&DBTestEnv{}).Init(ctx, t)
+
+	seenUIDs := map[int64]bool{}
+	seenASIDs := map[int64]bool{}
+	seenStIDs := map[int64]bool{}
+	for i := 1; i < 5; i++ {
+		userState, accountState, streamState, err := env.st.CreateUser(ctx, nil, "localhost", mastodon.ID(fmt.Sprintf("%d", i)), fmt.Sprintf("user%d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if seenUIDs[userState.UID] {
+			t.Errorf("duplicate UID %d", userState.UID)
+		}
+		seenUIDs[userState.UID] = true
+
+		if seenASIDs[accountState.ASID] {
+			t.Errorf("duplicate ASID %d", accountState.ASID)
+		}
+		seenASIDs[accountState.ASID] = true
+
+		if seenStIDs[streamState.StID] {
+			t.Errorf("duplicate StID %d", streamState.StID)
+		}
+		seenStIDs[streamState.StID] = true
 	}
 }
