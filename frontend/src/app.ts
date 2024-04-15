@@ -590,6 +590,7 @@ function expandEmojis(msg: string, emojis?: mastodon.CustomEmoji[]): TemplateRes
         img.setAttribute('class', 'emoji');
         img.setAttribute('src', emoji.url);
         img.setAttribute('alt', `emoji ${emoji.shortcode}`);
+        img.setAttribute('title', `emoji ${emoji.shortcode}`);
         parent.insertBefore(doc.createTextNode(txt.substring(prevMatchEnd, match.index)), node)
         parent.insertBefore(img, node);
         prevMatchEnd = match.index + match[0].length;
