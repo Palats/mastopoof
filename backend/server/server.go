@@ -126,7 +126,7 @@ func (s *Server) Logout(ctx context.Context, req *connect.Request[pb.LogoutReque
 func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.AuthorizeRequest]) (*connect.Response[pb.AuthorizeResponse], error) {
 	if s.inviteCode != "" {
 		if req.Msg.InviteCode != s.inviteCode {
-			return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("Invalid invite code"))
+			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("invalid invite code"))
 		}
 		// TODO: make it less hacky
 		s.sessionManager.Put(ctx, "invitecheck", true)
@@ -387,7 +387,7 @@ func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadReq
 				streamState.LastRead = requestedValue
 			}
 		default:
-			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("Invalid SetRead mode %v", req.Msg.Mode))
+			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid SetRead mode %v", req.Msg.Mode))
 		}
 
 		if streamState.LastRead != oldValue {
