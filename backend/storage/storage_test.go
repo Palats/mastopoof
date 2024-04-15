@@ -422,3 +422,25 @@ func TestCreateStreamStateIncreases(t *testing.T) {
 		seenStIDs[streamState.StID] = true
 	}
 }
+
+// TestV15ToV16 verifies streamcontent conversion to strict.
+func TestV15ToV16(t *testing.T) {
+	ctx := context.Background()
+
+	env := (&DBTestEnv{
+		targetVersion: 15,
+		// Insert some dummy data that will need to be converted
+		// JSON content is likely written as []byte, thus producing BLOB
+		// value - so also test that.
+		sqlInit: `
+			INSERT INTO streamcontent (stid, sid, position) VALUES
+				(1, 2, 42),
+				(2, 3, 43)
+			;
+		`,
+	}).Init(ctx, t)
+
+	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
+		t.Fatal(err)
+	}
+}

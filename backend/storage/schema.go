@@ -13,7 +13,7 @@ import (
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const maxSchemaVersion = 15
+const maxSchemaVersion = 16
 
 // refSchema is the database schema as if it was created from scratch. This is
 // used only for comparison with an actual schema, for consistency checking. In
@@ -80,10 +80,8 @@ const refSchema = `
 	CREATE TABLE "streamcontent" (
 		stid INTEGER NOT NULL,
 		sid INTEGER NOT NULL,
-		-- TODO: make that support NULL, so statuses are injected in stream content
-		-- when fetched.
-		position INTEGER NOT NULL
-	);
+		position INTEGER
+	) STRICT;
 `
 
 type UID int64
@@ -539,6 +537,29 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 		}
 		if beforeCount != afterCount {
 			return fmt.Errorf("got %d statuses after update, %d before", afterCount, beforeCount)
+		}
+	}
+
+	if version < 16 && targetVersion >= 16 {
+		// Convert streamcontent to STRICT and remove NOT NULL on `position`.
+
+		sqlStmt := `
+			ALTER TABLE streamcontent RENAME TO streamcontentold;
+
+			-- The actual content of a stream. In practice, this links position in the stream to a specific status.
+			CREATE TABLE "streamcontent" (
+				stid INTEGER NOT NULL,
+				sid INTEGER NOT NULL,
+				position INTEGER
+			) STRICT;
+
+			INSERT INTO streamcontent (stid, sid, position)
+				SELECT stid, sid, position FROM streamcontentold;
+
+			DROP TABLE streamcontentold;
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("schema v16: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 
