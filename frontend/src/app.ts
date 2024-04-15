@@ -549,6 +549,12 @@ function localStatusURL(item: StatusItem): string {
   return `${item.account.serverAddr}/@${item.status.account.acct}/${item.status.id}`;
 }
 
+/**
+ * Expands messages to resolve custom emojis to their images.
+ * TODO add a flag to disable HTML interpretation when needed (for instance for people names)
+ * @param msg content in which to resolve emojis, interpreted as HTML
+ * @param emojis emoji mapping
+ */
 function expandEmojis(msg: string, emojis?: mastodon.CustomEmoji[]): TemplateResult {
   if (!emojis || emojis.length === 0) {
     return html`${unsafeHTML(msg)}`;
@@ -559,6 +565,7 @@ function expandEmojis(msg: string, emojis?: mastodon.CustomEmoji[]): TemplateRes
     perCode.set(emoji.shortcode, emoji);
   }
 
+  // TODO escape emoji short codes for regexs
   const emojiregex = new RegExp(`:(${Array.from(perCode.keys()).join('|')}):`, 'g');
   const doc = (new DOMParser).parseFromString(msg, "text/html");
   const treeWalker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
@@ -569,6 +576,7 @@ function expandEmojis(msg: string, emojis?: mastodon.CustomEmoji[]): TemplateRes
   for (const node of textNodes) {
     const parent = node.parentNode;
     if (!parent) {
+      // can't happen because body is at least parent, so let's soothe TS with that
       continue;
     }
     const txt = node.textContent || '';
