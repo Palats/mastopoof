@@ -549,9 +549,15 @@ function localStatusURL(item: StatusItem): string {
   return `${item.account.serverAddr}/@${item.status.account.acct}/${item.status.id}`;
 }
 
+/**
+ * Expands messages to resolve custom emojis to their images.
+ * TODO: add a flag to disable HTML interpretation when needed (for instance for people names)
+ * @param msg content in which to resolve emojis, interpreted as HTML
+ * @param emojis emoji mapping
+ */
 function expandEmojis(msg: string, emojis?: mastodon.CustomEmoji[]): TemplateResult {
-  if (!emojis) {
-    return html`${msg}`;
+  if (!emojis || emojis.length === 0) {
+    return html`${unsafeHTML(msg)}`;
   }
 
   const perCode = new Map<string, mastodon.CustomEmoji>();
@@ -559,21 +565,42 @@ function expandEmojis(msg: string, emojis?: mastodon.CustomEmoji[]): TemplateRes
     perCode.set(emoji.shortcode, emoji);
   }
 
-  const parts = msg.split(/:([^:]+):/);
-  const result: TemplateResult[] = [];
-  for (let i = 0; i < parts.length; i += 2) {
-    result.push(html`${parts[i]}`);
-    if (i + 1 < parts.length) {
-      const code = parts[i + 1];
+  // TODO escape emoji short codes for regexs
+  const emojiregex = new RegExp(`:(${Array.from(perCode.keys()).join('|')}):`, 'g');
+  const doc = (new DOMParser).parseFromString(msg, "text/html");
+  const treeWalker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  var textNodes = [];
+  while (treeWalker.nextNode()) {
+    textNodes.push(treeWalker.currentNode);
+  }
+  for (const node of textNodes) {
+    const parent = node.parentNode;
+    if (!parent) {
+      // can't happen because body is at least parent, so let's soothe TS with that
+      continue;
+    }
+    const txt = node.textContent || '';
+    const matches = txt.matchAll(emojiregex) || [];
+    var prevMatchEnd = 0;
+    for ( const match of matches ) {
+      const code = match[1];
       const emoji = perCode.get(code);
       if (emoji) {
-        result.push(html`<img class="emoji" src="${emoji.url}" alt="emoji: ${emoji.shortcode}"></img>`);
-      } else {
-        result.push(html`:${code}:`);
+        const img = doc.createElement('img');
+        img.setAttribute('class', 'emoji');
+        img.setAttribute('src', emoji.url);
+        img.setAttribute('alt', `emoji ${emoji.shortcode}`);
+        parent.insertBefore(doc.createTextNode(txt.substring(prevMatchEnd, match.index)), node)
+        parent.insertBefore(img, node);
+        prevMatchEnd = match.index + match[0].length;
       }
     }
+    parent.insertBefore(doc.createTextNode(txt.substring(prevMatchEnd)), node);
+    parent.removeChild(node);
   }
-  return html`${result}`;
+  const result = doc.body.innerHTML;
+
+  return html`${unsafeHTML(result)}`;
 }
 
 @customElement('mast-status')
@@ -666,7 +693,7 @@ export class MastStatus extends LitElement {
           </div>
         `: nothing}
         <div class="content">
-          ${unsafeHTML(s.content)}
+          ${expandEmojis(s.content, s.emojis)}
         </div>
         <div class="attachments">
           ${attachments}
