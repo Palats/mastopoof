@@ -551,7 +551,7 @@ function localStatusURL(item: StatusItem): string {
 
 /**
  * Expands messages to resolve custom emojis to their images.
- * TODO add a flag to disable HTML interpretation when needed (for instance for people names)
+ * TODO: add a flag to disable HTML interpretation when needed (for instance for people names)
  * @param msg content in which to resolve emojis, interpreted as HTML
  * @param emojis emoji mapping
  */
