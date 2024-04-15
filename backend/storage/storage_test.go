@@ -79,7 +79,7 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 	// And for each tables, find all the columns.
 	schemaDB := &SchemaDB{}
 	for _, tableName := range tableNames {
-		query := fmt.Sprintf(`
+		query := `
 			SELECT
 				cid,
 				name,
@@ -91,8 +91,7 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 				pragma_table_info(?)
 			ORDER BY
 				name
-		`)
-
+		`
 		columnsRows, err := db.QueryContext(ctx, query, tableName)
 		if err != nil {
 			return nil, fmt.Errorf("unable to get columns info for %s: %w", tableName, err)

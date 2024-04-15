@@ -254,7 +254,7 @@ func cmdCheckStreamState(ctx context.Context, st *storage.Storage, stid storage.
 		}
 
 		fmt.Println("Dry run, ignoring changes")
-		return storage.CleanAbortTxn
+		return storage.ErrCleanAbortTxn
 	})
 }
 

@@ -95,9 +95,9 @@ func (st *Storage) redirectURI(serverAddr string) string {
 	return u.String()
 }
 
-// CleanAbortTxn signals that the transaction must not be committed, but that it
+// ErrCleanAbortTxn signals that the transaction must not be committed, but that it
 // is not an error.
-var CleanAbortTxn = errors.New("transaction cancellation requested")
+var ErrCleanAbortTxn = errors.New("transaction cancellation requested")
 
 // InTxn runs the provided code in a DB transaction.
 // If `f` returns an error matching `CleanAbortTxn` (using `errors.Is`), the transaction is rolledback, but InTxn return nil
@@ -125,7 +125,7 @@ func (st *Storage) inTxn(ctx context.Context, txn SQLQueryable, f func(ctx conte
 	defer localTxn.Rollback()
 
 	err = f(ctx, localTxn)
-	if errors.Is(err, CleanAbortTxn) {
+	if errors.Is(err, ErrCleanAbortTxn) {
 		return nil
 	}
 	if err != nil {

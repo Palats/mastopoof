@@ -538,7 +538,7 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 			return err
 		}
 		if beforeCount != afterCount {
-			return fmt.Errorf("Got %d statuses after update, %d before", afterCount, beforeCount)
+			return fmt.Errorf("got %d statuses after update, %d before", afterCount, beforeCount)
 		}
 	}
 
