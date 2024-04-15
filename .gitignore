@@ -7,3 +7,5 @@ proto/gen/
 prod/
 # sqlite files
 backend/*.db
+# backend built binary
+backend/backend

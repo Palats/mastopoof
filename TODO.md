@@ -64,6 +64,7 @@
  - Show button to scroll down to current unread
  - No-connect mode: do not allow any mastodon server query
  - Something to mark everything as read - go to the bottom
+ - "database is locked" - retry transactions
 
 ### Done
  - header/footer are confusing compared to the posts
