@@ -13,7 +13,7 @@ import (
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const maxSchemaVersion = 16
+const maxSchemaVersion = 17
 
 // refSchema is the database schema as if it was created from scratch. This is
 // used only for comparison with an actual schema, for consistency checking. In
@@ -560,6 +560,27 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 			return fmt.Errorf("schema v16: unable to run %q: %w", sqlStmt, err)
+		}
+	}
+
+	if version < 17 && targetVersion >= 17 {
+		// Change stream management - directly insert in streamcontent, but without position.
+		sqlStmt := `
+			INSERT INTO streamcontent (stid, sid)
+				SELECT
+					json_extract(userstate.state, "$.default_stid"),
+					statuses.sid
+				FROM
+					statuses
+					LEFT OUTER JOIN streamcontent USING (sid)
+					JOIN accountstate USING (asid)
+					JOIN userstate USING (uid)
+				WHERE
+					streamcontent.sid IS NULL
+			;
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("schema v17: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 

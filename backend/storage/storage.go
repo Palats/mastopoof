@@ -530,23 +530,16 @@ func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLQueryable, s
 	}
 
 	// Remaining
-	accountState, err := st.AccountStateByUID(ctx, txn, streamState.UID)
-	if err != nil {
-		return nil, err
-	}
 	err = txn.QueryRowContext(ctx, `
 		SELECT
 			COUNT(*)
 		FROM
-			statuses
-			LEFT JOIN streamcontent
-			USING (sid)
+			streamcontent
 		WHERE
-			statuses.asid = ?
-			-- That match for entries in statuses which have no corresponding stream content.
-			AND streamcontent.stid IS NULL
+			stid = ?
+			AND position IS NULL
 		;
-	`, accountState.ASID).Scan(&streamState.Remaining)
+	`, stid).Scan(&streamState.Remaining)
 	if err != nil {
 		return nil, err
 	}
@@ -771,27 +764,19 @@ func (st *Storage) PickNext(ctx context.Context, stid StID) (*Item, error) {
 // pickNextInTxn adds a new status from the pool to the stream.
 // It updates streamState IN PLACE.
 func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLQueryable, streamState *StreamState) (*Item, error) {
-	// TODO: remove that, as it looks it up for every pick. Should disappear when
-	// moving to inserting into the stream immediately on fetch.
-	accountState, err := st.AccountStateByUID(ctx, txn, streamState.UID)
-	if err != nil {
-		return nil, err
-	}
-
 	// List all statuses which are not listed yet in "streamcontent".
 	rows, err := txn.QueryContext(ctx, `
 		SELECT
-			statuses.sid,
+			streamcontent.sid,
 			statuses.status
 		FROM
-			statuses
-			LEFT OUTER JOIN streamcontent
-			USING (sid)
+			streamcontent
+			JOIN statuses USING (sid)
 		WHERE
-			statuses.asid = ?
-			AND streamcontent.sid IS NULL
+			streamcontent.position IS NULL
+			AND streamcontent.stid = ?
 		;
-	`, accountState.ASID)
+	`, streamState.StID)
 	if err != nil {
 		return nil, err
 	}
@@ -857,9 +842,9 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLQueryable, streamSt
 		return nil, err
 	}
 
-	// Insert the newly selected status in the stream.
-	stmt := `INSERT INTO streamcontent(stid, sid, position) VALUES(?, ?, ?);`
-	_, err = txn.ExecContext(ctx, stmt, streamState.StID, selectedID, position)
+	// Set the position for the stream.
+	stmt := `UPDATE streamcontent SET position = ? WHERE stid = ? AND sid = ?;`
+	_, err = txn.ExecContext(ctx, stmt, position, streamState.StID, selectedID)
 	if err != nil {
 		return nil, err
 	}
@@ -1056,8 +1041,13 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLQueryable, asid AS
 			return err
 		}
 		// TODO: batching
-		stmt := `INSERT INTO statuses(asid, status) VALUES(?, ?)`
-		_, err = txn.ExecContext(ctx, stmt, asid, string(jsonBytes))
+
+		// Insert in the statuses cache.
+		stmt := `
+			INSERT INTO statuses(asid, status) VALUES(?, ?);
+			INSERT INTO streamcontent(stid, sid) VALUES(?, last_insert_rowid());
+		`
+		_, err = txn.ExecContext(ctx, stmt, asid, string(jsonBytes), streamState.StID)
 		if err != nil {
 			return err
 		}

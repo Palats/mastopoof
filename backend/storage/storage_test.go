@@ -444,3 +444,49 @@ func TestV15ToV16(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestV16ToV17(t *testing.T) {
+	ctx := context.Background()
+
+	env := (&DBTestEnv{
+		targetVersion: 16,
+		sqlInit: `
+			INSERT INTO userstate (uid, state) VALUES
+				(1, "{'default_stid': 2}")
+			;
+
+			INSERT INTO accountstate (uid, asid, state) VALUES
+				(1, 3, "")
+			;
+
+			INSERT INTO statuses (sid, asid, status) VALUES
+			    (1, 3, ""),
+				(2, 3, ""),
+				(3, 3, ""),
+				(4, 3, ""),
+				(5, 4, "")
+			;
+
+			INSERT INTO streamcontent (stid, sid, position) VALUES
+				(2, 1, 42),
+				(2, 2, 43)
+			;
+		`,
+	}).Init(ctx, t)
+
+	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
+		t.Fatal(err)
+	}
+
+	var got int64
+	err := env.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM streamcontent WHERE stid = 2`,
+	).Scan(&got)
+	if err == sql.ErrNoRows {
+		t.Fatal(err)
+	}
+
+	if got != 4 {
+		t.Errorf("Got %d statuses, expected 4", got)
+	}
+}
