@@ -29,6 +29,7 @@
 ### Frontend
  - Split each element class
  - Detect when "last-read" has been updating in background, and indicate in the UI that something needs to be done.
+ - Remove Content-Security-Policy / CSP 'unsafe-inline'. This is necessary to make `css?inline` sources from Vite working, and not clear what the solution is.
 
 ### Status Ordering
  - Remove redundant reblogs
