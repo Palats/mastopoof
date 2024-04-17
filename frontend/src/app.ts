@@ -661,6 +661,15 @@ export class MastStatus extends LitElement {
       }
     }
 
+    const poll: TemplateResult[] = [];
+    if ( s.poll ) {
+      for (const option of s.poll.options) {
+        poll.push(html`
+            <div class="poll-option"><input type="radio" disabled>${option.title}</input></div>
+        `);
+      }
+    }
+
     // Main created time is the time of the status or of the reblog content
     // if the status is a reblog.
     const createdTime = dayjs(s.created_at);
@@ -696,6 +705,9 @@ export class MastStatus extends LitElement {
         `: nothing}
         <div class="content">
           ${expandEmojis(s.content, s.emojis)}
+        </div>
+        <div class="poll">
+          ${poll}
         </div>
         <div class="attachments">
           ${attachments}

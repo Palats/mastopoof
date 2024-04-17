@@ -17,7 +17,7 @@
  - Allow configuration of automated loading
  - Notifications
  - Missing preview of URLs (when no other media in status)
- - Show polls
+ - Improve polls look
  - Improve URL look (removing https://, etc.)
  - Threading/replies
  - See full size picture
