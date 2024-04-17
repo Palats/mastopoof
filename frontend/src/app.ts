@@ -666,7 +666,7 @@ export class MastStatus extends LitElement {
       for (const option of s.poll.options) {
         poll.push(html`
             <div class="poll-option"><input type="radio" disabled>${option.title}</input></div>
-        `)
+        `);
       }
     }
 
