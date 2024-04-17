@@ -46,6 +46,8 @@ curl --header 'Content-Type: application/json' --data '{"msg": "plop"}' http://l
 
 ## Internals
 
+TODO list: https://docs.google.com/document/d/1kZr_tJOGbRPnZA6SY0Qi90IKAWfBZL69N-KKmfTGpcs/edit?usp=sharing
+
 ### Database
 
 - serverstate
