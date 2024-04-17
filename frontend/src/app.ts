@@ -682,7 +682,7 @@ export class MastStatus extends LitElement {
           <span>
             <span class="timestamp" title="${createdTimeLabel}">${createdTime.fromNow()}</span>
             <a href=${openTarget} target="_blank"><span class="material-symbols-outlined" title="Open status">open_in_new</span></a>
-            <a href=${this.item.status.url} target="_blank"><span class="material-symbols-outlined" title="Open status on original server">travel_explore</span></a>
+            <a href=${s.url} target="_blank"><span class="material-symbols-outlined" title="Open status on original server">travel_explore</span></a>
           </span>
         </div>
         ${!!reblog ? html`
