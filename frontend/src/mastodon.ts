@@ -102,7 +102,23 @@ export interface CustomEmoji {
 }
 
 // https://docs.joinmastodon.org/entities/Poll/
-export interface Poll { }
+export interface Poll {
+    id: string;
+    expires_at: string | null;
+    expired: boolean;
+    multiple: boolean;
+    voters_count: number | null;
+    options: PollOption[];
+    emojis: CustomEmoji[];
+    voted?: boolean;
+    own_votes?: number[];
+}
+
+// https://docs.joinmastodon.org/entities/Poll/#Option
+export interface PollOption {
+    title: string;
+    votes_count: number | null;
+}
 
 // https://docs.joinmastodon.org/entities/PreviewCard/
 export interface PreviewCard { }

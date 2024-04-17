@@ -661,6 +661,15 @@ export class MastStatus extends LitElement {
       }
     }
 
+    const poll: TemplateResult[] = [];
+    if ( s.poll ) {
+      for (const option of s.poll.options) {
+        poll.push(html`
+            <div class="poll-option"><input type="radio" disabled>${option.title}</input></div>
+        `)
+      }
+    }
+
     // Main created time is the time of the status or of the reblog content
     // if the status is a reblog.
     const createdTime = dayjs(s.created_at);
@@ -671,6 +680,7 @@ export class MastStatus extends LitElement {
     const reblogTimeLabel = `${displayTimezone}: ${reblogTime.tz(displayTimezone).format()}\nSource: ${this.item.status.created_at}`;
 
     const openTarget = localStatusURL(this.item);
+    const hasPoll = s.poll !== null;
 
     return html`
       <div class="status bg-blue-800 ${classMap({ read: this.isRead, unread: !this.isRead })}">
@@ -696,6 +706,9 @@ export class MastStatus extends LitElement {
         `: nothing}
         <div class="content">
           ${expandEmojis(s.content, s.emojis)}
+        </div>
+        <div class="poll">
+          ${poll}
         </div>
         <div class="attachments">
           ${attachments}
