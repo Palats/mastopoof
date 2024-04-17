@@ -680,7 +680,6 @@ export class MastStatus extends LitElement {
     const reblogTimeLabel = `${displayTimezone}: ${reblogTime.tz(displayTimezone).format()}\nSource: ${this.item.status.created_at}`;
 
     const openTarget = localStatusURL(this.item);
-    const hasPoll = s.poll !== null;
 
     return html`
       <div class="status bg-blue-800 ${classMap({ read: this.isRead, unread: !this.isRead })}">
