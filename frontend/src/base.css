@@ -85,6 +85,10 @@ button {
     align-items: center;
 }
 
+.hidden {
+    visibility: hidden;
+}
+
 .emoji {
     max-width: 16px;
     max-height: 16px;

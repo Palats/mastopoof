@@ -116,10 +116,12 @@ export class MastStream extends LitElement {
   // Status with the highest position value which is partially visible on the
   // screen.
   @state() private lastVisiblePosition?: bigint;
-
   @state() private streamInfo?: pb.StreamInfo;
-
   @state() private showMenu = false;
+  // Count the number of reasons why the loading bar should be shown.
+  // This allows to have multiple things loading, while avoiding having
+  // the first one finishing removing the loading bar.
+  @state() private loadingBarUsers = 0;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -238,7 +240,14 @@ export class MastStream extends LitElement {
     if (this.items.length > 0) {
       position = this.items[this.items.length - 1].position;
     }
-    const resp = await backend.list({ stid: stid, position: position, direction: pb.ListRequest_Direction.FORWARD })
+
+    let resp: pb.ListResponse;
+    try {
+      this.loadingBarUsers++;
+      resp = await backend.list({ stid: stid, position: position, direction: pb.ListRequest_Direction.FORWARD })
+    } finally {
+      this.loadingBarUsers--;
+    }
 
     for (let i = 0; i < resp.items.length; i++) {
       const item = resp.items[i];
@@ -264,7 +273,12 @@ export class MastStream extends LitElement {
       throw new Error("missing stream id");
     }
     console.log("Fetching...");
-    await backend.fetch(stid);
+    try {
+      this.loadingBarUsers++;
+      await backend.fetch(stid);
+    } finally {
+      this.loadingBarUsers--;
+    }
     this.loadNext();
   }
 
@@ -342,9 +356,9 @@ export class MastStream extends LitElement {
             ${this.renderStreamContent()}
           </div>
           <div class="footer">
-            <div class="footercontent centered">
-              ${remaining}
-
+            <div class="footercontent">
+              <div class=${classMap({ loadingbar: true, hidden: this.loadingBarUsers <= 0 })}></div>
+              <div class="centered">${remaining}</div>
             </div>
           </div>
         </div>
@@ -486,12 +500,31 @@ export class MastStream extends LitElement {
 
       display: grid;
       grid-template-rows: 1fr;
-    }
-    .footercontent {
-      background-color: #f7fdff;
+
       border-top-style: double;
       border-top-width: 3px;
-      padding: 8px;
+    }
+
+    .footercontent {
+      background-color: #f7fdff;
+      padding: 5px;
+      box-sizing: border-box;
+    }
+
+    .loadingbar {
+      width: 10%;
+      height: 3px;
+      position: relative;
+      /* Alignement is related to footercontent padding, and
+         footer border-top-width*/
+      top: -8px;
+      background-color: #000000;
+      animation: loadinganim 2s infinite linear;
+    }
+    @keyframes loadinganim {
+      0% { transform:  translateX(0); }
+      50% { transform:  translateX(900%); }
+      100% { transform:  translateX(0%); }
     }
 
     .content {
@@ -582,7 +615,7 @@ function expandEmojis(msg: string, emojis?: mastodon.CustomEmoji[]): TemplateRes
     const txt = node.textContent || '';
     const matches = txt.matchAll(emojiregex) || [];
     var prevMatchEnd = 0;
-    for ( const match of matches ) {
+    for (const match of matches) {
       const code = match[1];
       const emoji = perCode.get(code);
       if (emoji) {
@@ -662,7 +695,7 @@ export class MastStatus extends LitElement {
     }
 
     const poll: TemplateResult[] = [];
-    if ( s.poll ) {
+    if (s.poll) {
       for (const option of s.poll.options) {
         poll.push(html`
             <div class="poll-option"><input type="radio" disabled>${option.title}</input></div>
