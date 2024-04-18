@@ -17,25 +17,6 @@ import (
 	"github.com/golang/glog"
 )
 
-func cmpStatusID(s1 *mastodon.Status, s2 *mastodon.Status) int {
-	// TODO: that's horribly inefficient, should be maintained with the status.
-	id1, err := strconv.ParseInt(string(s1.ID), 10, 64)
-	if err != nil {
-		panic(err)
-	}
-	id2, err := strconv.ParseInt(string(s2.ID), 10, 64)
-	if err != nil {
-		panic(err)
-	}
-	if id1 < id2 {
-		return -1
-	}
-	if id1 > id2 {
-		return 1
-	}
-	return 0
-}
-
 func parseID(statusID mastodon.ID) (int64, error) {
 	id, err := strconv.ParseInt(string(statusID), 10, 64)
 	if err != nil {
@@ -104,6 +85,8 @@ type Server struct {
 	items []*Item
 	// To differentiate between each fake status being added.
 	fakeCounter int64
+	// Introduce a waiting delay before answering listing statuses.
+	listDelay time.Duration
 }
 
 func New() *Server {
@@ -138,6 +121,12 @@ func (s *Server) addStatus(status *mastodon.Status) error {
 	}
 	s.items = slices.Insert(s.items, idx, item)
 	return nil
+}
+
+func (s *Server) SetListDelay(delay time.Duration) {
+	s.m.Lock()
+	s.listDelay = delay
+	s.m.Unlock()
 }
 
 func (s *Server) AddJSONStatuses(statusesFS fs.FS) error {
@@ -254,6 +243,14 @@ func (s *Server) serverAPIAccountsVerifyCredentials(w http.ResponseWriter, req *
 
 // https://docs.joinmastodon.org/methods/timelines/#home
 func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request) {
+	s.m.Lock()
+	delay := s.listDelay
+	s.m.Unlock()
+	if delay > 0 {
+		glog.Infof("list delay: %v", delay)
+		time.Sleep(delay)
+	}
+
 	s.m.Lock()
 	defer s.m.Unlock()
 

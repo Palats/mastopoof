@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/c-bata/go-prompt"
 	"github.com/davecgh/go-spew/spew"
@@ -345,6 +346,17 @@ func cmdTestServe(ctx context.Context) error {
 					ts.AddFakeStatus()
 				}
 				fmt.Printf("Added %d fake statuses.\n", count)
+			case "set-list-delay":
+				if len(args) != 1 {
+					fmt.Printf("One parameter needed to specify the delay, as Go ParseDuration format (e.g., '3s').")
+					break
+				}
+				d, err := time.ParseDuration(args[0])
+				if err != nil {
+					fmt.Printf("Invalid duration: %v", err)
+					break
+				}
+				ts.SetListDelay(d)
 			case "exit":
 				if len(args) > 0 {
 					fmt.Printf("'exit' does not take parameters")
@@ -360,6 +372,7 @@ func cmdTestServe(ctx context.Context) error {
 	completer := func(d prompt.Document) []prompt.Suggest {
 		s := []prompt.Suggest{
 			{Text: "fake-statuses", Description: "Add fake statuses; opt: number of statuses"},
+			{Text: "set-list-delay", Description: "Introduce delay when listing statuses from Mastodon"},
 			{Text: "exit", Description: "Shutdown"},
 		}
 		return prompt.FilterHasPrefix(s, d.GetWordBeforeCursor(), true)
