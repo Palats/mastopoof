@@ -388,7 +388,7 @@ export class MastStream extends LitElement {
     const isBeginning = this.items.length == 0 || (this.items[0].position === this.streamInfo.firstPosition)
 
     return html`
-      <div class="noanchor contentitem stream-beginning bg-blue-300 centered">
+      <div class="noanchor contentitem stream-beginning centered">
       ${isBeginning ? html`
         ${this.items.length === 0 ?
           html`<div>No statuses.</div>` :
@@ -405,7 +405,7 @@ export class MastStream extends LitElement {
 
       ${repeat(this.items, item => item.position, (item, _) => this.renderStatus(item))}
 
-      <div class="noanchor contentitem bg-blue-300 stream-end">
+      <div class="noanchor contentitem stream-end">
         <div class="centered">
           <div>
             <button @click=${this.loadNext} ?disabled=${this.streamInfo.remainingPool === 0n}>
@@ -446,7 +446,7 @@ export class MastStream extends LitElement {
       justify-content: center;
       top: 40px;
 
-      background-color: #e0e0e0;
+      background-color: var(--color-grey-300);
     }
 
     .middlepane {
@@ -460,7 +460,7 @@ export class MastStream extends LitElement {
       z-index: 2;
       box-sizing: border-box;
       min-height: 50px;
-      background-color: #e0e0e0;
+      background-color: var(--color-grey-300);
 
       display: flex;
       flex-direction: column;
@@ -471,7 +471,7 @@ export class MastStream extends LitElement {
     options for styling, beyond a basic all encompassing box.
     */
     .headercontent {
-      background-color: #f7fdff;
+      background-color: var(--color-blue-25);
       padding: 8px;
 
       min-height: 50px;
@@ -486,7 +486,7 @@ export class MastStream extends LitElement {
 
     .menucontent {
       padding: 8px;
-      background-color: #f7fdff;
+      background-color: var(--color-blue-25);
       box-shadow: rgb(0 0 0 / 80%) 0px 16px 12px;
     }
 
@@ -496,7 +496,7 @@ export class MastStream extends LitElement {
       z-index: 2;
       box-sizing: border-box;
       min-height: 30px;
-      background-color: #e0e0e0;
+      background-color: var(--color-grey-300);
 
       display: grid;
       grid-template-rows: 1fr;
@@ -506,7 +506,7 @@ export class MastStream extends LitElement {
     }
 
     .footercontent {
-      background-color: #f7fdff;
+      background-color: var(--color-blue-25);
       padding: 5px;
       box-sizing: border-box;
     }
@@ -518,7 +518,7 @@ export class MastStream extends LitElement {
       /* Alignement is related to footercontent padding, and
          footer border-top-width*/
       top: -8px;
-      background-color: #000000;
+      background-color: var(--color-grey-999);
       animation: loadinganim 2s infinite linear;
     }
     @keyframes loadinganim {
@@ -545,10 +545,15 @@ export class MastStream extends LitElement {
 
     .stream-beginning {
       margin-bottom: 1px;
+      background-color: var(--color-blue-300);
+    }
+
+    .stream-end {
+      background-color: var(--color-blue-300);
     }
 
     .lastread {
-      background-color: #dfa1a1;
+      background-color: var(--color-red-200);
       margin-bottom: 1px;
       font-style: italic;
     }
@@ -715,8 +720,8 @@ export class MastStatus extends LitElement {
     const openTarget = localStatusURL(this.item);
 
     return html`
-      <div class="status bg-blue-800 ${classMap({ read: this.isRead, unread: !this.isRead })}">
-        <div class="account bg-blue-100">
+      <div class="status ${classMap({ read: this.isRead, unread: !this.isRead })}">
+        <div class="account">
           <span class="centered">
             <img class="avatar" src=${s.account.avatar}></img>
             ${expandEmojis(s.account.display_name, s.account.emojis)} &lt;${qualifiedAccount(s.account)}&gt;
@@ -724,11 +729,11 @@ export class MastStatus extends LitElement {
           <span>
             <span class="timestamp" title="${createdTimeLabel}">${createdTime.fromNow()}</span>
             <a href=${openTarget} target="_blank"><span class="material-symbols-outlined" title="Open status">open_in_new</span></a>
-            <a href=${s.url} target="_blank"><span class="material-symbols-outlined" title="Open status on original server">travel_explore</span></a>
+            <a href=${s.url ?? ""} target="_blank"><span class="material-symbols-outlined" title="Open status on original server">travel_explore</span></a>
           </span>
         </div>
         ${!!reblog ? html`
-          <div class="reblog bg-blue-50">
+          <div class="reblog">
             <span class="centered">
               <img class="avatar" src=${account.avatar}></img>
               Reblog by ${expandEmojis(account.display_name, account.emojis)} &lt;${qualifiedAccount(account)}&gt;
@@ -745,7 +750,7 @@ export class MastStatus extends LitElement {
         <div class="attachments">
           ${attachments}
         </div>
-        <div class="tools bg-blue-400 text-light">
+        <div class="tools">
           <div>
             <button disabled><span class="material-symbols-outlined" title="Favorite">star</span></button><span class="count">${s.favourites_count}</span>
             <button disabled><span class="material-symbols-outlined" title="Boost">repeat</span></button><span class="count">${s.reblogs_count}</span>
@@ -771,7 +776,7 @@ export class MastStatus extends LitElement {
       border-radius: 4px;
       border-width: 1px;
       padding: 0;
-      background-color: #ffffff;
+      background-color: var(--color-grey-000);
 
       overflow: hidden;
       display: flex;
@@ -779,11 +784,11 @@ export class MastStatus extends LitElement {
     }
 
     .read {
-      border-color: #a1bcdf;
+      border-color: var( --color-blue-300);
     }
 
     .unread {
-      border-color: black;
+      border-color: var(--color-grey-999);
     }
 
     .rawcontent {
@@ -796,6 +801,7 @@ export class MastStatus extends LitElement {
       align-items: center;
       padding: 3px;
       justify-content: space-between;
+      background-color: var(--color-blue-100);
     }
 
     .reblog {
@@ -805,6 +811,7 @@ export class MastStatus extends LitElement {
       font-size: 0.8rem;
       font-style: italic;
       justify-content: space-between;
+      background-color: var(--color-blue-50);
     }
 
     .avatar {
@@ -850,6 +857,8 @@ export class MastStatus extends LitElement {
       justify-content: space-between;
       padding: 2px;
       margin-top: 2px;
+      background-color: var(--color-blue-400);
+      color: var(--color-grey-000);
     }
 
     .count {

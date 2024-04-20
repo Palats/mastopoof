@@ -1,60 +1,44 @@
+/* Styles that are available in all components */
+
+/* Shadow dom does not fallback to :root, so piggy
+ back on :host instead. */
 :host {
     font-size: 1rem;
-}
 
-.text-light {
-    color: #ffffff;
-}
+    --color-red-100: #EBBAB9;
+    --color-red-200: #dfa1a1;
+    --color-red-400: #CC2936;
 
-.text-dark {
-    color: #000000;
-}
+    --color-blue-25: #f7fdff;
+    --color-blue-50: #e0fff3;
+    --color-blue-100: #B5FFE1;
+    --color-blue-200: #88F7D4;
+    --color-blue-300: #a1bcdf;
+    --color-blue-400: #388697;
+    --color-blue-800: #08415C;
 
-.bg-red-100 {
-    background-color: #EBBAB9;
-}
+    --color-purple-200: #cbb5ff;
+    --color-purple-400: #574d6e;
 
-.bg-red-400 {
-    background-color: #CC2936;
-}
-
-.bg-blue-50 {
-    background-color: #e0fff3;
-}
-
-.bg-blue-100 {
-    background-color: #B5FFE1;
-}
-
-.bg-blue-200 {
-    background-color: #88F7D4;
-}
-
-.bg-blue-300 {
-    background-color: #a1bcdf;
-}
-
-.bg-blue-400 {
-    background-color: #388697;
-}
-
-.bg-blue-800 {
-    background-color: #08415C;
+    --color-grey-000: #ffffff;
+    --color-grey-300: #e0e0e0;
+    --color-grey-400: #dfdfdf;
+    --color-grey-999: #000000;
 }
 
 button {
-    background-color: #e0fff3;
+    background-color: var(--color-blue-50);
     border-radius: 3px;
     margin: 1px;
     border-style: outset;
     border-width: 1px;
 
     &:hover {
-        background-color: #cbb5ff;
+        background-color: var(--color-purple-200);
     }
 
     &:active {
-        background-color: #574d6e;
+        background-color: var(--color-purple-400);
     }
 }
 
