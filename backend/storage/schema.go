@@ -13,7 +13,7 @@ import (
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const maxSchemaVersion = 18
+const maxSchemaVersion = 19
 
 // refSchema is the database schema as if it was created from scratch. This is
 // used only for comparison with an actual schema, for consistency checking. In
@@ -21,8 +21,6 @@ const maxSchemaVersion = 18
 // progressively, reflecting the evolution of the DB schema - and this refSchema
 // is ignored for that purpose.
 const refSchema = `
-	-- TODO: make strict
-
 	-- Mastopoof user information.
 	CREATE TABLE userstate (
 		-- A unique id for that user.
@@ -44,16 +42,14 @@ const refSchema = `
 	) STRICT;
 
 	-- Info about app registration on Mastodon servers.
-	-- TODO: rename to reflect that it is just about Mastodon app registration.
-	CREATE TABLE serverstate (
-		-- Serialized ServerState
-		state TEXT NOT NULL,
-		-- A unique key for the serverstate.
+	CREATE TABLE appregstate (
+		-- A unique key for the appregstate.
 		-- Made of hash of redirect URI & scopes requested, as each of those
 		-- require a different Mastodon app registration.
-		-- TODO: make NOT NULL
-		key TEXT
-	);
+		key TEXT NOT NULL,
+		-- Serialized AppRegState
+		state TEXT NOT NULL
+	) STRICT;
 
 	-- Information about a stream.
 	-- A stream is a series of statuses, attached to a mastopoof user.
@@ -120,8 +116,8 @@ type AccountState struct {
 	LastHomeStatusID mastodon.ID `json:"last_home_status_id"`
 }
 
-// ServerState contains information about a Mastodon server - most notably, its app registration.
-type ServerState struct {
+// AppRegState contains information about an app registration on a Mastodon server.
+type AppRegState struct {
 	// The storage key for this app registration.
 	// Redundant in storage, but convenient when manipulating the data around.
 	Key string `json:"key"`
@@ -607,6 +603,31 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 			return fmt.Errorf("schema v18: unable to run %q: %w", sqlStmt, err)
+		}
+	}
+
+	if version < 19 && targetVersion >= 19 {
+		// Convert serverstate to STRICT.
+		// Rename it to appregstate
+		// Make key NOT NULL.
+		sqlStmt := `
+			-- Info about app registration on Mastodon servers.
+			CREATE TABLE appregstate (
+				-- A unique key for the appregstate.
+				-- Made of hash of redirect URI & scopes requested, as each of those
+				-- require a different Mastodon app registration.
+				key TEXT NOT NULL,
+				-- Serialized AppRegState
+				state TEXT NOT NULL
+			) STRICT;
+
+			INSERT INTO appregstate (key, state)
+				SELECT key, CAST(state as TEXT) FROM serverstate;
+
+			DROP TABLE serverstate;
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("schema v19: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 

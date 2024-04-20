@@ -495,7 +495,6 @@ func TestV16ToV17(t *testing.T) {
 func TestV17ToV18(t *testing.T) {
 	ctx := context.Background()
 
-	// Prepare at version 14
 	env := (&DBTestEnv{
 		targetVersion: 17,
 		// Insert some dummy data that will need to be converted
@@ -511,5 +510,40 @@ func TestV17ToV18(t *testing.T) {
 
 	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestV18ToV19 verifies serverstate conversion to strict
+// and renaming.
+func TestV18ToV18(t *testing.T) {
+	ctx := context.Background()
+
+	env := (&DBTestEnv{
+		targetVersion: 18,
+		// Insert some dummy data that will need to be converted
+		// JSON content is likely written as []byte, thus producing BLOB
+		// value - so also test that.
+		sqlInit: `
+			INSERT INTO serverstate (state, key) VALUES
+				('{"server_addr": "234"}', "key1"),
+				(CAST('{"server_addr": "465"}' as BLOB), "key2")
+			;
+		`,
+	}).Init(ctx, t)
+
+	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify data under the new name.
+	var got int64
+	err := env.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM appregstate`,
+	).Scan(&got)
+	if err == sql.ErrNoRows {
+		t.Fatal(err)
+	}
+	if got != 2 {
+		t.Errorf("Got %d entries, expected 2", got)
 	}
 }

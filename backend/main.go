@@ -134,12 +134,12 @@ func cmdMe(ctx context.Context, st *storage.Storage, uid storage.UID, showAccoun
 	fmt.Println("# Server address:", accountState.ServerAddr)
 	fmt.Println("# Last home status ID:", accountState.LastHomeStatusID)
 
-	serverState, err := st.ServerState(ctx, nil, accountState.ServerAddr)
+	appRegState, err := st.AppRegState(ctx, nil, accountState.ServerAddr)
 	if err != nil {
 		return err
 	}
-	fmt.Println("# Auth URI:", serverState.AuthURI)
-	fmt.Println("# Redirect URI:", serverState.RedirectURI)
+	fmt.Println("# Auth URI:", appRegState.AuthURI)
+	fmt.Println("# Redirect URI:", appRegState.RedirectURI)
 
 	streamState, err := st.StreamState(ctx, nil, stid)
 	if err != nil {
@@ -153,9 +153,9 @@ func cmdMe(ctx context.Context, st *storage.Storage, uid storage.UID, showAccoun
 	var client *mastodon.Client
 	if showAccount {
 		client = mastodon.NewClient(&mastodon.Config{
-			Server:       serverState.ServerAddr,
-			ClientID:     serverState.ClientID,
-			ClientSecret: serverState.ClientSecret,
+			Server:       appRegState.ServerAddr,
+			ClientID:     appRegState.ClientID,
+			ClientSecret: appRegState.ClientSecret,
 			AccessToken:  accountState.AccessToken,
 		})
 		fmt.Println("# Mastodon Account")
@@ -270,7 +270,7 @@ func cmdTestServe(ctx context.Context) error {
 
 	serverAddr := fmt.Sprintf("http://localhost:%d", *port)
 
-	_, err = st.CreateServerState(ctx, nil, serverAddr)
+	_, err = st.CreateAppRegState(ctx, nil, serverAddr)
 	if err != nil {
 		return fmt.Errorf("unable to create server state: %w", err)
 	}

@@ -48,34 +48,7 @@ curl --header 'Content-Type: application/json' --data '{"msg": "plop"}' http://l
 
 TODO list: https://docs.google.com/document/d/1kZr_tJOGbRPnZA6SY0Qi90IKAWfBZL69N-KKmfTGpcs/edit?usp=sharing
 
-### Database
-
-- serverstate
-   - Per mastodon server info.
-   - key: server_addr
-   - Keyed by mastodon server address + redirect URI
-   - Not linked to a specific account (neither mastodon nor mastopoof)
-- accountstate
-   - Mastodon account state.
-   - key: asid (AccountStateID)  [unique integer]
-   - Keyed by mastodon server address + account ID on the mastodon server
-   - Attached to a given user (UID)
-- userstate
-   - Mastopoof user
-   - key: uid [unique integer]
-   - Has default stream ID
-- streamstate
-   - A configured stream of statuses.
-   - key: stid [unique integer]
-   - For now: a single stream per mastopoof user.
-- streamcontent
-   - Position of statuses in a stream
-   - In practice: (stid, sid) -> position
-- statuses
-   - Content of statuses fetched from Mastodon
-   - key: sid [unique integer]
-   - Also attached to a specific UID
-
+See schema.go for database schema information.
 
 ### Auth
 

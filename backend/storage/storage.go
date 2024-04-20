@@ -214,14 +214,14 @@ func (st *Storage) CreateUser(ctx context.Context, txn SQLQueryable, serverAddr 
 	return userState, accountState, streamState, nil
 }
 
-func (st *Storage) serverStateKey(serverAddr string) string {
+func (st *Storage) appRegStateKey(serverAddr string) string {
 	return serverAddr + "--" + st.redirectURI(serverAddr) + "--" + st.scopes
 }
 
-// CreateServerState creates a server with the given address.
-func (st *Storage) CreateServerState(ctx context.Context, txn SQLQueryable, serverAddr string) (*ServerState, error) {
-	key := st.serverStateKey(serverAddr)
-	ss := &ServerState{
+// CreateAppRegState creates a server with the given address.
+func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLQueryable, serverAddr string) (*AppRegState, error) {
+	key := st.appRegStateKey(serverAddr)
+	appRegState := &AppRegState{
 		Key:         key,
 		ServerAddr:  serverAddr,
 		Scopes:      st.scopes,
@@ -229,30 +229,30 @@ func (st *Storage) CreateServerState(ctx context.Context, txn SQLQueryable, serv
 	}
 
 	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
-		// Do not use SetServerState(), as it will not fail if that already exists.
-		state, err := json.Marshal(ss)
+		// Do not use SetAppRegState(), as it will not fail if that already exists.
+		state, err := json.Marshal(appRegState)
 		if err != nil {
 			return err
 		}
-		stmt := `INSERT INTO serverstate(key, state) VALUES(?, ?)`
-		_, err = txn.ExecContext(ctx, stmt, ss.Key, state)
+		stmt := `INSERT INTO appregstate(key, state) VALUES(?, ?)`
+		_, err = txn.ExecContext(ctx, stmt, appRegState.Key, string(state))
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	return ss, nil
+	return appRegState, nil
 }
 
-// ServerState returns the current ServerState for a given, well, server.
+// AppRegState returns the current AppRegState for a given, well, server.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) ServerState(ctx context.Context, txn SQLQueryable, serverAddr string) (*ServerState, error) {
-	as := &ServerState{}
+func (st *Storage) AppRegState(ctx context.Context, txn SQLQueryable, serverAddr string) (*AppRegState, error) {
+	as := &AppRegState{}
 	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
 		var state string
-		key := st.serverStateKey(serverAddr)
+		key := st.appRegStateKey(serverAddr)
 		err := txn.QueryRowContext(ctx,
-			"SELECT state FROM serverstate WHERE key=?", key).Scan(&state)
+			"SELECT state FROM appregstate WHERE key=?", key).Scan(&state)
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("no state for server_addr=%s, key=%s: %w", serverAddr, key, ErrNotFound)
 		}
@@ -261,7 +261,7 @@ func (st *Storage) ServerState(ctx context.Context, txn SQLQueryable, serverAddr
 		}
 
 		if err := json.Unmarshal([]byte(state), as); err != nil {
-			return fmt.Errorf("unable to decode serverstate state: %v", err)
+			return fmt.Errorf("unable to decode appregstate state: %v", err)
 		}
 		return nil
 	})
@@ -271,14 +271,14 @@ func (st *Storage) ServerState(ctx context.Context, txn SQLQueryable, serverAddr
 	return as, nil
 }
 
-func (st *Storage) SetServerState(ctx context.Context, txn SQLQueryable, ss *ServerState) error {
+func (st *Storage) SetAppRegState(ctx context.Context, txn SQLQueryable, ss *AppRegState) error {
 	return st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
 		state, err := json.Marshal(ss)
 		if err != nil {
 			return err
 		}
-		stmt := `UPDATE serverstate SET state = ? WHERE key = ?`
-		_, err = txn.ExecContext(ctx, stmt, state, ss.Key)
+		stmt := `UPDATE appregstate SET state = ? WHERE key = ?`
+		_, err = txn.ExecContext(ctx, stmt, string(state), ss.Key)
 		return err
 	})
 }
@@ -672,7 +672,7 @@ func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLQueryable, stid 
 func (st *Storage) ClearApp(ctx context.Context) error {
 	return st.InTxn(ctx, func(ctx context.Context, txn SQLQueryable) error {
 		// Remove everything from the stream.
-		_, err := txn.ExecContext(ctx, `DELETE FROM serverstate`)
+		_, err := txn.ExecContext(ctx, `DELETE FROM appregstate`)
 		return err
 	})
 }
