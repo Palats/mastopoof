@@ -490,3 +490,26 @@ func TestV16ToV17(t *testing.T) {
 		t.Errorf("Got %d statuses, expected 4", got)
 	}
 }
+
+// TestV17ToV18 verifies streamstate conversion to strict
+func TestV17ToV18(t *testing.T) {
+	ctx := context.Background()
+
+	// Prepare at version 14
+	env := (&DBTestEnv{
+		targetVersion: 17,
+		// Insert some dummy data that will need to be converted
+		// JSON content is likely written as []byte, thus producing BLOB
+		// value - so also test that.
+		sqlInit: `
+			INSERT INTO streamstate (stid, state) VALUES
+				(2, '{"stid": "234"}'),
+				(3, CAST('{"stid": "465"}' as BLOB))
+			;
+		`,
+	}).Init(ctx, t)
+
+	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
+		t.Fatal(err)
+	}
+}

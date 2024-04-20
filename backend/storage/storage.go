@@ -485,12 +485,12 @@ func (st *Storage) StreamState(ctx context.Context, txn SQLQueryable, stid StID)
 
 func (st *Storage) SetStreamState(ctx context.Context, txn SQLQueryable, streamState *StreamState) error {
 	return st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
-		jsonString, err := json.Marshal(streamState)
+		jsonBytes, err := json.Marshal(streamState)
 		if err != nil {
 			return err
 		}
 		stmt := `INSERT INTO streamstate(stid, state) VALUES(?, ?) ON CONFLICT(stid) DO UPDATE SET state = ?`
-		_, err = txn.ExecContext(ctx, stmt, streamState.StID, jsonString, jsonString)
+		_, err = txn.ExecContext(ctx, stmt, streamState.StID, string(jsonBytes), string(jsonBytes))
 		return err
 	})
 }

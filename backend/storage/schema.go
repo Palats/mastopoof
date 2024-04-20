@@ -13,7 +13,7 @@ import (
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const maxSchemaVersion = 17
+const maxSchemaVersion = 18
 
 // refSchema is the database schema as if it was created from scratch. This is
 // used only for comparison with an actual schema, for consistency checking. In
@@ -64,7 +64,7 @@ const refSchema = `
 		stid INTEGER PRIMARY KEY,
 		-- Serialized StreamState JSON.
 		state TEXT NOT NULL
-	);
+	) STRICT;
 
 	-- Statuses which were obtained from Mastodon.
 	CREATE TABLE statuses (
@@ -581,6 +581,32 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 			return fmt.Errorf("schema v17: unable to run %q: %w", sqlStmt, err)
+		}
+	}
+
+	if version < 18 && targetVersion >= 18 {
+		// Convert streamstate to STRICT.
+		sqlStmt := `
+			ALTER TABLE streamstate RENAME TO streamstateold;
+
+			-- Information about a stream.
+			-- A stream is a series of statuses, attached to a mastopoof user.
+			-- This table contains info about the stream, not the statuses
+			-- themselves, nor the ordering.
+			CREATE TABLE "streamstate" (
+				-- Unique id for this stream.
+				stid INTEGER PRIMARY KEY,
+				-- Serialized StreamState JSON.
+				state TEXT NOT NULL
+			) STRICT;
+
+			INSERT INTO streamstate (stid, state)
+				SELECT stid, CAST(state as TEXT) FROM streamstateold;
+
+			DROP TABLE streamstateold;
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("schema v18: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 
