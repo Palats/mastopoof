@@ -79,6 +79,13 @@ func cmpItems(i1 *Item, i2 *Item) int {
 }
 
 type Server struct {
+	// If present, block on list request.
+	// When a request arrives, it will send a `chan struct{}` over the provided channel.
+	// The receiver must then close the sent channel to indicate that the test server
+	// can continue serving.
+	// Must be set before any request is started.
+	TestBlockList chan chan struct{}
+
 	m sync.Mutex
 	// Ordered list of Mastodon statuses to serve.
 	// The list is ordered by increase status.ID - thus meaning oldest status first.
@@ -243,6 +250,19 @@ func (s *Server) serverAPIAccountsVerifyCredentials(w http.ResponseWriter, req *
 
 // https://docs.joinmastodon.org/methods/timelines/#home
 func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+
+	if s.TestBlockList != nil {
+		ch := make(chan struct{})
+		s.TestBlockList <- ch
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			http.Error(w, "interrupted", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	s.m.Lock()
 	delay := s.listDelay
 	s.m.Unlock()

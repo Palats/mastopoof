@@ -380,3 +380,57 @@ func TestMultiFetch(t *testing.T) {
 		}
 	}
 }
+
+// TestConcurrentFetch verifies that when 2 fetch operations are started in parallel,
+// one is rejected.
+func TestConcurrentFetch(t *testing.T) {
+	ctx := context.Background()
+	env := (&TestEnv{
+		t:             t,
+		StatusesCount: 100,
+	}).Init(ctx)
+	defer env.Close()
+
+	env.mastodonServer.TestBlockList = make(chan chan struct{})
+
+	userInfo := env.Login()
+
+	// Trigger first fetch request.
+	resp1ch := make(chan *pb.FetchResponse)
+	go func() {
+		resp1ch <- MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
+			Stid: userInfo.DefaultStid,
+		})
+	}()
+
+	// Verify that it is blocked on Mastodon server. It is done before starting
+	// the second one to guarantee some consistent ordering.
+	block1ch := <-env.mastodonServer.TestBlockList
+
+	// Start second request.
+	resp2ch := make(chan *http.Response)
+	go func() {
+		resp2ch <- Request(env, "Fetch", &pb.FetchRequest{
+			Stid: userInfo.DefaultStid,
+		})
+	}()
+
+	// Verify that the second request is also blocked.
+	block2ch := <-env.mastodonServer.TestBlockList
+
+	// Unblock the first request.
+	close(block1ch)
+	resp1 := <-resp1ch
+	if got, want := resp1.Status, pb.FetchResponse_MORE; got != want {
+		t.Errorf("Got status %v, wanted %v; fetched %d statuses", got, want, resp1.FetchedCount)
+	}
+
+	// Unblock the second request, which should fail because the first request
+	// was happening.
+	close(block2ch)
+	resp2 := <-resp2ch
+	if got, want := resp2.StatusCode, http.StatusServiceUnavailable; got != want {
+		body := MustBody(t, resp2)
+		t.Fatalf("Got status %v [%s], want %v; body=%s", got, resp2.Status, want, body)
+	}
+}

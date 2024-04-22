@@ -500,7 +500,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 			return fmt.Errorf("unable to verify for race conditions: %w", err)
 		}
 		if currentAccountState.LastHomeStatusID != accountState.LastHomeStatusID {
-			return errors.New("concurrent fetch of Mastodon statuses - aborting")
+			return connect.NewError(connect.CodeUnavailable, errors.New("concurrent fetch of Mastodon statuses - aborting"))
 		}
 
 		currentAccountState.LastHomeStatusID = newStatusID
