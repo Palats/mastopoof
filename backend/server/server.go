@@ -492,6 +492,8 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	}
 	glog.Infof("Found %d new status on home timeline (LastHomeStatusID=%v) (max_id:%v, min_id:%v, since_id:%v)%s", len(timeline), newStatusID, pg.MaxID, pg.MinID, pg.SinceID, boundaries)
 
+	streamState.LastFetchSecs = time.Now().Unix()
+
 	// Now do another transaction to update the DB - both statuses
 	// and inserting statuses.
 	err = s.st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {

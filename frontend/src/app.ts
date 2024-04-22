@@ -324,6 +324,13 @@ export class MastStream extends LitElement {
       loadedMsg = loadedCount !== count ? `(${loadedCount} loaded)` : '';
     }
 
+    let lastFetch: dayjs.Dayjs | undefined;
+    let lastFetchLabel: string | undefined;
+    if (this.streamInfo.lastFetchSecs != 0n) {
+      lastFetch = dayjs.unix(Number(this.streamInfo.lastFetchSecs));
+      lastFetchLabel = `${displayTimezone}: ${lastFetch.tz(displayTimezone).format()}\n${this.streamInfo.lastFetchSecs}}`;
+    }
+
     let remaining = html`Updating...`;
     if (count == 0n) {
       remaining = html`End of stream`;
@@ -358,7 +365,10 @@ export class MastStream extends LitElement {
           <div class="footer">
             <div class="footercontent">
               <div class=${classMap({ loadingbar: true, hidden: this.loadingBarUsers <= 0 })}></div>
-              <div class="centered">${remaining}</div>
+              <div class="centered">
+                ${remaining}
+                ${lastFetch ? html`<div class="fetchtime" title="${lastFetchLabel!}">Last check: ${lastFetch.fromNow()}</div>` : nothing}
+              </div>
             </div>
           </div>
         </div>
@@ -525,6 +535,13 @@ export class MastStream extends LitElement {
       0% { transform:  translateX(0); }
       50% { transform:  translateX(900%); }
       100% { transform:  translateX(0%); }
+    }
+
+    .fetchtime {
+      position: absolute;
+      font-size: 0.6rem;
+      top: 10px;
+      right: 4px;
     }
 
     .content {

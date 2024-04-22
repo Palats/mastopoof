@@ -148,6 +148,9 @@ type StreamState struct {
 	LastPosition int64 `json:"last_position"`
 	// Remaining statuses in the pool which are not yet added in the stream.
 	Remaining int64 `json:"remaining"`
+
+	// Last time a fetch from mastodon finished, as unix timestamp in seconds.
+	LastFetchSecs int64 `json:"last_fetch_secs"`
 }
 
 func (ss *StreamState) ToStreamInfo() *pb.StreamInfo {
@@ -157,6 +160,7 @@ func (ss *StreamState) ToStreamInfo() *pb.StreamInfo {
 		FirstPosition: ss.FirstPosition,
 		LastPosition:  ss.LastPosition,
 		RemainingPool: ss.Remaining,
+		LastFetchSecs: ss.LastFetchSecs,
 	}
 }
 

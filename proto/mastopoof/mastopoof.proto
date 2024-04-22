@@ -50,6 +50,9 @@ message StreamInfo {
     int64 last_position = 3;
     // Untriaged statuses in the pool and not yet added to the stream.
     int64 remaining_pool = 4;
+
+    // Last time a fetch from mastodon finished, as unix timestamp in seconds.
+    int64 last_fetch_secs = 6;
 }
 
 message LoginRequest {}
