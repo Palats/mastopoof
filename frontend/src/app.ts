@@ -8,6 +8,8 @@ import { classMap } from 'lit/directives/class-map.js';
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import { Backend, StreamUpdateEvent, LoginUpdateEvent, LoginState } from "./backend";
 
+import { asyncReplace } from 'lit/directives/async-replace.js';
+
 import normalizeCSSstr from "./normalize.css?inline";
 import baseCSSstr from "./base.css?inline";
 
@@ -324,13 +326,6 @@ export class MastStream extends LitElement {
       loadedMsg = loadedCount !== count ? `(${loadedCount} loaded)` : '';
     }
 
-    let lastFetch: dayjs.Dayjs | undefined;
-    let lastFetchLabel: string | undefined;
-    if (this.streamInfo.lastFetchSecs != 0n) {
-      lastFetch = dayjs.unix(Number(this.streamInfo.lastFetchSecs));
-      lastFetchLabel = `${displayTimezone}: ${lastFetch.tz(displayTimezone).format()}\n${this.streamInfo.lastFetchSecs}}`;
-    }
-
     let remaining = html`Updating...`;
     if (count == 0n) {
       remaining = html`End of stream`;
@@ -367,7 +362,7 @@ export class MastStream extends LitElement {
               <div class=${classMap({ loadingbar: true, hidden: this.loadingBarUsers <= 0 })}></div>
               <div class="centered">
                 ${remaining}
-                ${lastFetch ? html`<div class="fetchtime" title="${lastFetchLabel!}">Last check: ${lastFetch.fromNow()}</div>` : nothing}
+                <div class="fetchtime">Last check: <time-since .unix=${this.streamInfo?.lastFetchSecs}></time-since></div>
               </div>
             </div>
           </div>
@@ -961,5 +956,54 @@ export class MastLogin extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     'mast-login': MastLogin
+  }
+}
+
+
+@customElement('time-since')
+export class TimeSince extends LitElement {
+  @property({ attribute: false })
+  unix?: BigInt;
+
+  private fromNow?: AsyncGenerator<string>;
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.fromNow?.return("disconnected");
+  }
+
+  async* refresh(dt: dayjs.Dayjs) {
+    let prev = "";
+    while (true) {
+      const now = dayjs();
+      const s = dt.from(now);
+      if (s !== prev) {
+        yield s;
+        prev = s;
+      }
+      let delay = 10000;
+      if (now.diff(dt, "minute") >= 1) {
+        delay = 60000;
+      }
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+
+  render() {
+    if (!this.unix || this.unix === 0n) {
+      return html`<span>unknown</span>`;
+    }
+    const dt = dayjs.unix(Number(this.unix));
+
+    this.fromNow?.return("replaced");
+    this.fromNow = this.refresh(dt);
+    const label = `${displayTimezone}: ${dt.tz(displayTimezone).format()}\nSource: ${this.unix}`;
+    return html`<span title=${label}>${asyncReplace(this.fromNow!)}</span>`;
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'time-since': TimeSince
   }
 }
