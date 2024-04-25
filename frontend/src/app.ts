@@ -141,7 +141,7 @@ export class MastStream extends LitElement {
     }) as EventListener);
 
     // Trigger loading of content.
-    this.loadNext();
+    this.listNext();
   }
 
   disconnectedCallback() {
@@ -231,8 +231,10 @@ export class MastStream extends LitElement {
     this.requestUpdate();
   }
 
-  // Load newer statuses.
-  async loadNext() {
+  // List newer statuses.
+  // This does NOT trigger a mastodon->mastopoof fetch, it just
+  // list what's available from mastopoof.
+  async listNext() {
     const stid = this.stid;
     if (!stid) {
       throw new Error("missing stream id");
@@ -269,6 +271,7 @@ export class MastStream extends LitElement {
     this.requestUpdate();
   }
 
+  // Just trigger a fetch of status mastodon->mastopoof.
   async fetch() {
     const stid = this.stid;
     if (!stid) {
@@ -277,11 +280,41 @@ export class MastStream extends LitElement {
     console.log("Fetching...");
     try {
       this.loadingBarUsers++;
-      await backend.fetch(stid);
+      // Limit the number of fetch we're requesting.
+      // TODO: do limiting on server side.
+      for (let i = 0; i < 10; i++) {
+        const done = await backend.fetch(stid);
+        if (done) { break; }
+      }
     } finally {
       this.loadingBarUsers--;
     }
-    this.loadNext();
+  }
+
+  async getMoreStatuses() {
+    if (!this.streamInfo) {
+      throw new Error("missing streaminfo");
+    }
+    // Still has some statuses to list, so just get those.
+    if (this.streamInfo.remainingPool > 0n) {
+      await this.listNext();
+      return;
+    }
+
+    // No more statuses to list, so some fetching is needed.
+    const stid = this.stid;
+    if (!stid) {
+      throw new Error("missing stream id");
+    }
+
+    // Trigger fetching.
+    // TODO: do a first one, the trigger the other one in background.
+    // However that first requires having the backend retry transaction, as it conflicts
+    // otherwise.
+    await this.fetch();
+
+    // And get those we already got listed.
+    await this.listNext();
   }
 
   updateStatusRef(item: StatusItem, elt?: Element) {
@@ -392,6 +425,8 @@ export class MastStream extends LitElement {
     // the stream was empty at that time, and thus we're at its beginning.
     const isBeginning = this.items.length == 0 || (this.items[0].position === this.streamInfo.firstPosition)
 
+    const buttonName = (this.streamInfo.remainingPool === 0n) ? "Look for statuses" : "Load more statuses";
+
     return html`
       <div class="noanchor contentitem stream-beginning centered">
       ${isBeginning ? html`
@@ -413,13 +448,12 @@ export class MastStream extends LitElement {
       <div class="noanchor contentitem stream-end">
         <div class="centered">
           <div>
-            <button @click=${this.loadNext} ?disabled=${this.streamInfo.remainingPool === 0n}>
+            <button class="loadmore" @click=${this.getMoreStatuses} ?disabled=${this.loadingBarUsers > 0}>
               <span class="material-symbols-outlined">arrow_downward</span>
-              Load more statuses
+              ${buttonName}
               <span class="material-symbols-outlined">arrow_downward</span>
             </button>
           </div>
-          <button @click=${this.fetch}>Fetch</button>
         </div>
       </div>
     `;
@@ -568,6 +602,11 @@ export class MastStream extends LitElement {
       background-color: var(--color-red-200);
       margin-bottom: 1px;
       font-style: italic;
+    }
+
+    .loadmore {
+      padding-top: 4px;
+      padding-bottom: 4px;
     }
   `];
 }
@@ -991,7 +1030,7 @@ export class TimeSince extends LitElement {
 
   render() {
     if (!this.unix || this.unix === 0n) {
-      return html`<span>unknown</span>`;
+      return html`<span>never</span>`;
     }
     const dt = dayjs.unix(Number(this.unix));
 
