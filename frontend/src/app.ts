@@ -759,6 +759,24 @@ export class MastStatus extends LitElement {
       }
     }
 
+    const card: TemplateResult[] = [];
+    if (s.card && s.media_attachments.length === 0) {
+      const imgHeight = s.card.height < 150 ? s.card.height : '150px';
+      card.push(html`
+        <a href="${s.card.url}" target="_blank" class="previewcard-link">
+          <div class="previewcard-container">
+            <div class="previewcard-image">
+                <img src="${s.card.image}" />
+            </div>
+            <div class="previewcard-meta">
+                <div class="previewcard-provider">${s.card.provider_name}</div>
+                <div class="previewcard-title">${s.card.title}</div>
+            </div>
+          </div>
+        </a>
+      `)
+    }
+
     // Main created time is the time of the status or of the reblog content
     // if the status is a reblog.
     const createdTime = dayjs(s.created_at);
@@ -797,6 +815,9 @@ export class MastStatus extends LitElement {
         </div>
         <div class="poll">
           ${poll}
+        </div>
+        <div class="previewcard">
+          ${card}
         </div>
         <div class="attachments">
           ${attachments}
@@ -920,6 +941,39 @@ export class MastStatus extends LitElement {
 
     .timestamp {
       font-size: 0.8rem;
+    }
+    
+    .previewcard-link {
+      color: inherit;
+      text-decoration: inherit;
+    }
+    
+    .previewcard-meta {
+      align-self: center
+    }
+    
+    .previewcard-provider {
+      font-style: italic;
+    }
+    
+    .previewcard-title {
+      font-weight: bold;
+      font-size: 1.2rem;
+    }
+   
+
+    .previewcard-image > img {
+      max-width: 150px; 
+      max-height: 150px;
+    }
+    
+    .previewcard-container {
+      border-style: solid;
+      border-width: 1px; 
+      display:grid; 
+      grid-template-columns: 150px 1fr;
+      column-gap: 10px;
+      background-color: var(--color-grey-150);
     }
   `];
 }
