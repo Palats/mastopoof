@@ -761,7 +761,6 @@ export class MastStatus extends LitElement {
 
     const card: TemplateResult[] = [];
     if (s.card && s.media_attachments.length === 0) {
-      const imgHeight = s.card.height < 150 ? s.card.height : '150px';
       card.push(html`
         <a href="${s.card.url}" target="_blank" class="previewcard-link">
           <div class="previewcard-container">
