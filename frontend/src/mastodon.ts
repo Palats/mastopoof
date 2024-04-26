@@ -121,7 +121,30 @@ export interface PollOption {
 }
 
 // https://docs.joinmastodon.org/entities/PreviewCard/
-export interface PreviewCard { }
+export interface PreviewCard {
+    url: string,
+    title: string,
+    description: string,
+    type: "link" | "photo" | "video" | "rich",
+    author_name: string,
+    author_url: string,
+    provider_name: string,
+    provider_url: string,
+    html: string,
+    width: number,
+    height: number,
+    image: string | null,
+    embed_url: string,
+    blurhash: string | null,
+    history: PreviewHistory[]
+}
+
+// https://docs.joinmastodon.org/entities/PreviewCard/#history
+export interface PreviewHistory {
+    day: string,
+    accounts: string,
+    uses: string
+}
 
 // https://docs.joinmastodon.org/entities/FilterResult/
 export interface FilterResult { }
