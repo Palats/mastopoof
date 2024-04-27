@@ -1060,3 +1060,44 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLQueryable, asid AS
 	}
 	return nil
 }
+
+func (st *Storage) SearchByStatusID(ctx context.Context, txn SQLQueryable, uid UID, statusID mastodon.ID) ([]*Item, error) {
+	accountState, err := st.AccountStateByUID(ctx, txn, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := txn.QueryContext(ctx, `
+		SELECT
+			status
+		FROM
+			statuses
+		WHERE
+			json_extract(status, "$.id") = ?
+			AND asid = ?
+		;
+	`, statusID, accountState.ASID)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []*Item
+	for rows.Next() {
+		var jsonString string
+		if err := rows.Scan(&jsonString); err != nil {
+			return nil, err
+		}
+		var status mastodon.Status
+		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
+			return nil, err
+		}
+		results = append(results, &Item{
+			Position: int64(len(results)),
+			Status:   status,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return results, nil
+}

@@ -55,28 +55,27 @@ func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode str
 	return s
 }
 
-func (s *Server) sessionUserID(ctx context.Context) storage.UID {
-	return storage.UID(s.sessionManager.GetInt64(ctx, "userid"))
-}
-
 func (s *Server) setSessionUserID(ctx context.Context, uid storage.UID) {
 	// `uid`` must be converted from `UID` to `int64`, otherwise session manager
 	// has trouble serializing it.
 	s.sessionManager.Put(ctx, "userid", int64(uid))
 }
 
-func (s *Server) isLogged(ctx context.Context) error {
-	userID := s.sessionUserID(ctx)
+func (s *Server) isLogged(ctx context.Context) (storage.UID, error) {
+	userID := storage.UID(s.sessionManager.GetInt64(ctx, "userid"))
 	if userID == 0 {
-		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("oh noes"))
+		return 0, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("oh noes"))
 	}
-	return nil
+	return userID, nil
 }
 
 // verifyStdID checks that the logged in user is allowed access to that
 // stream.
 func (s *Server) verifyStID(ctx context.Context, stid storage.StID) (*storage.UserState, error) {
-	userID := s.sessionUserID(ctx)
+	userID, err := s.isLogged(ctx)
+	if err != nil {
+		return nil, err
+	}
 	userState, err := s.st.UserState(ctx, nil, userID)
 	if err != nil {
 		return nil, err
@@ -99,12 +98,13 @@ func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest
 	}
 
 	// Trying to login only based on existing session.
-	if err := s.isLogged(ctx); err != nil {
+	uid, err := s.isLogged(ctx)
+	if err != nil {
 		// Not logged - do not return an error, but just no information.
 		return connect.NewResponse(&pb.LoginResponse{}), nil
 	}
 
-	userState, err := s.st.UserState(ctx, nil, s.sessionUserID(ctx))
+	userState, err := s.st.UserState(ctx, nil, uid)
 	if err != nil {
 		return nil, err
 	}
@@ -542,6 +542,37 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	if len(timeline) == 0 {
 		// Nothing was returned, assume it is because we've reached the end.
 		resp.Status = pb.FetchResponse_DONE
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *Server) Search(ctx context.Context, req *connect.Request[pb.SearchRequest]) (*connect.Response[pb.SearchResponse], error) {
+	uid, err := s.isLogged(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []*storage.Item
+	err = s.st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
+		var err error
+		results, err = s.st.SearchByStatusID(ctx, txn, uid, mastodon.ID(req.Msg.GetStatusId()))
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &pb.SearchResponse{}
+	for _, item := range results {
+		raw, err := json.Marshal(item.Status)
+		if err != nil {
+			return nil, err
+		}
+		resp.Items = append(resp.Items, &pb.Item{
+			Status:   &pb.MastodonStatus{Content: string(raw)},
+			Position: item.Position,
+			// TODO: missing Account; though field is unused - remove if so.
+		})
 	}
 	return connect.NewResponse(resp), nil
 }

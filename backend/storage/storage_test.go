@@ -547,3 +547,71 @@ func TestV18ToV18(t *testing.T) {
 		t.Errorf("Got %d entries, expected 2", got)
 	}
 }
+
+func TestSearchStatusID(t *testing.T) {
+	ctx := context.Background()
+	env := (&DBTestEnv{}).Init(ctx, t)
+
+	// Prep the environment with users and statuses.
+	userState1, accountState1, streamState1, err := env.st.CreateUser(ctx, nil, "localhost", "123", "user1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = env.st.InsertStatuses(ctx, env.db, accountState1.ASID, streamState1, []*mastodon.Status{
+		testserver.NewFakeStatus(mastodon.ID("100"), "123"),
+		testserver.NewFakeStatus(mastodon.ID("101"), "123"),
+		testserver.NewFakeStatus(mastodon.ID("102"), "123"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	userState2, accountState2, streamState2, err := env.st.CreateUser(ctx, nil, "localhost", "456", "user2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = env.st.InsertStatuses(ctx, env.db, accountState2.ASID, streamState2, []*mastodon.Status{
+		testserver.NewFakeStatus(mastodon.ID("200"), "456"),
+		testserver.NewFakeStatus(mastodon.ID("201"), "456"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = env.st.InTxn(ctx, func(ctx context.Context, txn SQLQueryable) error {
+		// Make sure the statuses that were inserted are available.
+		results, err := env.st.SearchByStatusID(ctx, txn, userState1.UID, "101")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := len(results), 1; got != want {
+			t.Errorf("Got %d results, wanted %d; results:\n%v", got, want, results)
+		}
+		if got, want := results[0].Position, int64(0); got != want {
+			t.Errorf("Got position %d, wanted %d", got, want)
+		}
+
+		// Search for an unknown status.
+		results, err = env.st.SearchByStatusID(ctx, txn, userState1.UID, "199")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := len(results), 0; got != want {
+			t.Errorf("Got %d results, wanted %d; results:\n%v", got, want, results)
+		}
+
+		// Check that searchs look only for the provided user statuses.
+		results, err = env.st.SearchByStatusID(ctx, txn, userState2.UID, "101")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := len(results), 0; got != want {
+			t.Errorf("Got %d results, wanted %d; results:\n%v", got, want, results)
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

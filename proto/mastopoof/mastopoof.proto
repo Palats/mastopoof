@@ -20,6 +20,9 @@ service Mastopoof {
 
     // Contact the Mastodon server and add more statuses to the pool.
     rpc Fetch(FetchRequest) returns (FetchResponse);
+
+    // Look for specific statuses.
+    rpc Search(SearchRequest) returns (SearchResponse);
 }
 
 message PingRequest {
@@ -199,4 +202,14 @@ message FetchResponse {
         DONE = 2;
     }
     Status status = 3;
+}
+
+message SearchRequest {
+    // Search for a given status ID in the cached statuses of the account.
+    string status_id = 1;
+}
+
+message SearchResponse {
+    // List of matching statuses, in a stream like fashion.
+    repeated Item items = 1;
 }

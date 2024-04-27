@@ -434,3 +434,34 @@ func TestConcurrentFetch(t *testing.T) {
 		t.Fatalf("Got status %v [%s], want %v; body=%s", got, resp2.Status, want, body)
 	}
 }
+
+func TestSearchStatusID(t *testing.T) {
+	ctx := context.Background()
+	env := (&TestEnv{
+		t:             t,
+		StatusesCount: 10,
+	}).Init(ctx)
+	defer env.Close()
+
+	userInfo := env.Login()
+
+	// Must fetch the statuses from Mastodon - otherwise, they're not in cache and not
+	// visible to search.
+	MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{Stid: userInfo.DefaultStid})
+
+	// Test a search of one of the automatically generated status.
+	searchResp := MustCall[pb.SearchResponse](env, "Search", &pb.SearchRequest{
+		StatusId: "3",
+	})
+	if got, want := len(searchResp.Items), 1; got != want {
+		t.Errorf("Got %d statuses, wanted %d; response:\n%v", got, want, searchResp)
+	}
+
+	// Test for an unknown status - it should be empty, not an error.
+	searchResp = MustCall[pb.SearchResponse](env, "Search", &pb.SearchRequest{
+		StatusId: "999",
+	})
+	if got, want := len(searchResp.Items), 0; got != want {
+		t.Errorf("Got %d statuses, wanted %d; response:\n%v", got, want, searchResp)
+	}
+}
