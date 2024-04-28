@@ -1,4 +1,4 @@
-import { LitElement, css, html, nothing, TemplateResult, unsafeCSS } from 'lit'
+import { LitElement, css, html, nothing, TemplateResult } from 'lit'
 import { customElement, state, property } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { repeat } from 'lit/directives/repeat.js';
@@ -6,30 +6,14 @@ import { Ref, createRef, ref } from 'lit/directives/ref.js';
 import { classMap } from 'lit/directives/class-map.js';
 
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
-import { Backend, StreamUpdateEvent, LoginUpdateEvent, LoginState } from "./backend";
+import { StreamUpdateEvent, LoginUpdateEvent, LoginState } from "./backend";
 
 import { asyncReplace } from 'lit/directives/async-replace.js';
 
-import normalizeCSSstr from "./normalize.css?inline";
-import baseCSSstr from "./base.css?inline";
-
+import * as common from "./common";
 import * as mastodon from "./mastodon";
 
 import dayjs from 'dayjs';
-import relativeTimePlugin from 'dayjs/plugin/relativeTime';
-dayjs.extend(relativeTimePlugin);
-import utcPlugin from 'dayjs/plugin/utc';
-dayjs.extend(utcPlugin);
-import timezonePlugin from 'dayjs/plugin/timezone';
-dayjs.extend(timezonePlugin);
-
-const displayTimezone = dayjs.tz.guess();
-console.log("Display timezone:", displayTimezone);
-
-// Create a global backend access.
-const backend = new Backend();
-
-const commonCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
 
 @customElement('app-root')
 export class AppRoot extends LitElement {
@@ -37,7 +21,7 @@ export class AppRoot extends LitElement {
 
   constructor() {
     super();
-    backend.onEvent.addEventListener("login-update", ((evt: LoginUpdateEvent) => {
+    common.backend.onEvent.addEventListener("login-update", ((evt: LoginUpdateEvent) => {
       if (evt.state === LoginState.LOGGED && this.lastLoginUpdate?.state !== LoginState.LOGGED) {
         console.log("Logged in");
       }
@@ -45,7 +29,7 @@ export class AppRoot extends LitElement {
     }) as EventListener);
 
     // Determine if we're already logged in.
-    backend.login();
+    common.backend.login();
   }
 
   connectedCallback(): void {
@@ -72,7 +56,7 @@ export class AppRoot extends LitElement {
     return html`<mast-stream .stid=${stid}></mast-stream>`;
   }
 
-  static styles = [commonCSS, css``];
+  static styles = [common.sharedCSS, css``];
 }
 
 declare global {
@@ -134,7 +118,7 @@ export class MastStream extends LitElement {
       threshold: 0.0,
     });
 
-    backend.onEvent.addEventListener("stream-update", ((evt: StreamUpdateEvent) => {
+    common.backend.onEvent.addEventListener("stream-update", ((evt: StreamUpdateEvent) => {
       if (evt.curr) {
         this.streamInfo = evt.curr;
       }
@@ -196,7 +180,7 @@ export class MastStream extends LitElement {
       if (!this.stid) {
         throw new Error("missing stid");
       }
-      backend.advanceLastRead(this.stid, disappearedPosition);
+      common.backend.advanceLastRead(this.stid, disappearedPosition);
     }
   }
 
@@ -211,7 +195,7 @@ export class MastStream extends LitElement {
       throw new Error("loading previous status without successful forward loading");
     }
     const position = this.items[0].position;
-    const resp = await backend.list({ stid: stid, position: position, direction: pb.ListRequest_Direction.BACKWARD })
+    const resp = await common.backend.list({ stid: stid, position: position, direction: pb.ListRequest_Direction.BACKWARD })
 
     const newItems = [];
     for (let i = 0; i < resp.items.length; i++) {
@@ -248,7 +232,7 @@ export class MastStream extends LitElement {
     let resp: pb.ListResponse;
     try {
       this.loadingBarUsers++;
-      resp = await backend.list({ stid: stid, position: position, direction: pb.ListRequest_Direction.FORWARD })
+      resp = await common.backend.list({ stid: stid, position: position, direction: pb.ListRequest_Direction.FORWARD })
     } finally {
       this.loadingBarUsers--;
     }
@@ -283,7 +267,7 @@ export class MastStream extends LitElement {
       // Limit the number of fetch we're requesting.
       // TODO: do limiting on server side.
       for (let i = 0; i < 10; i++) {
-        const done = await backend.fetch(stid);
+        const done = await common.backend.fetch(stid);
         if (done) { break; }
       }
     } finally {
@@ -411,7 +395,7 @@ export class MastStream extends LitElement {
         <button @click=${this.fetch}>Fetch now</button>
       </div>
       <div>
-        <button @click=${() => backend.logout()}>Logout</button>
+        <button @click=${() => common.backend.logout()}>Logout</button>
       </div>
     `;
   }
@@ -470,7 +454,7 @@ export class MastStream extends LitElement {
     return content;
   }
 
-  static styles = [commonCSS, css`
+  static styles = [common.sharedCSS, css`
     :host {
       display: flex;
       flex-direction: column;
@@ -716,7 +700,7 @@ export class MastStatus extends LitElement {
       throw new Error("missing stream id");
     }
     // Not sure if doing computation on "position" is fine, but... well.
-    backend.setLastRead(this.stid, this.item?.position - 1n);
+    common.backend.setLastRead(this.stid, this.item?.position - 1n);
   }
 
   render() {
@@ -765,7 +749,7 @@ export class MastStatus extends LitElement {
         <a href="${s.card.url}" target="_blank" class="previewcard-link">
           <div class="previewcard-container">
             <div class="previewcard-image">
-                <img src="${s.card.image}" />
+                <img src="${s.card.image ?? ''}" />
             </div>
             <div class="previewcard-meta">
                 <div class="previewcard-provider">${s.card.provider_name}</div>
@@ -779,11 +763,11 @@ export class MastStatus extends LitElement {
     // Main created time is the time of the status or of the reblog content
     // if the status is a reblog.
     const createdTime = dayjs(s.created_at);
-    const createdTimeLabel = `${displayTimezone}: ${createdTime.tz(displayTimezone).format()}\nSource: ${s.created_at}`;
+    const createdTimeLabel = `${common.displayTimezone}: ${createdTime.tz(common.displayTimezone).format()}\nSource: ${s.created_at}`;
 
     // Reblog time is the time of the main status, as in those case, the real content is in the reblog.
     const reblogTime = dayjs(this.item.status.created_at);
-    const reblogTimeLabel = `${displayTimezone}: ${reblogTime.tz(displayTimezone).format()}\nSource: ${this.item.status.created_at}`;
+    const reblogTimeLabel = `${common.displayTimezone}: ${reblogTime.tz(common.displayTimezone).format()}\nSource: ${this.item.status.created_at}`;
 
     const openTarget = localStatusURL(this.item);
 
@@ -841,7 +825,7 @@ export class MastStatus extends LitElement {
     `
   }
 
-  static styles = [commonCSS, css`
+  static styles = [common.sharedCSS, css`
     .status {
       border-style: solid;
       border-radius: 4px;
@@ -941,35 +925,35 @@ export class MastStatus extends LitElement {
     .timestamp {
       font-size: 0.8rem;
     }
-    
+
     .previewcard-link {
       color: inherit;
       text-decoration: inherit;
     }
-    
+
     .previewcard-meta {
       align-self: center
     }
-    
+
     .previewcard-provider {
       font-style: italic;
     }
-    
+
     .previewcard-title {
       font-weight: bold;
       font-size: 1.2rem;
     }
-   
+
 
     .previewcard-image > img {
-      max-width: 150px; 
+      max-width: 150px;
       max-height: 150px;
     }
-    
+
     .previewcard-container {
       border-style: solid;
-      border-width: 1px; 
-      display:grid; 
+      border-width: 1px;
+      display:grid;
       grid-template-columns: 150px 1fr;
       column-gap: 10px;
       background-color: var(--color-grey-150);
@@ -1001,7 +985,7 @@ export class MastLogin extends LitElement {
       return;
     }
     const inviteCode = this.inviteCodeRef.value?.value;
-    this.authURI = await backend.authorize(serverAddr, inviteCode);
+    this.authURI = await common.backend.authorize(serverAddr, inviteCode);
     this.serverAddr = serverAddr;
     console.log("authURI", this.authURI);
   }
@@ -1013,7 +997,7 @@ export class MastLogin extends LitElement {
       console.error("invalid authorization code");
       return;
     }
-    await backend.token(this.serverAddr, authCode);
+    await common.backend.token(this.serverAddr, authCode);
   }
 
   render() {
@@ -1042,7 +1026,7 @@ export class MastLogin extends LitElement {
     `;
   }
 
-  static styles = [commonCSS, css``];
+  static styles = [common.sharedCSS, css``];
 }
 
 declare global {
@@ -1089,7 +1073,7 @@ export class TimeSince extends LitElement {
 
     this.fromNow?.return("replaced");
     this.fromNow = this.refresh(dt);
-    const label = `${displayTimezone}: ${dt.tz(displayTimezone).format()}\nSource: ${this.unix}`;
+    const label = `${common.displayTimezone}: ${dt.tz(common.displayTimezone).format()}\nSource: ${this.unix}`;
     return html`<span title=${label}>${asyncReplace(this.fromNow!)}</span>`;
   }
 }
