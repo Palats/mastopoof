@@ -456,6 +456,9 @@ func TestSearchStatusID(t *testing.T) {
 	if got, want := len(searchResp.Items), 1; got != want {
 		t.Errorf("Got %d statuses, wanted %d; response:\n%v", got, want, searchResp)
 	}
+	if got, want := searchResp.Items[0].Account.Username, "testuser1"; got != want {
+		t.Errorf("Got account username %s, want %s", got, want)
+	}
 
 	// Test for an unknown status - it should be empty, not an error.
 	searchResp = MustCall[pb.SearchResponse](env, "Search", &pb.SearchRequest{

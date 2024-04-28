@@ -116,6 +116,14 @@ type AccountState struct {
 	LastHomeStatusID mastodon.ID `json:"last_home_status_id"`
 }
 
+func (accountState *AccountState) ToAccountProto() *pb.Account {
+	return &pb.Account{
+		ServerAddr: accountState.ServerAddr,
+		AccountId:  accountState.AccountID,
+		Username:   accountState.Username,
+	}
+}
+
 // AppRegState contains information about an app registration on a Mastodon server.
 type AppRegState struct {
 	// The storage key for this app registration.

@@ -312,11 +312,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 	if err != nil {
 		return nil, err
 	}
-	account := &pb.Account{
-		ServerAddr: accountState.ServerAddr,
-		AccountId:  accountState.AccountID,
-		Username:   accountState.Username,
-	}
+	accountStateProto := accountState.ToAccountProto()
 
 	resp := &pb.ListResponse{}
 
@@ -351,7 +347,8 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 		resp.Items = append(resp.Items, &pb.Item{
 			Status:   &pb.MastodonStatus{Content: string(raw)},
 			Position: item.Position,
-			Account:  account,
+			// TODO: account is potentially per status, while it is currently considered per user.
+			Account: accountStateProto,
 		})
 	}
 
@@ -553,8 +550,14 @@ func (s *Server) Search(ctx context.Context, req *connect.Request[pb.SearchReque
 	}
 
 	var results []*storage.Item
+	var accountState *storage.AccountState
 	err = s.st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
 		var err error
+		accountState, err = s.st.AccountStateByUID(ctx, txn, uid)
+		if err != nil {
+			return err
+		}
+
 		results, err = s.st.SearchByStatusID(ctx, txn, uid, mastodon.ID(req.Msg.GetStatusId()))
 		return err
 	})
@@ -562,8 +565,11 @@ func (s *Server) Search(ctx context.Context, req *connect.Request[pb.SearchReque
 		return nil, err
 	}
 
+	// TODO: account is potentially per status, while it is currently considered per user.
+	accountStateProto := accountState.ToAccountProto()
 	resp := &pb.SearchResponse{}
 	for _, item := range results {
+
 		raw, err := json.Marshal(item.Status)
 		if err != nil {
 			return nil, err
@@ -571,7 +577,7 @@ func (s *Server) Search(ctx context.Context, req *connect.Request[pb.SearchReque
 		resp.Items = append(resp.Items, &pb.Item{
 			Status:   &pb.MastodonStatus{Content: string(raw)},
 			Position: item.Position,
-			// TODO: missing Account; though field is unused - remove if so.
+			Account:  accountStateProto,
 		})
 	}
 	return connect.NewResponse(resp), nil
