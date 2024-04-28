@@ -64,6 +64,171 @@ declare global {
   }
 }
 
+// Component rendering the main view of Mastopoof, as
+// a list of elements such as the stream or search result.
+// It contains multiple slots:
+//   - `menu`, to add extra element in the UI menu.
+//   - `list`, for the main content in the center column (e.g., the stream).
+//   - `footer`, for the bottom part content.
+@customElement('mast-main-view')
+export class MastMainView extends LitElement {
+  // Count the number of reasons why the loading bar should be shown.
+  // This allows to have multiple things loading, while avoiding having
+  // the first one finishing removing the loading bar.
+  @property({ attribute: false }) loadingBarUsers = 0;
+
+  @state() private showMenu = false;
+
+  render() {
+    return html`
+      <div class="page">
+        <div class="middlepane">
+          <div class="header">
+            <div class="headercontent">
+              <div>
+                <button style="font-size: 24px" @click=${() => { this.showMenu = !this.showMenu }}>
+                  ${this.showMenu ? html`
+                  <span class="material-symbols-outlined" title="Close menu">close</span>
+                  `: html`
+                  <span class="material-symbols-outlined" title="Open menu">menu</span>
+                  `}
+                </button>
+                Mastopoof - Stream
+              </div>
+            </div>
+            ${this.showMenu ? html`
+              <div class="menucontent">
+                <div>plop</div>
+                <slot name="menu"></slot>
+                <div>
+                  <button @click=${() => common.backend.logout()}>Logout</button>
+                </div>
+              </div>` : nothing}
+          </div>
+          <slot name="list"></slot>
+          <div class="footer">
+            <div class="footercontent">
+              <div class=${classMap({ loadingbar: true, hidden: this.loadingBarUsers <= 0 })}></div>
+
+              <slot name="footer"></slot>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  static styles = [common.sharedCSS, css`
+    :host {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+
+      box-sizing: border-box;
+    }
+
+    .page {
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      top: 40px;
+
+      background-color: var(--color-grey-300);
+    }
+
+    .middlepane {
+      min-width: 100px;
+      width: 600px;
+    }
+
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      box-sizing: border-box;
+      min-height: 50px;
+      background-color: var(--color-grey-300);
+
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header content is separated from header styling. This way, the header
+    element can cover everything behind (to pretend it is not there) and let
+    options for styling, beyond a basic all encompassing box.
+    */
+    .headercontent {
+      background-color: var(--color-blue-25);
+      padding: 8px;
+
+      min-height: 50px;
+
+      border-bottom-style: double;
+      border-bottom-width: 3px;
+
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .menucontent {
+      padding: 8px;
+      background-color: var(--color-blue-25);
+      box-shadow: rgb(0 0 0 / 80%) 0px 16px 12px;
+    }
+
+    .footer {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+      box-sizing: border-box;
+      min-height: 30px;
+      background-color: var(--color-grey-300);
+
+      display: grid;
+      grid-template-rows: 1fr;
+
+      border-top-style: double;
+      border-top-width: 3px;
+    }
+
+    .footercontent {
+      background-color: var(--color-blue-25);
+      padding: 5px;
+      box-sizing: border-box;
+    }
+
+    .loadingbar {
+      width: 10%;
+      height: 3px;
+      position: relative;
+      /* Alignement is related to footercontent padding, and
+         footer border-top-width*/
+      top: -8px;
+      background-color: var(--color-grey-999);
+      animation: loadinganim 2s infinite linear;
+    }
+    @keyframes loadinganim {
+      0% { transform:  translateX(0); }
+      50% { transform:  translateX(900%); }
+      100% { transform:  translateX(0%); }
+    }
+
+    ::slotted([slot=list]) {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: stretch;
+    }
+  `];
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'mast-main-view': MastMainView
+  }
+}
+
 
 // StatusItem represents the state in the UI of a given status.
 interface StatusItem {
@@ -84,6 +249,7 @@ interface StatusItem {
   disappeared: boolean;
 }
 
+// Page displaying the main mastodon stream.
 @customElement('mast-stream')
 export class MastStream extends LitElement {
   // Which stream to display.
@@ -102,11 +268,7 @@ export class MastStream extends LitElement {
   // screen.
   @state() private lastVisiblePosition?: bigint;
   @state() private streamInfo?: pb.StreamInfo;
-  @state() private showMenu = false;
-  // Count the number of reasons why the loading bar should be shown.
-  // This allows to have multiple things loading, while avoiding having
-  // the first one finishing removing the loading bar.
-  @state() private loadingBarUsers = 0;
+  @state() loadingBarUsers = 0;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -352,50 +514,20 @@ export class MastStream extends LitElement {
     }
 
     return html`
-      <div class="page">
-        <div class="middlepane">
-          <div class="header">
-            <div class="headercontent">
-              <div>
-                <button style="font-size: 24px" @click=${() => { this.showMenu = !this.showMenu }}>
-                  ${this.showMenu ? html`
-                  <span class="material-symbols-outlined" title="Close menu">close</span>
-                  `: html`
-                  <span class="material-symbols-outlined" title="Open menu">menu</span>
-                  `}
-                </button>
-                Mastopoof - Stream
-              </div>
-            </div>
-            ${this.showMenu ? html`<div class="menucontent">${this.renderMenu()}</div>` : nothing}
-          </div>
-
-          <div class="content">
-            ${this.renderStreamContent()}
-          </div>
-          <div class="footer">
-            <div class="footercontent">
-              <div class=${classMap({ loadingbar: true, hidden: this.loadingBarUsers <= 0 })}></div>
-              <div class="centered">
-                ${remaining}
-                <div class="fetchtime">Last check: <time-since .unix=${this.streamInfo?.lastFetchSecs}></time-since></div>
-              </div>
-            </div>
+      <mast-main-view .loadingBarUsers=${this.loadingBarUsers}>
+        <div slot="menu">
+          <div>
+            <button @click=${this.fetch}>Fetch now</button>
           </div>
         </div>
-      </div>
-    `;
-  }
-
-  renderMenu(): TemplateResult {
-    return html`
-      <div>plop</div>
-      <div>
-        <button @click=${this.fetch}>Fetch now</button>
-      </div>
-      <div>
-        <button @click=${() => common.backend.logout()}>Logout</button>
-      </div>
+        <div slot="list">
+          ${this.renderStreamContent()}
+        </div>
+        <div slot="footer" class="centered">
+          ${remaining}
+          <div class="fetchtime">Last check: <time-since .unix=${this.streamInfo?.lastFetchSecs}></time-since></div>
+        </div>
+      </mast-main-view>
     `;
   }
 
@@ -411,7 +543,7 @@ export class MastStream extends LitElement {
     const buttonName = (this.streamInfo.remainingPool === 0n) ? "Look for statuses" : "Load more statuses";
 
     return html`
-      <div class="noanchor contentitem stream-beginning centered">
+      <div class="noanchor stream-beginning centered">
       ${isBeginning ? html`
         ${this.items.length === 0 ?
           html`<div>No statuses.</div>` :
@@ -428,7 +560,7 @@ export class MastStream extends LitElement {
 
       ${repeat(this.items, item => item.position, (item, _) => this.renderStatus(item))}
 
-      <div class="noanchor contentitem stream-end">
+      <div class="noanchor stream-end">
         <div class="centered">
           <div>
             <button class="loadmore" @click=${this.getMoreStatuses} ?disabled=${this.loadingBarUsers > 0}>
@@ -446,125 +578,19 @@ export class MastStream extends LitElement {
     const lastRead = this.streamInfo?.lastRead ?? 0;
     const pos = item.position;
     const content: TemplateResult[] = [];
-    content.push(html`<mast-status ?isRead=${pos <= lastRead} class="contentitem" ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .stid=${this.stid} .item=${item as any}></mast-status>`);
+    content.push(html`<mast-status ?isRead=${pos <= lastRead} ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .stid=${this.stid} .item=${item as any}></mast-status>`);
     if (item.position == lastRead) {
-      content.push(html`<div class="lastread contentitem centered">The bookmark</div>`);
+      content.push(html`<div class="lastread centered">The bookmark</div>`);
     }
     return content;
   }
 
   static styles = [common.sharedCSS, css`
-    :host {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-
-      box-sizing: border-box;
-    }
-
-    .page {
-      display: flex;
-      flex-direction: row;
-      justify-content: center;
-      top: 40px;
-
-      background-color: var(--color-grey-300);
-    }
-
-    .middlepane {
-      min-width: 100px;
-      width: 600px;
-    }
-
-    .header {
-      position: sticky;
-      top: 0;
-      z-index: 2;
-      box-sizing: border-box;
-      min-height: 50px;
-      background-color: var(--color-grey-300);
-
-      display: flex;
-      flex-direction: column;
-    }
-
-    /* Header content is separated from header styling. This way, the header
-    element can cover everything behind (to pretend it is not there) and let
-    options for styling, beyond a basic all encompassing box.
-    */
-    .headercontent {
-      background-color: var(--color-blue-25);
-      padding: 8px;
-
-      min-height: 50px;
-
-      border-bottom-style: double;
-      border-bottom-width: 3px;
-
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .menucontent {
-      padding: 8px;
-      background-color: var(--color-blue-25);
-      box-shadow: rgb(0 0 0 / 80%) 0px 16px 12px;
-    }
-
-    .footer {
-      position: sticky;
-      bottom: 0;
-      z-index: 2;
-      box-sizing: border-box;
-      min-height: 30px;
-      background-color: var(--color-grey-300);
-
-      display: grid;
-      grid-template-rows: 1fr;
-
-      border-top-style: double;
-      border-top-width: 3px;
-    }
-
-    .footercontent {
-      background-color: var(--color-blue-25);
-      padding: 5px;
-      box-sizing: border-box;
-    }
-
-    .loadingbar {
-      width: 10%;
-      height: 3px;
-      position: relative;
-      /* Alignement is related to footercontent padding, and
-         footer border-top-width*/
-      top: -8px;
-      background-color: var(--color-grey-999);
-      animation: loadinganim 2s infinite linear;
-    }
-    @keyframes loadinganim {
-      0% { transform:  translateX(0); }
-      50% { transform:  translateX(900%); }
-      100% { transform:  translateX(0%); }
-    }
-
     .fetchtime {
       position: absolute;
       font-size: 0.6rem;
       top: 10px;
       right: 4px;
-    }
-
-    .content {
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-    }
-
-    .contentitem {
-      width: 100%;
     }
 
     mast-status {
