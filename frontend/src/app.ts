@@ -4,16 +4,13 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { Ref, createRef, ref } from 'lit/directives/ref.js';
 import { classMap } from 'lit/directives/class-map.js';
+import dayjs from 'dayjs';
 
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import { StreamUpdateEvent, LoginUpdateEvent, LoginState } from "./backend";
-
-import { asyncReplace } from 'lit/directives/async-replace.js';
-
 import * as common from "./common";
 import * as mastodon from "./mastodon";
-
-import dayjs from 'dayjs';
+import "./time";
 
 @customElement('app-root')
 export class AppRoot extends LitElement {
@@ -1032,54 +1029,5 @@ export class MastLogin extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     'mast-login': MastLogin
-  }
-}
-
-
-@customElement('time-since')
-export class TimeSince extends LitElement {
-  @property({ attribute: false })
-  unix?: BigInt;
-
-  private fromNow?: AsyncGenerator<string>;
-
-  disconnectedCallback() {
-    super.disconnectedCallback();
-    this.fromNow?.return("disconnected");
-  }
-
-  async* refresh(dt: dayjs.Dayjs) {
-    let prev = "";
-    while (true) {
-      const now = dayjs();
-      const s = dt.from(now);
-      if (s !== prev) {
-        yield s;
-        prev = s;
-      }
-      let delay = 10000;
-      if (now.diff(dt, "minute") >= 1) {
-        delay = 60000;
-      }
-      await new Promise((r) => setTimeout(r, delay));
-    }
-  }
-
-  render() {
-    if (!this.unix || this.unix === 0n) {
-      return html`<span>never</span>`;
-    }
-    const dt = dayjs.unix(Number(this.unix));
-
-    this.fromNow?.return("replaced");
-    this.fromNow = this.refresh(dt);
-    const label = `${common.displayTimezone}: ${dt.tz(common.displayTimezone).format()}\nSource: ${this.unix}`;
-    return html`<span title=${label}>${asyncReplace(this.fromNow!)}</span>`;
-  }
-}
-
-declare global {
-  interface HTMLElementTagNameMap {
-    'time-since': TimeSince
   }
 }
