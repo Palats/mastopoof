@@ -81,73 +81,109 @@ export class MastMainView extends LitElement {
 
   render() {
     return html`
-      <div class="page">
-        <div class="middlepane">
-          <div class="header">
-            <div class="headercontent">
-              <div>
-                <button style="font-size: 24px" @click=${() => { this.showMenu = !this.showMenu }}>
-                  ${this.showMenu ? html`
-                  <span class="material-symbols-outlined" title="Close menu">close</span>
-                  `: html`
-                  <span class="material-symbols-outlined" title="Open menu">menu</span>
-                  `}
-                </button>
-                Mastopoof - Stream
-              </div>
-            </div>
-            ${this.showMenu ? html`
-              <div class="menucontent">
-                <div>plop</div>
-                <slot name="menu"></slot>
-                <div>
-                  <button @click=${() => common.backend.logout()}>Logout</button>
-                </div>
-              </div>` : nothing}
-          </div>
-          <slot name="list"></slot>
-          <div class="footer">
-            <div class="footercontent">
-              <div class=${classMap({ loadingbar: true, hidden: this.loadingBarUsers <= 0 })}></div>
+      <div class="page-background"><div class="stream-background"></div></div>
 
-              <slot name="footer"></slot>
+      <div class="middlepane">
+        <div class="filler-header"></div>
+        <slot name="list"></slot>
+        <!--- some margin to avoid being hidden behind footer which is positioned out of flow -->
+        <div class="filler-footer"></div>
+      </div>
+
+      <div class="ui-overlay">
+        <div class="header">
+          <div class="headercontent">
+            <div>
+              <button style="font-size: 24px" @click=${() => { this.showMenu = !this.showMenu }}>
+                ${this.showMenu ? html`
+                <span class="material-symbols-outlined" title="Close menu">close</span>
+                `: html`
+                <span class="material-symbols-outlined" title="Open menu">menu</span>
+                `}
+              </button>
+              Mastopoof - Stream
             </div>
+          </div>
+          ${this.showMenu ? html`
+            <div class="menucontent">
+              <div>plop</div>
+              <slot name="menu"></slot>
+              <div>
+                <button @click=${() => common.backend.logout()}>Logout</button>
+              </div>
+            </div>` : nothing}
+        </div>
+        <div class="footer">
+          <div class="footercontent">
+            <div class=${classMap({ loadingbar: true, hidden: this.loadingBarUsers <= 0 })}></div>
+            <slot name="footer"></slot>
           </div>
         </div>
       </div>
+
     `;
   }
 
   static styles = [common.sharedCSS, css`
     :host {
       display: flex;
-      flex-direction: column;
-      height: 100%;
-
-      box-sizing: border-box;
-    }
-
-    .page {
-      display: flex;
       flex-direction: row;
       justify-content: center;
-      top: 40px;
+      box-sizing: border-box;
+      width: 100%;
 
+      --header-height: 55px;
+      --footer-height: 40px;
+    }
+
+    .page-background {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
       background-color: var(--color-grey-300);
+
+      display: grid;
+      grid-template-columns: 1fr minmax(var(--stream-min-width), var(--stream-max-width)) 1fr;
+      grid-template-rows: 1fr;
+    }
+
+    .stream-background {
+      grid-column: 2;
+      background-color: var(--color-grey-150);
+    }
+
+    .ui-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+
+      display: grid;
+      grid-template-columns: 1fr minmax(var(--stream-min-width), var(--stream-max-width)) 1fr;
+      grid-template-rows: var(--header-height) 1fr var(--footer-height);
     }
 
     .middlepane {
-      min-width: 100px;
-      width: 600px;
+      z-index: 0;
+      min-width: var(--stream-min-width);
+      width: var(--stream-max-width);
+      display: flex;
+      flex-direction: column;
     }
 
     .header {
-      position: sticky;
-      top: 0;
-      z-index: 2;
+      grid-column: 2;
+      grid-row: 1;
       box-sizing: border-box;
-      min-height: 50px;
-      background-color: var(--color-grey-300);
+      height: var(--header-height);
+
+      pointer-events: auto;
 
       display: flex;
       flex-direction: column;
@@ -158,11 +194,11 @@ export class MastMainView extends LitElement {
     options for styling, beyond a basic all encompassing box.
     */
     .headercontent {
+      height: 100%;
       background-color: var(--color-blue-25);
       padding: 8px;
 
-      min-height: 50px;
-
+      box-sizing: border-box;
       border-bottom-style: double;
       border-bottom-width: 3px;
 
@@ -177,12 +213,21 @@ export class MastMainView extends LitElement {
       box-shadow: rgb(0 0 0 / 80%) 0px 16px 12px;
     }
 
+    .filler-header {
+      height: var(--header-height);
+    }
+
+    .filler-footer {
+      height: var(--footer-height);
+    }
+
     .footer {
-      position: sticky;
-      bottom: 0;
+      grid-column: 2;
+      grid-row: 3;
       z-index: 2;
+
       box-sizing: border-box;
-      min-height: 30px;
+      height: var(--footer-height);
       background-color: var(--color-grey-300);
 
       display: grid;
@@ -193,6 +238,7 @@ export class MastMainView extends LitElement {
     }
 
     .footercontent {
+      height: 100%;
       background-color: var(--color-blue-25);
       padding: 5px;
       box-sizing: border-box;
@@ -523,8 +569,8 @@ export class MastStream extends LitElement {
         <div slot="list">
           ${this.renderStreamContent()}
         </div>
-        <div slot="footer" class="centered">
-          ${remaining}
+        <div slot="footer" class="footer">
+          <div class="remaining">${remaining}</div>
           <div class="fetchtime">Last check: <time-since .unix=${this.streamInfo?.lastFetchSecs}></time-since></div>
         </div>
       </mast-main-view>
@@ -586,11 +632,21 @@ export class MastStream extends LitElement {
   }
 
   static styles = [common.sharedCSS, css`
+    .footer {
+      display: grid;
+      grid-template-columns: 0.4fr 1fr 0.4fr;
+      align-items: center;
+    }
+
+    .remaining {
+      grid-column: 2;
+      justify-self: center;
+    }
+
     .fetchtime {
-      position: absolute;
+      grid-column: 3;
       font-size: 0.6rem;
-      top: 10px;
-      right: 4px;
+      justify-self: right;
     }
 
     mast-status {

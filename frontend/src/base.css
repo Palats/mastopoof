@@ -5,6 +5,9 @@
 :host {
     font-size: 1rem;
 
+    --stream-min-width: 100px;
+    --stream-max-width: 600px;
+
     --color-red-100: #EBBAB9;
     --color-red-200: #dfa1a1;
     --color-red-400: #CC2936;
