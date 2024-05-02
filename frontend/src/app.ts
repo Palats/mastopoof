@@ -90,37 +90,35 @@ export class MastMainView extends LitElement {
         <div class="filler-footer"></div>
       </div>
 
-      <div class="ui-overlay">
-        <div class="header">
-          <div class="headercontent">
+      <div class="header">
+        <div class="headercontent">
+          <div>
+            <button style="font-size: 24px" @click=${() => { this.showMenu = !this.showMenu }}>
+              ${this.showMenu ? html`
+              <span class="material-symbols-outlined" title="Close menu">close</span>
+              `: html`
+              <span class="material-symbols-outlined" title="Open menu">menu</span>
+              `}
+            </button>
+            Mastopoof - Stream
+          </div>
+        </div>
+        ${this.showMenu ? html`
+          <div class="menucontent">
+            <div>plop</div>
+            <slot name="menu"></slot>
             <div>
-              <button style="font-size: 24px" @click=${() => { this.showMenu = !this.showMenu }}>
-                ${this.showMenu ? html`
-                <span class="material-symbols-outlined" title="Close menu">close</span>
-                `: html`
-                <span class="material-symbols-outlined" title="Open menu">menu</span>
-                `}
-              </button>
-              Mastopoof - Stream
+              <button @click=${() => common.backend.logout()}>Logout</button>
             </div>
-          </div>
-          ${this.showMenu ? html`
-            <div class="menucontent">
-              <div>plop</div>
-              <slot name="menu"></slot>
-              <div>
-                <button @click=${() => common.backend.logout()}>Logout</button>
-              </div>
-            </div>` : nothing}
-        </div>
-        <div class="footer">
-          <div class="footercontent">
-            <div class=${classMap({ loadingbar: true, hidden: this.loadingBarUsers <= 0 })}></div>
-            <slot name="footer"></slot>
-          </div>
-        </div>
+          </div>` : nothing}
       </div>
 
+      <div class="footer">
+        <div class="footercontent">
+          <div class=${classMap({ loadingbar: true, hidden: this.loadingBarUsers <= 0 })}></div>
+          <slot name="footer"></slot>
+        </div>
+      </div>
     `;
   }
 
@@ -130,7 +128,6 @@ export class MastMainView extends LitElement {
       flex-direction: row;
       justify-content: center;
       box-sizing: border-box;
-      width: 100%;
 
       --header-height: 55px;
       --footer-height: 40px;
@@ -155,20 +152,6 @@ export class MastMainView extends LitElement {
       background-color: var(--color-grey-150);
     }
 
-    .ui-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 1;
-
-      display: grid;
-      grid-template-columns: 1fr minmax(var(--stream-min-width), var(--stream-max-width)) 1fr;
-      grid-template-rows: var(--header-height) 1fr var(--footer-height);
-    }
-
     .middlepane {
       z-index: 0;
       min-width: var(--stream-min-width);
@@ -178,23 +161,23 @@ export class MastMainView extends LitElement {
     }
 
     .header {
-      grid-column: 2;
-      grid-row: 1;
+      z-index: 1;
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 100%;
+
+      display: grid;
+      grid-template-columns: 1fr minmax(var(--stream-min-width), var(--stream-max-width)) 1fr;
+      grid-template-rows: auto;
+
       box-sizing: border-box;
-      height: var(--header-height);
-
-      pointer-events: auto;
-
-      display: flex;
-      flex-direction: column;
     }
 
-    /* Header content is separated from header styling. This way, the header
-    element can cover everything behind (to pretend it is not there) and let
-    options for styling, beyond a basic all encompassing box.
-    */
     .headercontent {
-      height: 100%;
+      grid-column: 2;
+
+      height: var(--header-height);
       background-color: var(--color-blue-25);
       padding: 8px;
 
@@ -208,6 +191,7 @@ export class MastMainView extends LitElement {
     }
 
     .menucontent {
+      grid-column: 2;
       padding: 8px;
       background-color: var(--color-blue-25);
       box-shadow: rgb(0 0 0 / 80%) 0px 16px 12px;
@@ -222,26 +206,29 @@ export class MastMainView extends LitElement {
     }
 
     .footer {
-      grid-column: 2;
-      grid-row: 3;
-      z-index: 2;
-
-      box-sizing: border-box;
-      height: var(--footer-height);
-      background-color: var(--color-grey-300);
+      z-index: 1;
+      position: fixed;
+      left: 0;
+      bottom: 0;
+      width: 100%;
 
       display: grid;
+      grid-template-columns: 1fr minmax(var(--stream-min-width), var(--stream-max-width)) 1fr;
       grid-template-rows: 1fr;
 
-      border-top-style: double;
-      border-top-width: 3px;
+      box-sizing: border-box;
+      background-color: var(--color-grey-300);
+
     }
 
     .footercontent {
-      height: 100%;
+      grid-column: 2;
+      height: var(--footer-height);
       background-color: var(--color-blue-25);
       padding: 5px;
       box-sizing: border-box;
+      border-top-style: double;
+      border-top-width: 3px;
     }
 
     .loadingbar {
