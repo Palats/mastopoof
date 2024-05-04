@@ -81,15 +81,6 @@ export class MastMainView extends LitElement {
 
   render() {
     return html`
-      <div class="page-background"><div class="stream-background"></div></div>
-
-      <div class="middlepane">
-        <div class="filler-header"></div>
-        <slot name="list"></slot>
-        <!--- some margin to avoid being hidden behind footer which is positioned out of flow -->
-        <div class="filler-footer"></div>
-      </div>
-
       <div class="header">
         <div class="headercontent">
           <div>
@@ -113,6 +104,10 @@ export class MastMainView extends LitElement {
           </div>` : nothing}
       </div>
 
+      <div class="middlepane">
+        <slot name="list"></slot>
+      </div>
+
       <div class="footer">
         <div class="footercontent">
           <div class=${classMap({ loadingbar: true, hidden: this.loadingBarUsers <= 0 })}></div>
@@ -125,53 +120,39 @@ export class MastMainView extends LitElement {
   static styles = [common.sharedCSS, css`
     :host {
       display: flex;
-      flex-direction: row;
-      justify-content: center;
+      flex-direction: column;
+      align-items: center;
       box-sizing: border-box;
+      min-height: 100%;
+
+      background-color: var(--color-grey-300);
 
       --header-height: 55px;
       --footer-height: 40px;
     }
 
-    .page-background {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: -1;
-      background-color: var(--color-grey-300);
-
-      display: grid;
-      grid-template-columns: 1fr minmax(var(--stream-min-width), var(--stream-max-width)) 1fr;
-      grid-template-rows: 1fr;
-    }
-
-    .stream-background {
-      grid-column: 2;
-      background-color: var(--color-grey-150);
-    }
-
     .middlepane {
       z-index: 0;
+      flex-grow: 1;
       min-width: var(--stream-min-width);
-      width: var(--stream-max-width);
+      width: 100%;
+      max-width: var(--stream-max-width);
+
+      background-color: var(--color-grey-150);
+
       display: flex;
       flex-direction: column;
     }
 
     .header {
       z-index: 1;
-      position: fixed;
-      left: 0;
+      position: sticky;
       top: 0;
-      width: 100%;
-
-      display: grid;
-      grid-template-columns: 1fr minmax(var(--stream-min-width), var(--stream-max-width)) 1fr;
-      grid-template-rows: auto;
 
       box-sizing: border-box;
+      min-width: var(--stream-min-width);
+      width: 100%;
+      max-width: var(--stream-max-width);
     }
 
     .headercontent {
@@ -197,28 +178,15 @@ export class MastMainView extends LitElement {
       box-shadow: rgb(0 0 0 / 80%) 0px 16px 12px;
     }
 
-    .filler-header {
-      height: var(--header-height);
-    }
-
-    .filler-footer {
-      height: var(--footer-height);
-    }
-
     .footer {
       z-index: 1;
-      position: fixed;
-      left: 0;
+      position: sticky;
       bottom: 0;
-      width: 100%;
-
-      display: grid;
-      grid-template-columns: 1fr minmax(var(--stream-min-width), var(--stream-max-width)) 1fr;
-      grid-template-rows: 1fr;
 
       box-sizing: border-box;
-      background-color: var(--color-grey-300);
-
+      min-width: var(--stream-min-width);
+      width: 100%;
+      max-width: var(--stream-max-width);
     }
 
     .footercontent {
