@@ -42,6 +42,7 @@ var (
 	inviteCode  = flag.String("invite_code", "", "If not empty, users can only be created by providing this code.")
 	testData    = flag.String("testdata", "testdata", "Directory with backend testdata, for testserve")
 	doFix       = flag.Bool("fix", false, "If set, update streamstate based on computed value.")
+	insecure    = flag.Bool("insecure", false, "If true, mark cookies as insecure, allowing serving without https")
 )
 
 const appMastodonScopes = "read write push"
@@ -95,7 +96,11 @@ func getMux(st *storage.Storage, db *sql.DB, autoLogin storage.UID) (*http.Serve
 	mux.Handle("/", http.FileServer(http.FS(content)))
 
 	// Run the backend RPC server.
-	s := server.New(st, server.NewSessionManager(db), *inviteCode, autoLogin, *selfURL, appMastodonScopes)
+	sessionManager := server.NewSessionManager(db)
+	if *insecure {
+		sessionManager.Cookie.Secure = false
+	}
+	s := server.New(st, sessionManager, *inviteCode, autoLogin, *selfURL, appMastodonScopes)
 	s.RegisterOn(mux)
 	return mux, nil
 }
