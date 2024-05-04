@@ -10,33 +10,33 @@ import * as mastodon from "./mastodon";
 
 // StatusItem represents the state in the UI of a given status.
 interface StatusItem {
-    // Position in the stream in the backend.
-    position: bigint;
-    // status, if loaded.
-    status: mastodon.Status;
-    // The account where this status was obtained from.
-    account: pb.Account;
+  // Position in the stream in the backend.
+  position: bigint;
+  // status, if loaded.
+  status: mastodon.Status;
+  // The account where this status was obtained from.
+  account: pb.Account;
 }
 
 function qualifiedAccount(account: mastodon.Account): string {
-    if (account.acct !== account.username) {
-        return account.acct;
-    }
+  if (account.acct !== account.username) {
+    return account.acct;
+  }
 
-    // This is a short account name - i.e., probably on the same server as the
-    // Mastodon user which fetched it.
-    // In theory, should probably get the server name from the backend. In practice,
-    // let's just look up the rest of the account info.
-    if (!account.url.endsWith(`/@${account.username}`)) {
-        // Not the expected format, return just something.
-        return account.acct;
-    }
-    const u = new URL(account.url);
-    return `${account.username}@${u.hostname}`;
+  // This is a short account name - i.e., probably on the same server as the
+  // Mastodon user which fetched it.
+  // In theory, should probably get the server name from the backend. In practice,
+  // let's just look up the rest of the account info.
+  if (!account.url.endsWith(`/@${account.username}`)) {
+    // Not the expected format, return just something.
+    return account.acct;
+  }
+  const u = new URL(account.url);
+  return `${account.username}@${u.hostname}`;
 }
 
 function localStatusURL(item: StatusItem): string {
-    return `${item.account.serverAddr}/@${item.status.account.acct}/${item.status.id}`;
+  return `${item.account.serverAddr}/@${item.status.account.acct}/${item.status.id}`;
 }
 
 /**
@@ -46,123 +46,123 @@ function localStatusURL(item: StatusItem): string {
  * @param emojis emoji mapping
  */
 function expandEmojis(msg: string, emojis?: mastodon.CustomEmoji[]): TemplateResult {
-    if (!emojis || emojis.length === 0) {
-        return html`${unsafeHTML(msg)}`;
-    }
+  if (!emojis || emojis.length === 0) {
+    return html`${unsafeHTML(msg)}`;
+  }
 
-    const perCode = new Map<string, mastodon.CustomEmoji>();
-    for (const emoji of emojis) {
-        perCode.set(emoji.shortcode, emoji);
-    }
+  const perCode = new Map<string, mastodon.CustomEmoji>();
+  for (const emoji of emojis) {
+    perCode.set(emoji.shortcode, emoji);
+  }
 
-    // TODO escape emoji short codes for regexs
-    const emojiregex = new RegExp(`:(${Array.from(perCode.keys()).join('|')}):`, 'g');
-    const doc = (new DOMParser).parseFromString(msg, "text/html");
-    const treeWalker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
-    var textNodes = [];
-    while (treeWalker.nextNode()) {
-        textNodes.push(treeWalker.currentNode);
+  // TODO escape emoji short codes for regexs
+  const emojiregex = new RegExp(`:(${Array.from(perCode.keys()).join('|')}):`, 'g');
+  const doc = (new DOMParser).parseFromString(msg, "text/html");
+  const treeWalker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  var textNodes = [];
+  while (treeWalker.nextNode()) {
+    textNodes.push(treeWalker.currentNode);
+  }
+  for (const node of textNodes) {
+    const parent = node.parentNode;
+    if (!parent) {
+      // can't happen because body is at least parent, so let's soothe TS with that
+      continue;
     }
-    for (const node of textNodes) {
-        const parent = node.parentNode;
-        if (!parent) {
-            // can't happen because body is at least parent, so let's soothe TS with that
-            continue;
-        }
-        const txt = node.textContent || '';
-        const matches = txt.matchAll(emojiregex) || [];
-        var prevMatchEnd = 0;
-        for (const match of matches) {
-            const code = match[1];
-            const emoji = perCode.get(code);
-            if (emoji) {
-                const img = doc.createElement('img');
-                img.setAttribute('class', 'emoji');
-                img.setAttribute('src', emoji.url);
-                img.setAttribute('alt', `emoji ${emoji.shortcode}`);
-                img.setAttribute('title', `emoji ${emoji.shortcode}`);
-                parent.insertBefore(doc.createTextNode(txt.substring(prevMatchEnd, match.index)), node)
-                parent.insertBefore(img, node);
-                prevMatchEnd = match.index + match[0].length;
-            }
-        }
-        parent.insertBefore(doc.createTextNode(txt.substring(prevMatchEnd)), node);
-        parent.removeChild(node);
+    const txt = node.textContent || '';
+    const matches = txt.matchAll(emojiregex) || [];
+    var prevMatchEnd = 0;
+    for (const match of matches) {
+      const code = match[1];
+      const emoji = perCode.get(code);
+      if (emoji) {
+        const img = doc.createElement('img');
+        img.setAttribute('class', 'emoji');
+        img.setAttribute('src', emoji.url);
+        img.setAttribute('alt', `emoji ${emoji.shortcode}`);
+        img.setAttribute('title', `emoji ${emoji.shortcode}`);
+        parent.insertBefore(doc.createTextNode(txt.substring(prevMatchEnd, match.index)), node)
+        parent.insertBefore(img, node);
+        prevMatchEnd = match.index + match[0].length;
+      }
     }
-    const result = doc.body.innerHTML;
+    parent.insertBefore(doc.createTextNode(txt.substring(prevMatchEnd)), node);
+    parent.removeChild(node);
+  }
+  const result = doc.body.innerHTML;
 
-    return html`${unsafeHTML(result)}`;
+  return html`${unsafeHTML(result)}`;
 }
 
 @customElement('mast-status')
 export class MastStatus extends LitElement {
-    @property({ attribute: false })
-    item?: StatusItem;
+  @property({ attribute: false })
+  item?: StatusItem;
 
-    @property({ attribute: false })
-    stid?: bigint;
+  @property({ attribute: false })
+  stid?: bigint;
 
-    @property({ type: Boolean })
-    isRead: boolean = false;
+  @property({ type: Boolean })
+  isRead: boolean = false;
 
-    @state()
-    private accessor showRaw = false;
+  @state()
+  private accessor showRaw = false;
 
-    markUnread() {
-        if (!this.item) {
-            console.error("missing connection");
-            return;
-        }
-        if (!this.stid) {
-            throw new Error("missing stream id");
-        }
-        // Not sure if doing computation on "position" is fine, but... well.
-        common.backend.setLastRead(this.stid, this.item?.position - 1n);
+  markUnread() {
+    if (!this.item) {
+      console.error("missing connection");
+      return;
+    }
+    if (!this.stid) {
+      throw new Error("missing stream id");
+    }
+    // Not sure if doing computation on "position" is fine, but... well.
+    common.backend.setLastRead(this.stid, this.item?.position - 1n);
+  }
+
+  render() {
+    if (!this.item) {
+      return html`<div class="status">oops.</div>`
     }
 
-    render() {
-        if (!this.item) {
-            return html`<div class="status">oops.</div>`
-        }
+    // This actual status - i.e., the reblogged one when it is a reblogged, or
+    // the basic one.
+    const s = this.item.status.reblog ?? this.item.status;
+    const reblog = this.item.status.reblog;
+    const account = this.item.status.account;
 
-        // This actual status - i.e., the reblogged one when it is a reblogged, or
-        // the basic one.
-        const s = this.item.status.reblog ?? this.item.status;
-        const reblog = this.item.status.reblog;
-        const account = this.item.status.account;
-
-        const attachments: TemplateResult[] = [];
-        for (const ma of (s.media_attachments ?? [])) {
-            if (ma.type === "image") {
-                // TODO: preview_url is probably wrong?
-                attachments.push(html`
+    const attachments: TemplateResult[] = [];
+    for (const ma of (s.media_attachments ?? [])) {
+      if (ma.type === "image") {
+        // TODO: preview_url is probably wrong?
+        attachments.push(html`
             <img src=${ma.preview_url} alt=${ma.description || ""}></img>
           `);
-            } else if (ma.type === "gifv") {
-                attachments.push(html`
+      } else if (ma.type === "gifv") {
+        attachments.push(html`
             <video controls muted src=${ma.url} alt=${ma.description || nothing}></video>
           `);
-            } else if (ma.type === "video") {
-                attachments.push(html`
+      } else if (ma.type === "video") {
+        attachments.push(html`
             <video controls src=${ma.url} alt=${ma.description || nothing}></video>
           `);
-            } else {
-                attachments.push(html`unsupported attachment type ${ma.type}`);
-            }
-        }
+      } else {
+        attachments.push(html`unsupported attachment type ${ma.type}`);
+      }
+    }
 
-        const poll: TemplateResult[] = [];
-        if (s.poll) {
-            for (const option of s.poll.options) {
-                poll.push(html`
+    const poll: TemplateResult[] = [];
+    if (s.poll) {
+      for (const option of s.poll.options) {
+        poll.push(html`
               <div class="poll-option"><input type="radio" disabled>${option.title}</input></div>
           `);
-            }
-        }
+      }
+    }
 
-        const card: TemplateResult[] = [];
-        if (s.card && s.media_attachments.length === 0) {
-            card.push(html`
+    const card: TemplateResult[] = [];
+    if (s.card && s.media_attachments.length === 0) {
+      card.push(html`
           <a href="${s.card.url}" target="_blank" class="previewcard-link">
             <div class="previewcard-container">
               <div class="previewcard-image">
@@ -175,20 +175,20 @@ export class MastStatus extends LitElement {
             </div>
           </a>
         `)
-        }
+    }
 
-        // Main created time is the time of the status or of the reblog content
-        // if the status is a reblog.
-        const createdTime = dayjs(s.created_at);
-        const createdTimeLabel = `${common.displayTimezone}: ${createdTime.tz(common.displayTimezone).format()}\nSource: ${s.created_at}`;
+    // Main created time is the time of the status or of the reblog content
+    // if the status is a reblog.
+    const createdTime = dayjs(s.created_at);
+    const createdTimeLabel = `${common.displayTimezone}: ${createdTime.tz(common.displayTimezone).format()}\nSource: ${s.created_at}`;
 
-        // Reblog time is the time of the main status, as in those case, the real content is in the reblog.
-        const reblogTime = dayjs(this.item.status.created_at);
-        const reblogTimeLabel = `${common.displayTimezone}: ${reblogTime.tz(common.displayTimezone).format()}\nSource: ${this.item.status.created_at}`;
+    // Reblog time is the time of the main status, as in those case, the real content is in the reblog.
+    const reblogTime = dayjs(this.item.status.created_at);
+    const reblogTimeLabel = `${common.displayTimezone}: ${reblogTime.tz(common.displayTimezone).format()}\nSource: ${this.item.status.created_at}`;
 
-        const openTarget = localStatusURL(this.item);
+    const openTarget = localStatusURL(this.item);
 
-        return html`
+    return html`
         <div class="status ${classMap({ read: this.isRead, unread: !this.isRead })}">
           <div class="account">
             <span class="centered">
@@ -240,9 +240,9 @@ export class MastStatus extends LitElement {
           ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(this.item.status, null, "  ")}</pre>` : nothing}
         </div>
       `
-    }
+  }
 
-    static styles = [common.sharedCSS, css`
+  static styles = [common.sharedCSS, css`
       .status {
         border-style: solid;
         border-radius: 4px;
@@ -379,7 +379,7 @@ export class MastStatus extends LitElement {
 }
 
 declare global {
-    interface HTMLElementTagNameMap {
-        'mast-status': MastStatus
-    }
+  interface HTMLElementTagNameMap {
+    'mast-status': MastStatus
+  }
 }

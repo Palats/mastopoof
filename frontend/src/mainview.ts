@@ -14,15 +14,16 @@ import "./time";
 //   - `footer`, for the bottom part content.
 @customElement('mast-main-view')
 export class MastMainView extends LitElement {
-    // Count the number of reasons why the loading bar should be shown.
-    // This allows to have multiple things loading, while avoiding having
-    // the first one finishing removing the loading bar.
-    @property({ attribute: false }) loadingBarUsers = 0;
+  // Count the number of reasons why the loading bar should be shown.
+  // This allows to have multiple things loading, while avoiding having
+  // the first one finishing removing the loading bar.
 
-    @state() private showMenu = false;
+  @property({ attribute: false }) loadingBarUsers = 0;
 
-    render() {
-        return html`
+  @state() private showMenu = false;
+
+  render() {
+    return html`
       <div class="header">
         <div class="headercontent">
           <div>
@@ -57,9 +58,9 @@ export class MastMainView extends LitElement {
         </div>
       </div>
     `;
-    }
+  }
 
-    static styles = [common.sharedCSS, css`
+  static styles = [common.sharedCSS, css`
     :host {
       display: flex;
       flex-direction: column;
@@ -159,9 +160,7 @@ export class MastMainView extends LitElement {
 }
 
 declare global {
-    interface HTMLElementTagNameMap {
-        'mast-main-view': MastMainView
-    }
+  interface HTMLElementTagNameMap {
+    'mast-main-view': MastMainView
+  }
 }
-
-

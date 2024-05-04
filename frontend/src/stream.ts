@@ -14,277 +14,277 @@ import "./mainview";
 
 // StatusItem represents the state in the UI of a given status.
 interface StatusItem {
-    // Position in the stream in the backend.
-    position: bigint;
-    // status, if loaded.
-    status: mastodon.Status;
-    // The account where this status was obtained from.
-    account: pb.Account;
+  // Position in the stream in the backend.
+  position: bigint;
+  // status, if loaded.
+  status: mastodon.Status;
+  // The account where this status was obtained from.
+  account: pb.Account;
 
-    // HTML element used to represent this status.
-    elt?: Element;
-    // Is the status currently partially visible?
-    isVisible: boolean;
-    // Was the status visible (partially or fully) on the screen at some point?
-    wasSeen: boolean;
-    // Did the element moved from fully visible to completely invisible?
-    disappeared: boolean;
+  // HTML element used to represent this status.
+  elt?: Element;
+  // Is the status currently partially visible?
+  isVisible: boolean;
+  // Was the status visible (partially or fully) on the screen at some point?
+  wasSeen: boolean;
+  // Did the element moved from fully visible to completely invisible?
+  disappeared: boolean;
 }
 
 // Page displaying the main mastodon stream.
 @customElement('mast-stream')
 export class MastStream extends LitElement {
-    // Which stream to display.
-    // TODO: support changing it.
-    @property({ attribute: false }) stid?: bigint;
+  // Which stream to display.
+  // TODO: support changing it.
+  @property({ attribute: false }) stid?: bigint;
 
-    private items: StatusItem[] = [];
-    private perEltItem = new Map<Element, StatusItem>();
+  private items: StatusItem[] = [];
+  private perEltItem = new Map<Element, StatusItem>();
 
-    // Set to true when the first list of status (after auth) is done.
-    private firstListDone = false;
+  // Set to true when the first list of status (after auth) is done.
+  private firstListDone = false;
 
-    private observer?: IntersectionObserver;
+  private observer?: IntersectionObserver;
 
-    // Status with the highest position value which is partially visible on the
-    // screen.
-    @state() private lastVisiblePosition?: bigint;
-    @state() private streamInfo?: pb.StreamInfo;
-    @state() loadingBarUsers = 0;
+  // Status with the highest position value which is partially visible on the
+  // screen.
+  @state() private lastVisiblePosition?: bigint;
+  @state() private streamInfo?: pb.StreamInfo;
+  @state() loadingBarUsers = 0;
 
-    connectedCallback(): void {
-        super.connectedCallback();
-        this.observer = new IntersectionObserver(
-            (entries: IntersectionObserverEntry[], _: IntersectionObserver) => this.onIntersection(entries), {
-            root: null,
-            rootMargin: "0px",
-            threshold: 0.0,
-        });
+  connectedCallback(): void {
+    super.connectedCallback();
+    this.observer = new IntersectionObserver(
+      (entries: IntersectionObserverEntry[], _: IntersectionObserver) => this.onIntersection(entries), {
+      root: null,
+      rootMargin: "0px",
+      threshold: 0.0,
+    });
 
-        common.backend.onEvent.addEventListener("stream-update", ((evt: StreamUpdateEvent) => {
-            if (evt.curr) {
-                this.streamInfo = evt.curr;
-            }
-        }) as EventListener);
+    common.backend.onEvent.addEventListener("stream-update", ((evt: StreamUpdateEvent) => {
+      if (evt.curr) {
+        this.streamInfo = evt.curr;
+      }
+    }) as EventListener);
 
-        // Trigger loading of content.
-        this.listNext();
+    // Trigger loading of content.
+    this.listNext();
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.observer?.disconnect();
+  }
+
+  // Called when intersections of statuses changes - i.e., that
+  // a status becomes visible / invisible.
+  onIntersection(entries: IntersectionObserverEntry[]) {
+    for (const entry of entries) {
+      const targetItem = this.perEltItem.get(entry.target);
+      if (targetItem) {
+        targetItem.isVisible = entry.isIntersecting;
+        if (entry.isIntersecting) {
+          targetItem.wasSeen = true;
+          targetItem.disappeared = false;
+        } else if (targetItem.wasSeen) {
+          targetItem.disappeared = true;
+        }
+      } else {
+        console.error("not item found for element", entry);
+      }
     }
 
-    disconnectedCallback() {
-        super.disconnectedCallback();
-        this.observer?.disconnect();
+    // TODO: do not rescan everything on each events, as high item count will
+    // make things slow.
+
+    // Find the boundaries of which statuses are visible.
+    let lastVisiblePosition: bigint | undefined;
+    let firstVisiblePosition: bigint | undefined;
+    for (const item of this.items) {
+      if (item.isVisible) {
+        if (firstVisiblePosition === undefined) {
+          firstVisiblePosition = item.position;
+        }
+        lastVisiblePosition = item.position;
+      }
+    }
+    this.lastVisiblePosition = lastVisiblePosition;
+
+    // Scan items to see which one have disappeared - i.e., are above the current
+    // view and can be marked as seen.
+    let disappearedPosition = 0n;
+    for (const item of this.items) {
+      if (!item.disappeared) {
+        break;
+      }
+      disappearedPosition = item.position;
+    }
+    if (this.streamInfo !== undefined && disappearedPosition > this.streamInfo.lastRead) {
+      if (!this.stid) {
+        throw new Error("missing stid");
+      }
+      common.backend.advanceLastRead(this.stid, disappearedPosition);
+    }
+  }
+
+  // Load earlier statuses.
+  async loadPrevious() {
+    const stid = this.stid;
+    if (!stid) {
+      throw new Error("missing stream id");
     }
 
-    // Called when intersections of statuses changes - i.e., that
-    // a status becomes visible / invisible.
-    onIntersection(entries: IntersectionObserverEntry[]) {
-        for (const entry of entries) {
-            const targetItem = this.perEltItem.get(entry.target);
-            if (targetItem) {
-                targetItem.isVisible = entry.isIntersecting;
-                if (entry.isIntersecting) {
-                    targetItem.wasSeen = true;
-                    targetItem.disappeared = false;
-                } else if (targetItem.wasSeen) {
-                    targetItem.disappeared = true;
-                }
-            } else {
-                console.error("not item found for element", entry);
-            }
-        }
+    if (this.items.length === 0) {
+      throw new Error("loading previous status without successful forward loading");
+    }
+    const position = this.items[0].position;
+    const resp = await common.backend.list({ stid: stid, position: position, direction: pb.ListRequest_Direction.BACKWARD })
 
-        // TODO: do not rescan everything on each events, as high item count will
-        // make things slow.
+    const newItems = [];
+    for (let i = 0; i < resp.items.length; i++) {
+      const item = resp.items[i];
+      const position = item.position;
+      const status = JSON.parse(item.status!.content) as mastodon.Status;
+      newItems.push({
+        status: status,
+        position: position,
+        account: item.account!,
+        isVisible: false,
+        wasSeen: false,
+        disappeared: false,
+      });
+    }
+    this.items = [...newItems, ...this.items];
+    this.requestUpdate();
+  }
 
-        // Find the boundaries of which statuses are visible.
-        let lastVisiblePosition: bigint | undefined;
-        let firstVisiblePosition: bigint | undefined;
-        for (const item of this.items) {
-            if (item.isVisible) {
-                if (firstVisiblePosition === undefined) {
-                    firstVisiblePosition = item.position;
-                }
-                lastVisiblePosition = item.position;
-            }
-        }
-        this.lastVisiblePosition = lastVisiblePosition;
-
-        // Scan items to see which one have disappeared - i.e., are above the current
-        // view and can be marked as seen.
-        let disappearedPosition = 0n;
-        for (const item of this.items) {
-            if (!item.disappeared) {
-                break;
-            }
-            disappearedPosition = item.position;
-        }
-        if (this.streamInfo !== undefined && disappearedPosition > this.streamInfo.lastRead) {
-            if (!this.stid) {
-                throw new Error("missing stid");
-            }
-            common.backend.advanceLastRead(this.stid, disappearedPosition);
-        }
+  // List newer statuses.
+  // This does NOT trigger a mastodon->mastopoof fetch, it just
+  // list what's available from mastopoof.
+  async listNext() {
+    const stid = this.stid;
+    if (!stid) {
+      throw new Error("missing stream id");
     }
 
-    // Load earlier statuses.
-    async loadPrevious() {
-        const stid = this.stid;
-        if (!stid) {
-            throw new Error("missing stream id");
-        }
-
-        if (this.items.length === 0) {
-            throw new Error("loading previous status without successful forward loading");
-        }
-        const position = this.items[0].position;
-        const resp = await common.backend.list({ stid: stid, position: position, direction: pb.ListRequest_Direction.BACKWARD })
-
-        const newItems = [];
-        for (let i = 0; i < resp.items.length; i++) {
-            const item = resp.items[i];
-            const position = item.position;
-            const status = JSON.parse(item.status!.content) as mastodon.Status;
-            newItems.push({
-                status: status,
-                position: position,
-                account: item.account!,
-                isVisible: false,
-                wasSeen: false,
-                disappeared: false,
-            });
-        }
-        this.items = [...newItems, ...this.items];
-        this.requestUpdate();
+    let position = 0n;
+    if (this.items.length > 0) {
+      position = this.items[this.items.length - 1].position;
     }
 
-    // List newer statuses.
-    // This does NOT trigger a mastodon->mastopoof fetch, it just
-    // list what's available from mastopoof.
-    async listNext() {
-        const stid = this.stid;
-        if (!stid) {
-            throw new Error("missing stream id");
-        }
-
-        let position = 0n;
-        if (this.items.length > 0) {
-            position = this.items[this.items.length - 1].position;
-        }
-
-        let resp: pb.ListResponse;
-        try {
-            this.loadingBarUsers++;
-            resp = await common.backend.list({ stid: stid, position: position, direction: pb.ListRequest_Direction.FORWARD })
-        } finally {
-            this.loadingBarUsers--;
-        }
-
-        for (let i = 0; i < resp.items.length; i++) {
-            const item = resp.items[i];
-            const position = item.position;
-            const status = JSON.parse(item.status!.content) as mastodon.Status;
-            this.items.push({
-                status: status,
-                position: position,
-                account: item.account!,
-                isVisible: false,
-                wasSeen: false,
-                disappeared: false,
-            });
-        }
-        // Always indicate that initial loading is done - this is a latch anyway.
-        this.firstListDone = true;
-        this.requestUpdate();
+    let resp: pb.ListResponse;
+    try {
+      this.loadingBarUsers++;
+      resp = await common.backend.list({ stid: stid, position: position, direction: pb.ListRequest_Direction.FORWARD })
+    } finally {
+      this.loadingBarUsers--;
     }
 
-    // Just trigger a fetch of status mastodon->mastopoof.
-    async fetch() {
-        const stid = this.stid;
-        if (!stid) {
-            throw new Error("missing stream id");
-        }
-        console.log("Fetching...");
-        try {
-            this.loadingBarUsers++;
-            // Limit the number of fetch we're requesting.
-            // TODO: do limiting on server side.
-            for (let i = 0; i < 10; i++) {
-                const done = await common.backend.fetch(stid);
-                if (done) { break; }
-            }
-        } finally {
-            this.loadingBarUsers--;
-        }
+    for (let i = 0; i < resp.items.length; i++) {
+      const item = resp.items[i];
+      const position = item.position;
+      const status = JSON.parse(item.status!.content) as mastodon.Status;
+      this.items.push({
+        status: status,
+        position: position,
+        account: item.account!,
+        isVisible: false,
+        wasSeen: false,
+        disappeared: false,
+      });
+    }
+    // Always indicate that initial loading is done - this is a latch anyway.
+    this.firstListDone = true;
+    this.requestUpdate();
+  }
+
+  // Just trigger a fetch of status mastodon->mastopoof.
+  async fetch() {
+    const stid = this.stid;
+    if (!stid) {
+      throw new Error("missing stream id");
+    }
+    console.log("Fetching...");
+    try {
+      this.loadingBarUsers++;
+      // Limit the number of fetch we're requesting.
+      // TODO: do limiting on server side.
+      for (let i = 0; i < 10; i++) {
+        const done = await common.backend.fetch(stid);
+        if (done) { break; }
+      }
+    } finally {
+      this.loadingBarUsers--;
+    }
+  }
+
+  async getMoreStatuses() {
+    if (!this.streamInfo) {
+      throw new Error("missing streaminfo");
+    }
+    // Still has some statuses to list, so just get those.
+    if (this.streamInfo.remainingPool > 0n) {
+      await this.listNext();
+      return;
     }
 
-    async getMoreStatuses() {
-        if (!this.streamInfo) {
-            throw new Error("missing streaminfo");
-        }
-        // Still has some statuses to list, so just get those.
-        if (this.streamInfo.remainingPool > 0n) {
-            await this.listNext();
-            return;
-        }
-
-        // No more statuses to list, so some fetching is needed.
-        const stid = this.stid;
-        if (!stid) {
-            throw new Error("missing stream id");
-        }
-
-        // Trigger fetching.
-        // TODO: do a first one, the trigger the other one in background.
-        // However that first requires having the backend retry transaction, as it conflicts
-        // otherwise.
-        await this.fetch();
-
-        // And get those we already got listed.
-        await this.listNext();
+    // No more statuses to list, so some fetching is needed.
+    const stid = this.stid;
+    if (!stid) {
+      throw new Error("missing stream id");
     }
 
-    updateStatusRef(item: StatusItem, elt?: Element) {
-        if (!this.observer) {
-            return;
-        }
-        if (item.elt === elt) {
-            return;
-        }
+    // Trigger fetching.
+    // TODO: do a first one, the trigger the other one in background.
+    // However that first requires having the backend retry transaction, as it conflicts
+    // otherwise.
+    await this.fetch();
 
-        if (item.elt) {
-            this.observer.unobserve(item.elt);
-            this.perEltItem.delete(item.elt);
-        }
-        if (elt) {
-            this.observer.observe(elt);
-            this.perEltItem.set(elt, item);
-        }
-        item.elt = elt;
+    // And get those we already got listed.
+    await this.listNext();
+  }
+
+  updateStatusRef(item: StatusItem, elt?: Element) {
+    if (!this.observer) {
+      return;
+    }
+    if (item.elt === elt) {
+      return;
     }
 
-    render() {
-        if (!this.firstListDone || !this.streamInfo) {
-            // TODO: better presentation on loading
-            return html`Loading...`;
-        }
+    if (item.elt) {
+      this.observer.unobserve(item.elt);
+      this.perEltItem.delete(item.elt);
+    }
+    if (elt) {
+      this.observer.observe(elt);
+      this.perEltItem.set(elt, item);
+    }
+    item.elt = elt;
+  }
 
-        let availableCount = 0n;
-        let loadedCount = 0n;
-        if (this.items.length === 0) {
-            // Initial loading was done, so if items is empty, it means nothing is available.
-            availableCount = this.streamInfo.remainingPool;
-        } else {
-            const lastPosition = this.items[this.items.length - 1].position;
-            const lastVisible = this.lastVisiblePosition ?? 0n;
-            // We've got:
-            //   - visible statuses which are already on stream but not yet on screen/loaded.
-            //   - statuses still in pool and not yet sorted in stream.
-            loadedCount = lastPosition - lastVisible;
-            availableCount = this.streamInfo.remainingPool + loadedCount;
-        }
+  render() {
+    if (!this.firstListDone || !this.streamInfo) {
+      // TODO: better presentation on loading
+      return html`Loading...`;
+    }
 
-        return html`
+    let availableCount = 0n;
+    let loadedCount = 0n;
+    if (this.items.length === 0) {
+      // Initial loading was done, so if items is empty, it means nothing is available.
+      availableCount = this.streamInfo.remainingPool;
+    } else {
+      const lastPosition = this.items[this.items.length - 1].position;
+      const lastVisible = this.lastVisiblePosition ?? 0n;
+      // We've got:
+      //   - visible statuses which are already on stream but not yet on screen/loaded.
+      //   - statuses still in pool and not yet sorted in stream.
+      loadedCount = lastPosition - lastVisible;
+      availableCount = this.streamInfo.remainingPool + loadedCount;
+    }
+
+    return html`
       <mast-main-view .loadingBarUsers=${this.loadingBarUsers}>
         <div slot="menu">
           <div>
@@ -306,26 +306,26 @@ export class MastStream extends LitElement {
         </div>
       </mast-main-view>
     `;
+  }
+
+  renderStreamContent(): TemplateResult {
+    if (!this.streamInfo) {
+      throw new Error("should not have been called");
     }
 
-    renderStreamContent(): TemplateResult {
-        if (!this.streamInfo) {
-            throw new Error("should not have been called");
-        }
+    // This function is called only if the initial loading is done - so if there is no items, it means that
+    // the stream was empty at that time, and thus we're at its beginning.
+    const isBeginning = this.items.length == 0 || (this.items[0].position === this.streamInfo.firstPosition)
 
-        // This function is called only if the initial loading is done - so if there is no items, it means that
-        // the stream was empty at that time, and thus we're at its beginning.
-        const isBeginning = this.items.length == 0 || (this.items[0].position === this.streamInfo.firstPosition)
+    const buttonName = (this.streamInfo.remainingPool === 0n) ? "Look for statuses" : "Load more statuses";
 
-        const buttonName = (this.streamInfo.remainingPool === 0n) ? "Look for statuses" : "Load more statuses";
-
-        return html`
+    return html`
       <div class="noanchor stream-beginning centered">
       ${isBeginning ? html`
         ${this.items.length === 0 ?
-                    html`<div>No statuses.</div>` :
-                    html`<div>Beginning of stream.</div>`
-                }
+          html`<div>No statuses.</div>` :
+          html`<div>Beginning of stream.</div>`
+        }
       `: html`
         <button @click=${this.loadPrevious}>
           <span>Load earlier statuses</span>
@@ -345,20 +345,20 @@ export class MastStream extends LitElement {
         </div>
       </div>
     `;
-    }
+  }
 
-    renderStatus(item: StatusItem): TemplateResult[] {
-        const lastRead = this.streamInfo?.lastRead ?? 0;
-        const pos = item.position;
-        const content: TemplateResult[] = [];
-        content.push(html`<mast-status ?isRead=${pos <= lastRead} ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .stid=${this.stid} .item=${item as any}></mast-status>`);
-        if (item.position == lastRead) {
-            content.push(html`<div class="lastread centered">The bookmark</div>`);
-        }
-        return content;
+  renderStatus(item: StatusItem): TemplateResult[] {
+    const lastRead = this.streamInfo?.lastRead ?? 0;
+    const pos = item.position;
+    const content: TemplateResult[] = [];
+    content.push(html`<mast-status ?isRead=${pos <= lastRead} ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .stid=${this.stid} .item=${item as any}></mast-status>`);
+    if (item.position == lastRead) {
+      content.push(html`<div class="lastread centered">The bookmark</div>`);
     }
+    return content;
+  }
 
-    static styles = [common.sharedCSS, css`
+  static styles = [common.sharedCSS, css`
     .footer {
       display: grid;
       grid-template-columns: 0.6fr 1fr 0.6fr;
@@ -404,7 +404,7 @@ export class MastStream extends LitElement {
 }
 
 declare global {
-    interface HTMLElementTagNameMap {
-        'mast-stream': MastStream
-    }
+  interface HTMLElementTagNameMap {
+    'mast-stream': MastStream
+  }
 }
