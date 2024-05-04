@@ -126,9 +126,6 @@ export class MastMainView extends LitElement {
       min-height: 100%;
 
       background-color: var(--color-grey-300);
-
-      --header-height: 55px;
-      --footer-height: 40px;
     }
 
     .middlepane {
@@ -156,9 +153,6 @@ export class MastMainView extends LitElement {
     }
 
     .headercontent {
-      grid-column: 2;
-
-      height: var(--header-height);
       background-color: var(--color-blue-25);
       padding: 8px;
 
@@ -190,8 +184,6 @@ export class MastMainView extends LitElement {
     }
 
     .footercontent {
-      grid-column: 2;
-      height: var(--footer-height);
       background-color: var(--color-blue-25);
       padding: 5px;
       box-sizing: border-box;
@@ -488,12 +480,11 @@ export class MastStream extends LitElement {
       return html`Loading...`;
     }
 
-    let count = 0n;
+    let availableCount = 0n;
     let loadedCount = 0n;
-    let loadedMsg = '';
     if (this.items.length === 0) {
       // Initial loading was done, so if items is empty, it means nothing is available.
-      count = this.streamInfo.remainingPool;
+      availableCount = this.streamInfo.remainingPool;
     } else {
       const lastPosition = this.items[this.items.length - 1].position;
       const lastVisible = this.lastVisiblePosition ?? 0n;
@@ -501,17 +492,7 @@ export class MastStream extends LitElement {
       //   - visible statuses which are already on stream but not yet on screen/loaded.
       //   - statuses still in pool and not yet sorted in stream.
       loadedCount = lastPosition - lastVisible;
-      count = this.streamInfo.remainingPool + loadedCount;
-      loadedMsg = loadedCount !== count ? `(${loadedCount} loaded)` : '';
-    }
-
-    let remaining = html`Updating...`;
-    if (count == 0n) {
-      remaining = html`End of stream`;
-    } else if (count == 1n) {
-      remaining = html`1 remaining status ${loadedMsg}`;
-    } else {
-      remaining = html`${count} remaining statuses ${loadedMsg}`;
+      availableCount = this.streamInfo.remainingPool + loadedCount;
     }
 
     return html`
@@ -525,7 +506,13 @@ export class MastStream extends LitElement {
           ${this.renderStreamContent()}
         </div>
         <div slot="footer" class="footer">
-          <div class="remaining">${remaining}</div>
+          <div class="remaining">
+            <span title="${availableCount} remaining statuses, incl. ${loadedCount} already loaded">
+              <span class="material-symbols-outlined">arrow_downward</span>
+              ${loadedCount}/${availableCount}
+              <span class="material-symbols-outlined">arrow_downward</span>
+            </span>
+          </div>
           <div class="fetchtime">Last check: <time-since .unix=${this.streamInfo?.lastFetchSecs}></time-since></div>
         </div>
       </mast-main-view>
@@ -552,9 +539,7 @@ export class MastStream extends LitElement {
         }
       `: html`
         <button @click=${this.loadPrevious}>
-          <span class="material-symbols-outlined">arrow_upward</span>
-          Load earlier statuses
-          <span class="material-symbols-outlined">arrow_upward</span>
+          <span>Load earlier statuses</span>
         </button>
       `}
       </div>
@@ -565,9 +550,7 @@ export class MastStream extends LitElement {
         <div class="centered">
           <div>
             <button class="loadmore" @click=${this.getMoreStatuses} ?disabled=${this.loadingBarUsers > 0}>
-              <span class="material-symbols-outlined">arrow_downward</span>
               ${buttonName}
-              <span class="material-symbols-outlined">arrow_downward</span>
             </button>
           </div>
         </div>
@@ -589,7 +572,7 @@ export class MastStream extends LitElement {
   static styles = [common.sharedCSS, css`
     .footer {
       display: grid;
-      grid-template-columns: 0.4fr 1fr 0.4fr;
+      grid-template-columns: 0.6fr 1fr 0.6fr;
       align-items: center;
     }
 
