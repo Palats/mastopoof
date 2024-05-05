@@ -5,11 +5,13 @@ import * as mastodon from "./mastodon";
 
 import * as statuslib from "./status";
 import * as common from "./common";
-
+import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 
 @customElement('mast-search')
 export class MastSearch extends LitElement {
   @state() private items: statuslib.StatusItem[] = [];
+  @state() loadingBarUsers = 0;
+  @state() searchMsg = "No search.";
 
   private searchBoxRef: Ref<HTMLInputElement> = createRef();
 
@@ -19,7 +21,16 @@ export class MastSearch extends LitElement {
       return;
     }
     console.log("searching for", value);
-    const resp = await common.backend.search(value);
+    this.loadingBarUsers++;
+    let resp: pb.SearchResponse;
+    try {
+      resp = await common.backend.search(value);
+    } finally {
+      this.loadingBarUsers--;
+    }
+
+    this.searchMsg = `${resp.items.length} status(es) found.`
+
     this.items = [];
     for (const item of resp.items) {
       const position = item.position;
@@ -35,20 +46,22 @@ export class MastSearch extends LitElement {
 
   render() {
     return html`
-      <mast-main-view>
+      <mast-main-view .loadingBarUsers=${this.loadingBarUsers}>
         <span slot="header">Search</span>
         <div slot="list">
           <div class="search-form">
-            <label for="search-box">Status ID</label>
-            <input type="text" id="search-box" ${ref(this.searchBoxRef)} value="" required autofocus></input>
-            <button @click=${() => this.doSearch()}>Search</button>
+            <form @submit=${(e: Event) => { e.preventDefault(); this.doSearch() }}>
+              <label for="search-box">Status ID</label>
+              <input type="text" id="search-box" ${ref(this.searchBoxRef)} value="" required autofocus></input>
+              <button type="submit">Search</button>
+            </form>
           </div>
 
           ${this.items.map(item => html`
             <mast-status .item=${item as any}></mast-status>
           `)}
         </div>
-        <div slot="footer">No search.</div>
+        <div slot="footer" class="centered">${this.searchMsg}</div>
       </mast-main-view>
     `;
   }
