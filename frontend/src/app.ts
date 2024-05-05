@@ -12,10 +12,11 @@ import "./search";
 @customElement('app-root')
 export class AppRoot extends LitElement {
   @state() private lastLoginUpdate?: LoginUpdateEvent;
-  @state() private currentview: mainview.viewName = "stream";
+  @state() private currentView: mainview.viewName = "stream";
 
   constructor() {
     super();
+
     common.backend.onEvent.addEventListener("login-update", ((evt: LoginUpdateEvent) => {
       if (evt.state === LoginState.LOGGED && this.lastLoginUpdate?.state !== LoginState.LOGGED) {
         console.log("Logged in");
@@ -34,6 +35,21 @@ export class AppRoot extends LitElement {
     if (history.scrollRestoration) {
       history.scrollRestoration = "manual";
     }
+
+    this.updateFromLocation(); // On initial load.
+    window.addEventListener('popstate', () => {
+      // TODO: remove event listener.
+      this.updateFromLocation(); // And when location changes.
+    });
+  }
+
+  updateFromLocation() {
+    const targetView = new URL(document.location.toString()).searchParams.get("v");
+    if (targetView === "search") {
+      this.currentView = "search";
+    } else {
+      this.currentView = "stream";
+    }
   }
 
   render() {
@@ -49,10 +65,10 @@ export class AppRoot extends LitElement {
       throw new Error("missing stid");
     }
 
-    if (this.currentview === "search") {
-      return html`<mast-search @change-view=${(e: mainview.ChangeViewEvent) => { this.currentview = e.detail }}></mast-search>`;
+    if (this.currentView === "search") {
+      return html`<mast-search></mast-search>`;
     };
-    return html`<mast-stream .stid=${stid} @change-view=${(e: mainview.ChangeViewEvent) => { this.currentview = e.detail }}></mast-stream>`;
+    return html`<mast-stream .stid=${stid}></mast-stream>`;
   }
 
   static styles = [common.sharedCSS, css``];

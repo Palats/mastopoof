@@ -26,12 +26,19 @@ export class MastMainView extends LitElement {
 
   @state() private showMenu = false;
 
-  switchView(name: viewName) {
-    this.dispatchEvent(new ChangeViewEvent('change-view', {
-      bubbles: true,
-      composed: true,
-      detail: name,
-    }));
+  switchView(e: Event, name: viewName) {
+    const u = new URL(document.location.toString());
+    if (name === "stream") {
+      u.searchParams.delete("v");
+    } else {
+      u.searchParams.set("v", name);
+    }
+    history.pushState({}, "", u.toString());
+    // `pushState` does not trigger a `popstate` event, so force it.
+    // It requires `composed` to allow it to cross shadow dom.
+    this.dispatchEvent(new PopStateEvent('popstate', { composed: true, bubbles: true }));
+    // Avoid reloading the page
+    e.preventDefault();
   }
 
   render() {
@@ -51,8 +58,8 @@ export class MastMainView extends LitElement {
         </div>
         ${this.showMenu ? html`
           <div class="menucontent">
-            <div><button @click=${() => this.switchView("stream")}>Stream</button></div>
-            <div><button @click=${() => this.switchView("search")}>Search</button></div>
+            <div><a href="" @click=${(e: Event) => this.switchView(e, "stream")}>Stream</a></div>
+            <div><a href="?v=stream" @click=${(e: Event) => this.switchView(e, "search")}>Search</a></div>
             <slot name="menu"></slot>
             <div>
               <button @click=${() => common.backend.logout()}>Logout</button>
