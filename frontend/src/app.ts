@@ -3,14 +3,16 @@ import { customElement, state } from 'lit/decorators.js'
 
 import { LoginUpdateEvent, LoginState } from "./backend";
 import * as common from "./common";
-
+import * as mainview from "./mainview";
 import "./auth";
 import "./stream";
+import "./search";
 
 
 @customElement('app-root')
 export class AppRoot extends LitElement {
   @state() private lastLoginUpdate?: LoginUpdateEvent;
+  @state() private currentview: mainview.viewName = "stream";
 
   constructor() {
     super();
@@ -46,7 +48,11 @@ export class AppRoot extends LitElement {
     if (!stid) {
       throw new Error("missing stid");
     }
-    return html`<mast-stream .stid=${stid}></mast-stream>`;
+
+    if (this.currentview === "search") {
+      return html`<mast-search @change-view=${(e: mainview.ChangeViewEvent) => { this.currentview = e.detail }}></mast-search>`;
+    };
+    return html`<mast-stream .stid=${stid} @change-view=${(e: mainview.ChangeViewEvent) => { this.currentview = e.detail }}></mast-stream>`;
   }
 
   static styles = [common.sharedCSS, css``];

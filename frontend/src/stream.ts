@@ -286,6 +286,7 @@ export class MastStream extends LitElement {
 
     return html`
       <mast-main-view .loadingBarUsers=${this.loadingBarUsers}>
+        <span slot="header">Stream</span>
         <div slot="menu">
           <div>
             <button @click=${this.fetch}>Fetch now</button>

@@ -473,6 +473,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	glog.Infof("Fetching... (max_id:%v, min_id:%v, since_id:%v)", pg.MaxID, pg.MinID, pg.SinceID)
 	timeline, err := client.GetTimelineHome(ctx, pg)
 	if err != nil {
+		glog.Errorf("unable to get timeline: %v", err)
 		return nil, err
 	}
 

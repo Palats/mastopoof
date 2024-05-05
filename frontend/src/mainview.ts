@@ -6,6 +6,10 @@ import * as common from "./common";
 
 import "./time";
 
+export type viewName = "stream" | "search";
+
+export class ChangeViewEvent extends CustomEvent<viewName> { }
+
 // Component rendering the main view of Mastopoof, as
 // a list of elements such as the stream or search result.
 // It contains multiple slots:
@@ -22,6 +26,14 @@ export class MastMainView extends LitElement {
 
   @state() private showMenu = false;
 
+  switchView(name: viewName) {
+    this.dispatchEvent(new ChangeViewEvent('change-view', {
+      bubbles: true,
+      composed: true,
+      detail: name,
+    }));
+  }
+
   render() {
     return html`
       <div class="header">
@@ -34,12 +46,13 @@ export class MastMainView extends LitElement {
               <span class="material-symbols-outlined" title="Open menu">menu</span>
               `}
             </button>
-            Mastopoof - Stream
+            <slot name="header"></slot>
           </div>
         </div>
         ${this.showMenu ? html`
           <div class="menucontent">
-            <div>plop</div>
+            <div><button @click=${() => this.switchView("stream")}>Stream</button></div>
+            <div><button @click=${() => this.switchView("search")}>Search</button></div>
             <slot name="menu"></slot>
             <div>
               <button @click=${() => common.backend.logout()}>Logout</button>
