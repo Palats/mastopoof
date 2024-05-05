@@ -58,8 +58,8 @@ export class MastMainView extends LitElement {
         </div>
         ${this.showMenu ? html`
           <div class="menucontent">
-            <div><a href="" @click=${(e: Event) => this.switchView(e, "stream")}>Stream</a></div>
-            <div><a href="?v=stream" @click=${(e: Event) => this.switchView(e, "search")}>Search</a></div>
+            <div><a href="?v=stream" @click=${(e: Event) => this.switchView(e, "stream")}>Stream</a></div>
+            <div><a href="?v=search" @click=${(e: Event) => this.switchView(e, "search")}>Search</a></div>
             <slot name="menu"></slot>
             <div>
               <button @click=${() => common.backend.logout()}>Logout</button>
