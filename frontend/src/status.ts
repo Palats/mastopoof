@@ -9,7 +9,7 @@ import * as common from "./common";
 import * as mastodon from "./mastodon";
 
 // StatusItem represents the state in the UI of a given status.
-interface StatusItem {
+export interface StatusItem {
   // Position in the stream in the backend.
   position: bigint;
   // status, if loaded.

@@ -141,4 +141,8 @@ export class Backend {
     this.updateStreamInfo(resp.streamInfo);
     return resp.status === pb.FetchResponse_Status.DONE
   }
+
+  public async search(statusID: string) : Promise<pb.SearchResponse> {
+    return await this.client.search({statusId: statusID});
+  }
 }
