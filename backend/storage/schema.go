@@ -13,7 +13,7 @@ import (
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const maxSchemaVersion = 19
+const maxSchemaVersion = 20
 
 // refSchema is the database schema as if it was created from scratch. This is
 // used only for comparison with an actual schema, for consistency checking. In
@@ -69,7 +69,9 @@ const refSchema = `
 		-- The Mastopoof account that got that status.
 		asid INTEGER NOT NULL,
 		-- The status, serialized as JSON.
-		status TEXT NOT NULL
+		status TEXT NOT NULL,
+		-- whether a status is muted for that account
+		muted INTEGER
 	) STRICT;
 
 	-- The actual content of a stream. In practice, this links position in the stream to a specific status.
@@ -640,6 +642,16 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 			return fmt.Errorf("schema v19: unable to run %q: %w", sqlStmt, err)
+		}
+	}
+
+	if version < 20 && targetVersion >= 20 {
+		// add a "muted" column to status with default value false
+		sqlStmt := `
+			ALTER TABLE statuses ADD COLUMN muted INTEGER DEFAULT 0;
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("schema v20: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 

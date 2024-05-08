@@ -477,6 +477,12 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		return nil, err
 	}
 
+	filters, err := client.GetFilters(ctx)
+	if err != nil {
+		glog.Errorf("unable to get filters: %v", err)
+		return nil, err
+	}
+
 	newStatusID := accountState.LastHomeStatusID
 	for _, status := range timeline {
 		if storage.IDNewer(status.ID, newStatusID) {
@@ -509,7 +515,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		}
 
 		// InsertStatuses updates streamState IN PLACE and persists it.
-		if err := s.st.InsertStatuses(ctx, txn, accountState.ASID, streamState, timeline); err != nil {
+		if err := s.st.InsertStatuses(ctx, txn, accountState.ASID, streamState, timeline, filters); err != nil {
 			return err
 		}
 		return nil
