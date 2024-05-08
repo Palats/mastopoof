@@ -71,7 +71,7 @@ const refSchema = `
 		-- The status, serialized as JSON.
 		status TEXT NOT NULL,
 		-- whether a status is muted for that account
-		muted INTEGER
+		appliedfilters TEXT NOT NULL DEFAULT "{}"
 	) STRICT;
 
 	-- The actual content of a stream. In practice, this links position in the stream to a specific status.
@@ -116,6 +116,14 @@ type AccountState struct {
 	UID UID `json:"uid"`
 	// Last home status ID fetched.
 	LastHomeStatusID mastodon.ID `json:"last_home_status_id"`
+}
+
+// FilterState represents whether a filter matches a given status at the time it is fetched
+type FilterState struct {
+	// ID of the filter
+	ID string `json:"id"`
+	// Whether the filter matched the status
+	Matched bool `json:"matched"`
 }
 
 func (accountState *AccountState) ToAccountProto() *pb.Account {
@@ -648,7 +656,7 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 	if version < 20 && targetVersion >= 20 {
 		// add a "muted" column to status with default value false
 		sqlStmt := `
-			ALTER TABLE statuses ADD COLUMN muted INTEGER DEFAULT 0;
+			ALTER TABLE statuses ADD COLUMN appliedfilters TEXT NOT NULL DEFAULT "{}";
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 			return fmt.Errorf("schema v20: unable to run %q: %w", sqlStmt, err)

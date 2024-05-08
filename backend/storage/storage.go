@@ -1041,16 +1041,21 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLQueryable, asid AS
 		if err != nil {
 			return err
 		}
-		muted := getMutedStatus(status, filters)
 		// TODO: batching
 
 		// Insert in the statuses cache.
 		stmt := `
-			INSERT INTO statuses(asid, status, muted) VALUES(?, ?, ?);
+			INSERT INTO statuses(asid, status, appliedfilters) VALUES(?, ?, ?);
 			INSERT INTO streamcontent(stid, sid) VALUES(?, last_insert_rowid());
 		`
 
-		_, err = txn.ExecContext(ctx, stmt, asid, string(jsonBytes), muted, streamState.StID)
+		jsonFilters, err := json.Marshal(map[string]any{
+			"filters": applyFilters(status, filters),
+		})
+		if err != nil {
+			return err
+		}
+		_, err = txn.ExecContext(ctx, stmt, asid, string(jsonBytes), string(jsonFilters), streamState.StID)
 		if err != nil {
 			return err
 		}
@@ -1064,21 +1069,22 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLQueryable, asid AS
 	return nil
 }
 
-func getMutedStatus(status *mastodon.Status, filters []*mastodon.Filter) int {
+func applyFilters(status *mastodon.Status, filters []*mastodon.Filter) []FilterState {
 	var content string
 	if status.Reblog != nil {
 		content = status.Reblog.Content
 	} else {
 		content = status.Content
 	}
+
+	appliedFilters := []FilterState{}
 	// TODO depending on the number and type of filters, it might be worth building a regex instead of looping?
 	for _, filter := range filters {
 		// TODO filters are actually fancier than that. but let's try this first!
-		if strings.Contains(content, filter.Phrase) {
-			return 1
-		}
+		matched := strings.Contains(content, filter.Phrase)
+		appliedFilters = append(appliedFilters, FilterState{string(filter.ID), matched})
 	}
-	return 0
+	return appliedFilters
 }
 
 func (st *Storage) SearchByStatusID(ctx context.Context, txn SQLQueryable, uid UID, statusID mastodon.ID) ([]*Item, error) {
