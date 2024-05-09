@@ -13,7 +13,7 @@ import (
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const maxSchemaVersion = 19
+const maxSchemaVersion = 20
 
 // refSchema is the database schema as if it was created from scratch. This is
 // used only for comparison with an actual schema, for consistency checking. In
@@ -69,7 +69,9 @@ const refSchema = `
 		-- The Mastopoof account that got that status.
 		asid INTEGER NOT NULL,
 		-- The status, serialized as JSON.
-		status TEXT NOT NULL
+		status TEXT NOT NULL,
+		-- metadata/state about a status (e.g.: filters applied to it)
+		statusstate TEXT NOT NULL DEFAULT "{}"
 	) STRICT;
 
 	-- The actual content of a stream. In practice, this links position in the stream to a specific status.
@@ -114,6 +116,19 @@ type AccountState struct {
 	UID UID `json:"uid"`
 	// Last home status ID fetched.
 	LastHomeStatusID mastodon.ID `json:"last_home_status_id"`
+}
+
+// StatusState represent metadata about a status - for now only filter state
+type StatusState struct {
+	Filters []FilterStateMatch `json:"filters"`
+}
+
+// FilterStateMatch represents whether a filter matches a given status at the time it is fetched
+type FilterStateMatch struct {
+	// ID of the filter
+	ID string `json:"id"`
+	// Whether the filter matched the status
+	Matched bool `json:"matched"`
 }
 
 func (accountState *AccountState) ToAccountProto() *pb.Account {
@@ -640,6 +655,16 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 		`
 		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 			return fmt.Errorf("schema v19: unable to run %q: %w", sqlStmt, err)
+		}
+	}
+
+	if version < 20 && targetVersion >= 20 {
+		// add a "statusstate" column to status with default value {}
+		sqlStmt := `
+			ALTER TABLE statuses ADD COLUMN statusstate TEXT NOT NULL DEFAULT "{}";
+		`
+		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+			return fmt.Errorf("schema v20: unable to run %q: %w", sqlStmt, err)
 		}
 	}
 

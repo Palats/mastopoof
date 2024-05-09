@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/Palats/mastopoof/backend/mastodon"
 	"github.com/golang/glog"
@@ -1034,7 +1035,7 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 
 // InsertStatuses add the given statuses to the user storage.
 // It updates `streamState` IN PLACE.
-func (st *Storage) InsertStatuses(ctx context.Context, txn SQLQueryable, asid ASID, streamState *StreamState, statuses []*mastodon.Status) error {
+func (st *Storage) InsertStatuses(ctx context.Context, txn SQLQueryable, asid ASID, streamState *StreamState, statuses []*mastodon.Status, filters []*mastodon.Filter) error {
 	for _, status := range statuses {
 		jsonBytes, err := json.Marshal(status)
 		if err != nil {
@@ -1044,10 +1045,16 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLQueryable, asid AS
 
 		// Insert in the statuses cache.
 		stmt := `
-			INSERT INTO statuses(asid, status) VALUES(?, ?);
+			INSERT INTO statuses(asid, status, statusstate) VALUES(?, ?, ?);
 			INSERT INTO streamcontent(stid, sid) VALUES(?, last_insert_rowid());
 		`
-		_, err = txn.ExecContext(ctx, stmt, asid, string(jsonBytes), streamState.StID)
+
+		// TODO move filtering out of transaction
+		statusState, err := json.Marshal(computeState(status, filters))
+		if err != nil {
+			return err
+		}
+		_, err = txn.ExecContext(ctx, stmt, asid, string(jsonBytes), string(statusState), streamState.StID)
 		if err != nil {
 			return err
 		}
@@ -1059,6 +1066,24 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLQueryable, asid AS
 		return err
 	}
 	return nil
+}
+
+func computeState(status *mastodon.Status, filters []*mastodon.Filter) StatusState {
+	var content string
+	if status.Reblog != nil {
+		content = status.Reblog.Content
+	} else {
+		content = status.Content
+	}
+
+	state := StatusState{}
+	// TODO depending on the number and type of filters, it might be worth building a regex instead of looping?
+	for _, filter := range filters {
+		// TODO filters are actually fancier than that. but let's try this first!
+		matched := strings.Contains(content, filter.Phrase)
+		state.Filters = append(state.Filters, FilterStateMatch{string(filter.ID), matched})
+	}
+	return state
 }
 
 func (st *Storage) SearchByStatusID(ctx context.Context, txn SQLQueryable, uid UID, statusID mastodon.ID) ([]*Item, error) {

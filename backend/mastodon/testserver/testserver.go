@@ -182,6 +182,7 @@ func (s *Server) RegisterOn(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/apps", s.serveAPIApps)
 	mux.HandleFunc("/api/v1/accounts/verify_credentials", s.serverAPIAccountsVerifyCredentials)
 	mux.HandleFunc("/api/v1/timelines/home", s.serveAPITimelinesHome)
+	mux.HandleFunc("/api/v1/filters", s.serveFilters)
 }
 
 func (s *Server) returnJSON(w http.ResponseWriter, _ *http.Request, data any) {
@@ -246,6 +247,36 @@ func (s *Server) serverAPIAccountsVerifyCredentials(w http.ResponseWriter, req *
 		"statuses_count":  33120,
 		"last_status_at":  "2019-11-24T15:49:42.251Z",
 	})
+}
+
+func (s *Server) serveFilters(w http.ResponseWriter, req *http.Request) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	filters := []map[string]any{
+		{
+			"id":           "6191",
+			"phrase":       ":eurovision2019:",
+			"context":      []string{"home"},
+			"whole_word":   true,
+			"expires_at":   "2019-05-21T13:47:31.333Z",
+			"irreversible": false,
+		},
+		{
+			"id":     "5580",
+			"phrase": "@twitter.com",
+			"context": []string{
+				"home",
+				"notifications",
+				"public",
+				"thread",
+			},
+			"whole_word":   false,
+			"expires_at":   nil,
+			"irreversible": true,
+		}}
+
+	s.returnJSON(w, req, filters)
 }
 
 // https://docs.joinmastodon.org/methods/timelines/#home

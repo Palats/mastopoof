@@ -3,10 +3,12 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Palats/mastopoof/backend/mastodon/testserver"
 	"github.com/google/go-cmp/cmp"
@@ -293,7 +295,7 @@ func TestNoCrossUserStatuses(t *testing.T) {
 	for i := int64(0); i < 10; i++ {
 		statuses = append(statuses, testserver.NewFakeStatus(mastodon.ID(strconv.FormatInt(i+10, 10)), "123"))
 	}
-	env.st.InsertStatuses(ctx, env.db, accountState1.ASID, streamState1, statuses)
+	env.st.InsertStatuses(ctx, env.db, accountState1.ASID, streamState1, statuses, []*mastodon.Filter{})
 
 	// Create a second user
 	_, _, streamState2, err := env.st.CreateUser(ctx, nil, "localhost", "456", "user2")
@@ -323,7 +325,7 @@ func TestPick(t *testing.T) {
 	for i := int64(0); i < 4; i++ {
 		statuses = append(statuses, testserver.NewFakeStatus(mastodon.ID(strconv.FormatInt(i+10, 10)), "123"))
 	}
-	env.st.InsertStatuses(ctx, env.db, accountState1.ASID, streamState1, statuses)
+	env.st.InsertStatuses(ctx, env.db, accountState1.ASID, streamState1, statuses, []*mastodon.Filter{})
 
 	// Make sure the statuses that were inserted are available.
 	foundIDs := map[mastodon.ID]int{}
@@ -548,6 +550,33 @@ func TestV18ToV18(t *testing.T) {
 	}
 }
 
+func TestV19ToV20(t *testing.T) {
+	ctx := context.Background()
+
+	env := (&DBTestEnv{
+		targetVersion: 19,
+		sqlInit: `
+			INSERT INTO statuses (sid, asid, status) VALUES
+				(1, 3, ""),
+				(2, 3, "")
+			;
+	`}).Init(ctx, t)
+
+	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
+		t.Fatal(err)
+	}
+
+	var got string
+	var num uint64
+	err := env.db.QueryRowContext(ctx, `SELECT DISTINCT statusstate, count(DISTINCT statusstate) from statuses`).Scan(&got, &num)
+	if err == sql.ErrNoRows {
+		t.Fatal(err)
+	}
+	if num != 1 || got != "{}" {
+		t.Errorf("Got %d lines with %s as first result, expected single line containing '{}'", num, got)
+	}
+}
+
 func TestSearchStatusID(t *testing.T) {
 	ctx := context.Background()
 	env := (&DBTestEnv{}).Init(ctx, t)
@@ -561,7 +590,7 @@ func TestSearchStatusID(t *testing.T) {
 		testserver.NewFakeStatus(mastodon.ID("100"), "123"),
 		testserver.NewFakeStatus(mastodon.ID("101"), "123"),
 		testserver.NewFakeStatus(mastodon.ID("102"), "123"),
-	})
+	}, []*mastodon.Filter{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -573,7 +602,7 @@ func TestSearchStatusID(t *testing.T) {
 	err = env.st.InsertStatuses(ctx, env.db, accountState2.ASID, streamState2, []*mastodon.Status{
 		testserver.NewFakeStatus(mastodon.ID("200"), "456"),
 		testserver.NewFakeStatus(mastodon.ID("201"), "456"),
-	})
+	}, []*mastodon.Filter{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -613,5 +642,50 @@ func TestSearchStatusID(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestFilters(t *testing.T) {
+	ctx := context.Background()
+	env := (&DBTestEnv{}).Init(ctx, t)
+
+	_, accountState1, streamState1, err := env.st.CreateUser(ctx, nil, "localhost", "123", "user1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f1 := mastodon.Filter{"123", "content", []string{"home"}, false, time.Unix(0, 0), true}
+	f2 := mastodon.Filter{"456", "smurf", []string{"home"}, false, time.Unix(0, 0), true}
+	err = env.st.InsertStatuses(ctx, env.db, accountState1.ASID, streamState1, []*mastodon.Status{
+		testserver.NewFakeStatus(mastodon.ID("100"), "123"),
+		testserver.NewFakeStatus(mastodon.ID("101"), "123"),
+		testserver.NewFakeStatus(mastodon.ID("102"), "123"),
+	}, []*mastodon.Filter{&f1, &f2})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var got string
+	var num uint64
+	err = env.db.QueryRowContext(ctx, `SELECT DISTINCT statusstate, count(DISTINCT statusstate) from statuses`).Scan(&got, &num)
+	if err == sql.ErrNoRows {
+		t.Fatal(err)
+	}
+	if num != 1 {
+		t.Errorf("Got %d lines, expected1", num)
+	}
+	status := StatusState{}
+	err = json.Unmarshal([]byte(got), &status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(status.Filters) != 2 {
+		t.Errorf("Got %d filters, wanted 2", len(status.Filters))
+	}
+	if status.Filters[0].ID != "123" || !status.Filters[0].Matched {
+		t.Errorf("Got filter %#v, wanted {123, true}", status.Filters[0])
+	}
+	if status.Filters[1].ID != "456" || status.Filters[1].Matched {
+		t.Errorf("Got filter %#v, wanted {456, false}", status.Filters[1])
 	}
 }
