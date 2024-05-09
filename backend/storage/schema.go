@@ -659,7 +659,7 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 	}
 
 	if version < 20 && targetVersion >= 20 {
-		// add a "muted" column to status with default value false
+		// add a "statusstate" column to status with default value {}
 		sqlStmt := `
 			ALTER TABLE statuses ADD COLUMN statusstate TEXT NOT NULL DEFAULT "{}";
 		`
