@@ -182,7 +182,7 @@ func (s *Server) RegisterOn(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/apps", s.serveAPIApps)
 	mux.HandleFunc("/api/v1/accounts/verify_credentials", s.serverAPIAccountsVerifyCredentials)
 	mux.HandleFunc("/api/v1/timelines/home", s.serveAPITimelinesHome)
-	mux.HandleFunc("api/v1/filters", s.serveFilters)
+	mux.HandleFunc("/api/v1/filters", s.serveFilters)
 }
 
 func (s *Server) returnJSON(w http.ResponseWriter, _ *http.Request, data any) {

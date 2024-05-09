@@ -1045,17 +1045,16 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLQueryable, asid AS
 
 		// Insert in the statuses cache.
 		stmt := `
-			INSERT INTO statuses(asid, status, appliedfilters) VALUES(?, ?, ?);
+			INSERT INTO statuses(asid, status, statusstate) VALUES(?, ?, ?);
 			INSERT INTO streamcontent(stid, sid) VALUES(?, last_insert_rowid());
 		`
 
-		jsonFilters, err := json.Marshal(map[string]any{
-			"filters": applyFilters(status, filters),
-		})
+		// TODO move filtering out of transaction
+		statusState, err := json.Marshal(computeState(status, filters))
 		if err != nil {
 			return err
 		}
-		_, err = txn.ExecContext(ctx, stmt, asid, string(jsonBytes), string(jsonFilters), streamState.StID)
+		_, err = txn.ExecContext(ctx, stmt, asid, string(jsonBytes), string(statusState), streamState.StID)
 		if err != nil {
 			return err
 		}
@@ -1069,7 +1068,7 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLQueryable, asid AS
 	return nil
 }
 
-func applyFilters(status *mastodon.Status, filters []*mastodon.Filter) []FilterState {
+func computeState(status *mastodon.Status, filters []*mastodon.Filter) StatusState {
 	var content string
 	if status.Reblog != nil {
 		content = status.Reblog.Content
@@ -1077,14 +1076,14 @@ func applyFilters(status *mastodon.Status, filters []*mastodon.Filter) []FilterS
 		content = status.Content
 	}
 
-	appliedFilters := []FilterState{}
+	state := StatusState{}
 	// TODO depending on the number and type of filters, it might be worth building a regex instead of looping?
 	for _, filter := range filters {
 		// TODO filters are actually fancier than that. but let's try this first!
 		matched := strings.Contains(content, filter.Phrase)
-		appliedFilters = append(appliedFilters, FilterState{string(filter.ID), matched})
+		state.Filters = append(state.Filters, FilterStateMatch{string(filter.ID), matched})
 	}
-	return appliedFilters
+	return state
 }
 
 func (st *Storage) SearchByStatusID(ctx context.Context, txn SQLQueryable, uid UID, statusID mastodon.ID) ([]*Item, error) {
