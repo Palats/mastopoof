@@ -26,6 +26,17 @@ func init() {
 	flag.Lookup("alsologtostderr").Value.Set("true")
 }
 
+type WithError[T any] struct {
+	value T
+	err   error
+}
+
+func NewWithError[T any](value T, err error) WithError[T] {
+	return WithError[T]{value, err}
+}
+
+// LoggingHandler is an intercept http handler which writes http
+// traffic on the provided testing construct.
 type LoggingHandler struct {
 	T       testing.TB
 	Handler http.Handler
@@ -163,41 +174,65 @@ func (env *TestEnv) Login() *pb.UserInfo {
 	return tokenResp.UserInfo
 }
 
-func Request[TRequest proto.Message](env *TestEnv, method string, req TRequest) *http.Response {
-	t := env.t
-	t.Helper()
-
+// Request issues a call to the server.
+// Safe in go-routines.
+func Request[TRequest proto.Message](env *TestEnv, method string, req TRequest) (*http.Response, error) {
 	raw, err := protojson.Marshal(req)
 	if err != nil {
-		t.Fatal(err)
+		return nil, fmt.Errorf("cannot marshal request: %w", err)
 	}
 
 	addr := env.rpcAddr + method
 	httpResp, err := env.client.Post(addr, "application/json", bytes.NewBuffer(raw))
 	if err != nil {
-		t.Fatal(err)
+		return nil, fmt.Errorf("failed to issue Post request: %w", err)
+	}
+	return httpResp, nil
+}
+
+// MustRequest issues a requests and returns the http response - which can include error codes
+// from the server.
+// Can call t.Fatal, unsafe from go routines.
+func MustRequest[TRequest proto.Message](env *TestEnv, method string, req TRequest) *http.Response {
+	env.t.Helper()
+	httpResp, err := Request(env, method, req)
+	if err != nil {
+		env.t.Fatal(err)
 	}
 	return httpResp
 }
 
-func MustCall[TRespMsg any, TResponse Msg[TRespMsg], TRequest proto.Message](env *TestEnv, method string, req TRequest) TResponse {
-	t := env.t
-	httpResp := Request(env, method, req)
-
-	if got, want := httpResp.StatusCode, http.StatusOK; got != want {
-		body := MustBody(t, httpResp)
-		t.Fatalf("Got status %v [%s], want %v; body=%s", got, httpResp.Status, want, body)
+// Call issues a request and parses the response as the provided message type.
+func Call[TRespMsg any, TResponse Msg[TRespMsg], TRequest proto.Message](env *TestEnv, method string, req TRequest) (TResponse, error) {
+	httpResp, err := Request(env, method, req)
+	if err != nil {
+		return nil, err
 	}
 
-	b, err := io.ReadAll(httpResp.Body)
-	httpResp.Body.Close()
+	body, err := io.ReadAll(httpResp.Body)
 	if err != nil {
-		t.Fatal(err)
+		return nil, fmt.Errorf("unable to read http resp body: %w", err)
+	}
+	httpResp.Body.Close()
+
+	if got, want := httpResp.StatusCode, http.StatusOK; got != want {
+		return nil, fmt.Errorf("got status %v [%s], want %v; body=%s", got, httpResp.Status, want, string(body))
 	}
 
 	resp := TResponse(new(TRespMsg))
-	if err := protojson.Unmarshal(b, resp); err != nil {
-		t.Fatal(err)
+	if err := protojson.Unmarshal(body, resp); err != nil {
+		return nil, fmt.Errorf("unable to parse body as JSON: %w", err)
+	}
+	return resp, nil
+}
+
+// MustCall calls a method on the server, parses the response and expect a success.
+// Call t.Fatal otherwise, unsafe from go routines.
+func MustCall[TRespMsg any, TResponse Msg[TRespMsg], TRequest proto.Message](env *TestEnv, method string, req TRequest) TResponse {
+	env.t.Helper()
+	resp, err := Call[TRespMsg, TResponse](env, method, req)
+	if err != nil {
+		env.t.Fatal(err)
 	}
 	return resp
 }
@@ -215,13 +250,13 @@ func TestBasic(t *testing.T) {
 		ServerAddr: env.addr,
 		InviteCode: "",
 	}
-	if got, want := Request(env, "Authorize", req), http.StatusForbidden; got.StatusCode != want {
+	if got, want := MustRequest(env, "Authorize", req), http.StatusForbidden; got.StatusCode != want {
 		t.Errorf("Got status %s, want %v", got.Status, want)
 	}
 
 	// Try with invalid code
 	req.InviteCode = "invalid"
-	if got, want := Request(env, "Authorize", req), http.StatusForbidden; got.StatusCode != want {
+	if got, want := MustRequest(env, "Authorize", req), http.StatusForbidden; got.StatusCode != want {
 		t.Errorf("Got status %s, want %v", got.Status, want)
 	}
 
@@ -287,7 +322,7 @@ func TestSetRead(t *testing.T) {
 		Stid:     userInfo.DefaultStid,
 		LastRead: 2,
 	}
-	if resp, want := Request(env, "SetRead", req), http.StatusBadRequest; resp.StatusCode != want {
+	if resp, want := MustRequest(env, "SetRead", req), http.StatusBadRequest; resp.StatusCode != want {
 		t.Errorf("Got status code %v, wanted %v", resp.StatusCode, want)
 	}
 
@@ -396,42 +431,58 @@ func TestConcurrentFetch(t *testing.T) {
 	userInfo := env.Login()
 
 	// Trigger first fetch request.
-	resp1ch := make(chan *pb.FetchResponse)
+	resp1ch := make(chan WithError[*pb.FetchResponse])
 	go func() {
-		resp1ch <- MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
+		resp1ch <- NewWithError(Call[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
 			Stid: userInfo.DefaultStid,
-		})
+		}))
 	}()
 
 	// Verify that it is blocked on Mastodon server. It is done before starting
 	// the second one to guarantee some consistent ordering.
-	block1ch := <-env.mastodonServer.TestBlockList
+	var block1ch chan struct{}
+	select {
+	case block1ch = <-env.mastodonServer.TestBlockList:
+	case r := <-resp1ch:
+		t.Fatalf("early response: err=%v, response=%v", r.err, r.value)
+	}
 
 	// Start second request.
-	resp2ch := make(chan *http.Response)
+	resp2ch := make(chan WithError[*http.Response])
 	go func() {
-		resp2ch <- Request(env, "Fetch", &pb.FetchRequest{
+		resp2ch <- NewWithError(Request(env, "Fetch", &pb.FetchRequest{
 			Stid: userInfo.DefaultStid,
-		})
+		}))
 	}()
 
 	// Verify that the second request is also blocked.
-	block2ch := <-env.mastodonServer.TestBlockList
+	var block2ch chan struct{}
+	select {
+	case block2ch = <-env.mastodonServer.TestBlockList:
+	case r := <-resp2ch:
+		t.Fatalf("early response: err=%v, response=%v", r.err, r.value)
+	}
 
 	// Unblock the first request.
 	close(block1ch)
 	resp1 := <-resp1ch
-	if got, want := resp1.Status, pb.FetchResponse_MORE; got != want {
-		t.Errorf("Got status %v, wanted %v; fetched %d statuses", got, want, resp1.FetchedCount)
+	if resp1.err != nil {
+		t.Fatal(resp1.err)
+	}
+	if got, want := resp1.value.Status, pb.FetchResponse_MORE; got != want {
+		t.Errorf("Got status %v, wanted %v; fetched %d statuses", got, want, resp1.value.FetchedCount)
 	}
 
 	// Unblock the second request, which should fail because the first request
 	// was happening.
 	close(block2ch)
 	resp2 := <-resp2ch
-	if got, want := resp2.StatusCode, http.StatusServiceUnavailable; got != want {
-		body := MustBody(t, resp2)
-		t.Fatalf("Got status %v [%s], want %v; body=%s", got, resp2.Status, want, body)
+	if resp2.err != nil {
+		t.Fatal(resp1.err)
+	}
+	if got, want := resp2.value.StatusCode, http.StatusServiceUnavailable; got != want {
+		body := MustBody(t, resp2.value)
+		t.Fatalf("Got status %v [%s], want %v; body=%s", got, resp2.value.Status, want, body)
 	}
 }
 
