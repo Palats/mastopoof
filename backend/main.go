@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"flag"
 	"fmt"
@@ -47,24 +46,17 @@ var (
 
 const appMastodonScopes = "read write push"
 
-func getStorage(ctx context.Context, filename string) (*storage.Storage, *sql.DB, error) {
+func getStorage(ctx context.Context, filename string) (*storage.Storage, error) {
 	if filename == "" {
-		return nil, nil, fmt.Errorf("missing database filename; try specifying --db <filename>")
+		return nil, fmt.Errorf("missing database filename; try specifying --db <filename>")
 	}
 	glog.Infof("Using %s as datasource", filename)
-	db, err := sql.Open("sqlite3", filename)
-	if err != nil {
-		return nil, nil, fmt.Errorf("unable to open storage %s: %w", filename, err)
-	}
 
-	st, err := storage.NewStorage(db, *selfURL, appMastodonScopes)
+	st, err := storage.NewStorage(ctx, filename, *selfURL, appMastodonScopes)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	if err := st.Init(ctx); err != nil {
-		return nil, nil, fmt.Errorf("unable to init storage: %w", err)
-	}
-	return st, db, nil
+	return st, nil
 }
 
 func getUserID(_ context.Context, _ *storage.Storage) (storage.UID, error) {
@@ -85,7 +77,7 @@ func getStreamID(ctx context.Context, st *storage.Storage) (storage.StID, error)
 	return 0, errors.New("no streamID / user ID specified")
 }
 
-func getMux(st *storage.Storage, db *sql.DB, autoLogin storage.UID) (*http.ServeMux, error) {
+func getMux(st *storage.Storage, autoLogin storage.UID) (*http.ServeMux, error) {
 	mux := http.NewServeMux()
 
 	// Serve frontend content (html, js, etc.).
@@ -96,7 +88,7 @@ func getMux(st *storage.Storage, db *sql.DB, autoLogin storage.UID) (*http.Serve
 	mux.Handle("/", http.FileServer(http.FS(content)))
 
 	// Run the backend RPC server.
-	sessionManager := server.NewSessionManager(db)
+	sessionManager := server.NewSessionManager(st)
 	if *insecure {
 		sessionManager.Cookie.Secure = false
 	}
@@ -267,11 +259,11 @@ func cmdCheckStreamState(ctx context.Context, st *storage.Storage, stid storage.
 var spaces = regexp.MustCompile(`\s+`)
 
 func cmdTestServe(ctx context.Context) error {
-	st, db, err := getStorage(ctx, "file::memory:?cache=shared")
+	st, err := getStorage(ctx, "file::memory:?cache=shared")
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer st.Close()
 
 	serverAddr := fmt.Sprintf("http://localhost:%d", *port)
 
@@ -285,7 +277,7 @@ func cmdTestServe(ctx context.Context) error {
 		return fmt.Errorf("unable to create testuser: %w", err)
 	}
 
-	mux, err := getMux(st, db, userState.UID)
+	mux, err := getMux(st, userState.UID)
 	if err != nil {
 		return err
 	}
@@ -407,11 +399,11 @@ func run(ctx context.Context) error {
 		Short: "List users",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx, *dbFilename)
+			st, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
-			defer db.Close()
+			defer st.Close()
 
 			return cmdUsers(ctx, st)
 		},
@@ -422,11 +414,11 @@ func run(ctx context.Context) error {
 		Short: "Remove app registrations from local DB, forcing Mastopoof to recreate them when needed.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx, *dbFilename)
+			st, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
-			defer db.Close()
+			defer st.Close()
 
 			return st.ClearApp(ctx)
 		},
@@ -436,11 +428,11 @@ func run(ctx context.Context) error {
 		Short: "Remove all statuses from the stream, as if nothing was ever looked at.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx, *dbFilename)
+			st, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
-			defer db.Close()
+			defer st.Close()
 
 			stid, err := getStreamID(ctx, st)
 			if err != nil {
@@ -456,11 +448,11 @@ func run(ctx context.Context) error {
 		Short: "Remove all statuses from the pool and stream, as if nothing had ever been fetched.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx, *dbFilename)
+			st, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
-			defer db.Close()
+			defer st.Close()
 
 			uid, err := getUserID(ctx, st)
 			if err != nil {
@@ -475,11 +467,11 @@ func run(ctx context.Context) error {
 		Short: "Get information about one's own account.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx, *dbFilename)
+			st, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
-			defer db.Close()
+			defer st.Close()
 
 			uid, err := getUserID(ctx, st)
 			if err != nil {
@@ -495,18 +487,18 @@ func run(ctx context.Context) error {
 		Short: "Run mastopoof backend server",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx, *dbFilename)
+			st, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
-			defer db.Close()
+			defer st.Close()
 
 			uid, err := getUserID(ctx, st)
 			if err != nil {
 				return err
 			}
 
-			mux, err := getMux(st, db, uid)
+			mux, err := getMux(st, uid)
 			if err != nil {
 				return err
 			}
@@ -530,11 +522,11 @@ func run(ctx context.Context) error {
 		Short: "Add a status to the stream",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx, *dbFilename)
+			st, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
-			defer db.Close()
+			defer st.Close()
 
 			stid, err := getStreamID(ctx, st)
 			if err != nil {
@@ -549,11 +541,11 @@ func run(ctx context.Context) error {
 		Short: "Set the already-read pointer",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx, *dbFilename)
+			st, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
-			defer db.Close()
+			defer st.Close()
 
 			stid, err := getStreamID(ctx, st)
 			if err != nil {
@@ -575,11 +567,11 @@ func run(ctx context.Context) error {
 		Short: "Compare stream state values to its theoritical values.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, db, err := getStorage(ctx, *dbFilename)
+			st, err := getStorage(ctx, *dbFilename)
 			if err != nil {
 				return err
 			}
-			defer db.Close()
+			defer st.Close()
 
 			stid, err := getStreamID(ctx, st)
 			if err != nil {

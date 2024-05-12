@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"io"
@@ -95,7 +94,6 @@ type TestEnv struct {
 	client         *http.Client
 	addr           string
 	rpcAddr        string
-	db             *sql.DB
 	httpServer     *httptest.Server
 	mastodonServer *testserver.Server
 }
@@ -117,19 +115,11 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 	env.mastodonServer.RegisterOn(mux)
 
 	// Creates mastopoof server.
-	var err error
-	env.db, err = sql.Open("sqlite3", "file::memory:?cache=shared")
+	st, err := storage.NewStorage(ctx, "file::memory:?cache=shared", selfURL, scopes)
 	if err != nil {
 		env.t.Fatal(err)
 	}
-	st, err := storage.NewStorage(env.db, selfURL, scopes)
-	if err != nil {
-		env.t.Fatal(err)
-	}
-	if err := st.Init(ctx); err != nil {
-		env.t.Fatal(err)
-	}
-	mastopoof := New(st, NewSessionManager(env.db), "invite1", 0 /* autoLogin */, selfURL, scopes)
+	mastopoof := New(st, NewSessionManager(st), "invite1", 0 /* autoLogin */, selfURL, scopes)
 	mastopoof.RegisterOn(mux)
 
 	// Create the http server
@@ -155,9 +145,6 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 func (env *TestEnv) Close() {
 	if env.httpServer != nil {
 		env.httpServer.Close()
-	}
-	if env.db != nil {
-		env.db.Close()
 	}
 }
 

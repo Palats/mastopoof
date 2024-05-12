@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"runtime"
 	"strings"
 
 	"github.com/Palats/mastopoof/backend/mastodon"
+	"github.com/alexedwards/scs/sqlite3store"
 	"github.com/golang/glog"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -48,21 +50,82 @@ func IDLess(id1 mastodon.ID, id2 mastodon.ID) bool {
 }
 
 type Storage struct {
-	db              *sql.DB
+	// Readonly access to the database.
+	roDB *sql.DB
+	// Read-write access to the database.
+	rwDB *sql.DB
+
 	baseRedirectURL *url.URL
 	scopes          string
 }
 
 // NewStorage creates a new Mastopoof abstraction layer.
 // Parameters:
-//   - `db`: the storage.
+//   - `dbURL`: the connection URLs to sqlite suitable for Go sql layer.
 //   - `selfURL`: the address under which the web UI will be known. Needed for
 //     Mastodon app registration purposes.
 //   - `scopes`: List of scopes that will be used, used for Mastodon App registration.
-func NewStorage(db *sql.DB, selfURL string, scopes string) (*Storage, error) {
-	s := &Storage{
-		db:     db,
+func NewStorage(ctx context.Context, dbURL string, selfURL string, scopes string) (returnedSt *Storage, returnedErr error) {
+	// Make sure to cleanup everything in case of errors.
+	defer func() {
+		if returnedErr != nil {
+			returnedSt.Close()
+		}
+	}()
+
+	st, err := newStorageNoInit(ctx, dbURL, selfURL, scopes)
+	if err != nil {
+		return nil, err
+	}
+	return st, st.initVersion(ctx, maxSchemaVersion)
+}
+
+func newStorageNoInit(ctx context.Context, dbURL string, selfURL string, scopes string) (returnedSt *Storage, returnedErr error) {
+	// Make sure to cleanup everything in case of errors.
+	defer func() {
+		if returnedErr != nil {
+			returnedSt.Close()
+		}
+	}()
+
+	st := &Storage{
 		scopes: scopes,
+	}
+
+	// Storage setup is largely inspired from https://kerkour.com/sqlite-for-servers
+	const defaultDBsetup = `
+		-- Write-Ahead Log is modern sqlite.
+		PRAGMA journal_mode = WAL;
+		-- Give more chance to concurrent requests to go through (SQLITE_BUSY)
+		PRAGMA busy_timeout = 5000;
+		-- Do not sync to disk all the time, but still at moment safe with WAL.
+		PRAGMA synchronous = NORMAL;
+		-- Give space for around 1G of cache. Value in kibibytes.
+		PRAGMA cache_size = -1048576;
+		-- Enforce foreign keys. As of 2024-05-12, that is not used.
+		PRAGMA foreign_keys = true;
+		-- Keep temporary table & indices just in memory. As of 2024-05-12, it is
+		-- not used.
+		PRAGMA temp_store = memory;
+	`
+
+	var err error
+	st.roDB, err = sql.Open("sqlite3", dbURL)
+	if err != nil {
+		return nil, fmt.Errorf("unable to open storage %s: %w", dbURL, err)
+	}
+	st.roDB.SetMaxOpenConns(max(4, runtime.NumCPU()))
+	if _, err := st.roDB.ExecContext(ctx, defaultDBsetup); err != nil {
+		return nil, fmt.Errorf("unable to configure DB connection: %w", err)
+	}
+
+	st.rwDB, err = sql.Open("sqlite3", dbURL)
+	if err != nil {
+		return nil, fmt.Errorf("unable to open storage %s: %w", dbURL, err)
+	}
+	st.rwDB.SetMaxOpenConns(1)
+	if _, err := st.rwDB.ExecContext(ctx, defaultDBsetup); err != nil {
+		return nil, fmt.Errorf("unable to configure DB connection: %w", err)
 	}
 
 	if selfURL != "" {
@@ -72,18 +135,35 @@ func NewStorage(db *sql.DB, selfURL string, scopes string) (*Storage, error) {
 		}
 		baseRedirectURL = baseRedirectURL.JoinPath("_redirect")
 		glog.Infof("Using redirect URI %s", baseRedirectURL)
-		s.baseRedirectURL = baseRedirectURL
+		st.baseRedirectURL = baseRedirectURL
 	}
 
-	return s, nil
+	return st, nil
 }
 
-func (st *Storage) Init(ctx context.Context) error {
-	return st.initVersion(ctx, maxSchemaVersion)
+// Close cleans up resources. It is safe to call it with a nil instance
+// or on a badly initialized storage.
+func (st *Storage) Close() error {
+	if st.rwDB != nil {
+		st.rwDB.Close()
+		st.rwDB = nil
+	}
+	if st.roDB != nil {
+		st.roDB.Close()
+		st.roDB = nil
+	}
+	return nil
 }
 
 func (st *Storage) initVersion(ctx context.Context, targetVersion int) error {
-	return prepareDB(ctx, st.db, targetVersion)
+	return prepareDB(ctx, st.rwDB, targetVersion)
+}
+
+func (st *Storage) NewSCSStore() *sqlite3store.SQLite3Store {
+	// This should probbly differentiate between read-heavy cookie management and
+	// the occasional writes. However, once that starts to be an actually issue,
+	// splitting SCS store into its own DB would probably make more sense.
+	return sqlite3store.New(st.rwDB)
 }
 
 func (st *Storage) redirectURI(serverAddr string) string {
@@ -127,7 +207,7 @@ func (st *Storage) inTxnRO(ctx context.Context, txn SQLReadOnly, f func(ctx cont
 		return f(ctx, txn)
 	}
 
-	localTxn, err := st.db.BeginTx(ctx, nil)
+	localTxn, err := st.roDB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -150,7 +230,7 @@ func (st *Storage) inTxnRW(ctx context.Context, txn SQLReadWrite, f func(ctx con
 		return f(ctx, txn)
 	}
 
-	localTxn, err := st.db.BeginTx(ctx, nil)
+	localTxn, err := st.rwDB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}

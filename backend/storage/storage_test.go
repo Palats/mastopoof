@@ -138,14 +138,15 @@ type DBTestEnv struct {
 func (env *DBTestEnv) Init(ctx context.Context, t testing.TB) *DBTestEnv {
 	t.Helper()
 	var err error
-	env.db, err = sql.Open("sqlite3", ":memory:")
+	// As storage creates multiple connections, all of them must reach the same
+	// in-memory DB. In turns, it means that the connections must be properly closed
+	// with env.Close() at the end of the test - otherwise the content won't
+	// be empty for the next test.
+	env.st, err = newStorageNoInit(ctx, "file::memory:?cache=shared", "", "read")
 	if err != nil {
 		t.Fatal(err)
 	}
-	env.st, err = NewStorage(env.db, "", "read")
-	if err != nil {
-		t.Fatal(err)
-	}
+	env.db = env.st.rwDB
 
 	v := env.targetVersion
 	if v == 0 {
@@ -162,6 +163,12 @@ func (env *DBTestEnv) Init(ctx context.Context, t testing.TB) *DBTestEnv {
 	}
 
 	return env
+}
+
+func (env *DBTestEnv) Close() {
+	if env.st != nil {
+		env.st.Close()
+	}
 }
 
 // TestDBCreate verifies that a DB created from scratch - i.e., following all
@@ -184,6 +191,7 @@ func TestDBCreate(t *testing.T) {
 
 	// Create a mastopoof database.
 	env := (&DBTestEnv{}).Init(ctx, t)
+	defer env.Close()
 
 	sch, err := canonicalSchema(ctx, env.db)
 	if err != nil {
@@ -214,6 +222,7 @@ func TestV12ToV13(t *testing.T) {
 			;
 		`,
 	}).Init(ctx, t)
+	defer env.Close()
 
 	// Update to last version
 	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
@@ -255,6 +264,7 @@ func TestV13ToV14(t *testing.T) {
 			;
 		`,
 	}).Init(ctx, t)
+	defer env.Close()
 
 	// Update to last version.
 	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
@@ -284,6 +294,7 @@ func TestV13ToV14(t *testing.T) {
 func TestNoCrossUserStatuses(t *testing.T) {
 	ctx := context.Background()
 	env := (&DBTestEnv{}).Init(ctx, t)
+	defer env.Close()
 
 	// Create a user and add some statuses.
 	_, accountState1, streamState1, err := env.st.CreateUser(ctx, nil, "localhost", "123", "user1")
@@ -316,6 +327,7 @@ func TestNoCrossUserStatuses(t *testing.T) {
 func TestPick(t *testing.T) {
 	ctx := context.Background()
 	env := (&DBTestEnv{}).Init(ctx, t)
+	defer env.Close()
 
 	_, accountState1, streamState1, err := env.st.CreateUser(ctx, nil, "localhost", "123", "user1")
 	if err != nil {
@@ -374,6 +386,7 @@ func TestV14ToV15(t *testing.T) {
 			;
 		`,
 	}).Init(ctx, t)
+	defer env.Close()
 
 	// Try update to last version.
 	// There is no user defined, so it should fine to do the uid->asid conversion.
@@ -398,6 +411,7 @@ func TestCreateStreamStateIncreases(t *testing.T) {
 
 	// Prepare at version 14
 	env := (&DBTestEnv{}).Init(ctx, t)
+	defer env.Close()
 
 	seenUIDs := map[UID]bool{}
 	seenASIDs := map[ASID]bool{}
@@ -441,6 +455,7 @@ func TestV15ToV16(t *testing.T) {
 			;
 		`,
 	}).Init(ctx, t)
+	defer env.Close()
 
 	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
 		t.Fatal(err)
@@ -475,6 +490,7 @@ func TestV16ToV17(t *testing.T) {
 			;
 		`,
 	}).Init(ctx, t)
+	defer env.Close()
 
 	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
 		t.Fatal(err)
@@ -509,6 +525,7 @@ func TestV17ToV18(t *testing.T) {
 			;
 		`,
 	}).Init(ctx, t)
+	defer env.Close()
 
 	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
 		t.Fatal(err)
@@ -532,6 +549,7 @@ func TestV18ToV18(t *testing.T) {
 			;
 		`,
 	}).Init(ctx, t)
+	defer env.Close()
 
 	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
 		t.Fatal(err)
@@ -561,6 +579,7 @@ func TestV19ToV20(t *testing.T) {
 				(2, 3, "")
 			;
 	`}).Init(ctx, t)
+	defer env.Close()
 
 	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
 		t.Fatal(err)
@@ -580,6 +599,7 @@ func TestV19ToV20(t *testing.T) {
 func TestSearchStatusID(t *testing.T) {
 	ctx := context.Background()
 	env := (&DBTestEnv{}).Init(ctx, t)
+	defer env.Close()
 
 	// Prep the environment with users and statuses.
 	userState1, accountState1, streamState1, err := env.st.CreateUser(ctx, nil, "localhost", "123", "user1")
@@ -648,6 +668,7 @@ func TestSearchStatusID(t *testing.T) {
 func TestFilters(t *testing.T) {
 	ctx := context.Background()
 	env := (&DBTestEnv{}).Init(ctx, t)
+	defer env.Close()
 
 	_, accountState1, streamState1, err := env.st.CreateUser(ctx, nil, "localhost", "123", "user1")
 	if err != nil {

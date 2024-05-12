@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +12,6 @@ import (
 	"connectrpc.com/connect"
 	"github.com/Palats/mastopoof/backend/mastodon"
 	"github.com/Palats/mastopoof/backend/storage"
-	"github.com/alexedwards/scs/sqlite3store"
 	"github.com/alexedwards/scs/v2"
 	"github.com/golang/glog"
 
@@ -21,9 +19,9 @@ import (
 	"github.com/Palats/mastopoof/proto/gen/mastopoof/mastopoofconnect"
 )
 
-func NewSessionManager(db *sql.DB) *scs.SessionManager {
+func NewSessionManager(st *storage.Storage) *scs.SessionManager {
 	sessionManager := scs.New()
-	sessionManager.Store = sqlite3store.New(db)
+	sessionManager.Store = st.NewSCSStore()
 	sessionManager.Lifetime = 90 * 24 * time.Hour
 	sessionManager.Cookie.Name = "mastopoof"
 	// Need Lax and not Strict for oauth redirections
