@@ -50,7 +50,6 @@ func getStorage(ctx context.Context, filename string) (*storage.Storage, error) 
 	if filename == "" {
 		return nil, fmt.Errorf("missing database filename; try specifying --db <filename>")
 	}
-	glog.Infof("Using %s as datasource", filename)
 
 	st, err := storage.NewStorage(ctx, filename, *selfURL, appMastodonScopes)
 	if err != nil {

@@ -80,7 +80,7 @@ func NewStorage(ctx context.Context, dbURL string, selfURL string, scopes string
 	return st, st.initVersion(ctx, maxSchemaVersion)
 }
 
-func newStorageNoInit(ctx context.Context, dbURL string, selfURL string, scopes string) (returnedSt *Storage, returnedErr error) {
+func newStorageNoInit(ctx context.Context, dbURI string, selfURL string, scopes string) (returnedSt *Storage, returnedErr error) {
 	// Make sure to cleanup everything in case of errors.
 	defer func() {
 		if returnedErr != nil {
@@ -91,6 +91,30 @@ func newStorageNoInit(ctx context.Context, dbURL string, selfURL string, scopes 
 	st := &Storage{
 		scopes: scopes,
 	}
+
+	// Parse dbURL to be able to extend it with extra parameters.
+	if dbURI == ":memory:" {
+		return nil, errors.New("db :memory: is not supported. Use file::memory:?cache=shared instead")
+	}
+	u, err := url.Parse(dbURI)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse DB URI %q: %w", dbURI, err)
+	}
+	rwURI := *u
+	q := rwURI.Query()
+	q.Set("mode", "rwc")
+	// Indicate that all transactions are immediate, thus considered as write-txn
+	// from the get go. In theory this should be in SQL statement `BEGIN IMMEDIATE`,
+	// but Go SQL libraries do not allow for it.
+	q.Set("_txlock", "immediate")
+	rwURI.RawQuery = q.Encode()
+
+	roURI := *u
+	q = roURI.Query()
+	q.Set("mode", "ro")
+	roURI.RawQuery = q.Encode()
+
+	glog.Infof("Storage URIs, read-write: %s; read-only: %s", rwURI.String(), roURI.String())
 
 	// Storage setup is largely inspired from https://kerkour.com/sqlite-for-servers
 	const defaultDBsetup = `
@@ -109,22 +133,23 @@ func newStorageNoInit(ctx context.Context, dbURL string, selfURL string, scopes 
 		PRAGMA temp_store = memory;
 	`
 
-	var err error
-	st.roDB, err = sql.Open("sqlite3", dbURL)
+	// Start with read-write DB - otherwise, in-memory DB will be created
+	// readonly, preventing creation of a read-write connection.
+	st.rwDB, err = sql.Open("sqlite3", rwURI.String())
 	if err != nil {
-		return nil, fmt.Errorf("unable to open storage %s: %w", dbURL, err)
-	}
-	st.roDB.SetMaxOpenConns(max(4, runtime.NumCPU()))
-	if _, err := st.roDB.ExecContext(ctx, defaultDBsetup); err != nil {
-		return nil, fmt.Errorf("unable to configure DB connection: %w", err)
-	}
-
-	st.rwDB, err = sql.Open("sqlite3", dbURL)
-	if err != nil {
-		return nil, fmt.Errorf("unable to open storage %s: %w", dbURL, err)
+		return nil, fmt.Errorf("unable to open storage %s: %w", dbURI, err)
 	}
 	st.rwDB.SetMaxOpenConns(1)
 	if _, err := st.rwDB.ExecContext(ctx, defaultDBsetup); err != nil {
+		return nil, fmt.Errorf("unable to configure DB connection: %w", err)
+	}
+
+	st.roDB, err = sql.Open("sqlite3", roURI.String())
+	if err != nil {
+		return nil, fmt.Errorf("unable to open storage %s: %w", dbURI, err)
+	}
+	st.roDB.SetMaxOpenConns(max(4, runtime.NumCPU()))
+	if _, err := st.roDB.ExecContext(ctx, defaultDBsetup); err != nil {
 		return nil, fmt.Errorf("unable to configure DB connection: %w", err)
 	}
 
@@ -144,6 +169,9 @@ func newStorageNoInit(ctx context.Context, dbURL string, selfURL string, scopes 
 // Close cleans up resources. It is safe to call it with a nil instance
 // or on a badly initialized storage.
 func (st *Storage) Close() error {
+	if st == nil {
+		return nil
+	}
 	if st.rwDB != nil {
 		st.rwDB.Close()
 		st.rwDB = nil
