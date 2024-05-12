@@ -1,5 +1,4 @@
 secrets
-mastopoof.db
 tmp/
 proto/gen/
 
@@ -7,5 +6,10 @@ proto/gen/
 prod/
 # sqlite files
 backend/*.db
+backend/*.db-shm
+backend/*.db-wal
 # backend built binary
 backend/backend
+
+# IDEs
+.vscode/
