@@ -607,7 +607,7 @@ func TestSearchStatusID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = env.st.InTxn(ctx, func(ctx context.Context, txn SQLQueryable) error {
+	err = env.st.InTxnRO(ctx, func(ctx context.Context, txn SQLReadOnly) error {
 		// Make sure the statuses that were inserted are available.
 		results, err := env.st.SearchByStatusID(ctx, txn, userState1.UID, "101")
 		if err != nil {

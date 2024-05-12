@@ -140,7 +140,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 	// TODO: split transactions to avoid remote requests in the middle.
 
 	var appRegState *storage.AppRegState
-	err := s.st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
+	err := s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
 		var err error
 		appRegState, err = s.st.AppRegState(ctx, txn, serverAddr)
 		if errors.Is(err, storage.ErrNotFound) {
@@ -223,7 +223,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	var userState *storage.UserState
 
 	// TODO: split transactions to avoid remote requests in the middle.
-	err := s.st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
+	err := s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
 		appRegState, err := s.st.AppRegState(ctx, txn, serverAddr)
 		if err != nil {
 			// Do not create the server - it should have been created on a previous step. If it is not there,
@@ -362,7 +362,7 @@ func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadReq
 	}
 
 	var streamState *storage.StreamState
-	err := s.st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
+	err := s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
 		var err error
 		streamState, err = s.st.StreamState(ctx, txn, stid)
 		if err != nil {
@@ -416,7 +416,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	var streamState *storage.StreamState
 	var accountState *storage.AccountState
 	var appRegState *storage.AppRegState
-	err := s.st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
+	err := s.st.InTxnRO(ctx, func(ctx context.Context, txn storage.SQLReadOnly) error {
 		var err error
 		streamState, err = s.st.StreamState(ctx, txn, stid)
 		if err != nil {
@@ -500,7 +500,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 
 	// Now do another transaction to update the DB - both statuses
 	// and inserting statuses.
-	err = s.st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
+	err = s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
 		currentAccountState, err := s.st.AccountStateByUID(ctx, txn, streamState.UID)
 		if err != nil {
 			return fmt.Errorf("unable to verify for race conditions: %w", err)
@@ -558,7 +558,7 @@ func (s *Server) Search(ctx context.Context, req *connect.Request[pb.SearchReque
 
 	var results []*storage.Item
 	var accountState *storage.AccountState
-	err = s.st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
+	err = s.st.InTxnRO(ctx, func(ctx context.Context, txn storage.SQLReadOnly) error {
 		var err error
 		accountState, err = s.st.AccountStateByUID(ctx, txn, uid)
 		if err != nil {

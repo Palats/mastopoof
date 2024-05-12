@@ -15,9 +15,13 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-type SQLQueryable interface {
+type SQLReadOnly interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+type SQLReadWrite interface {
+	SQLReadOnly
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
@@ -104,15 +108,42 @@ var ErrCleanAbortTxn = errors.New("transaction cancellation requested")
 // If `f` returns an error matching `CleanAbortTxn` (using `errors.Is`), the transaction is rolledback, but InTxn return nil
 // If `f` returns another non-nil error, the transaction will be aborted and the error is returned.
 // If the function returns nil, the transaction is committed.
-func (st *Storage) InTxn(ctx context.Context, f func(ctx context.Context, txn SQLQueryable) error) error {
-	return st.inTxn(ctx, nil, f)
+func (st *Storage) InTxnRO(ctx context.Context, f func(ctx context.Context, txn SQLReadOnly) error) error {
+	return st.inTxnRO(ctx, nil, f)
+}
+
+func (st *Storage) InTxnRW(ctx context.Context, f func(ctx context.Context, txn SQLReadWrite) error) error {
+	return st.inTxnRW(ctx, nil, f)
 }
 
 // inTxn is the implementation of InTxn.
 // If the provided `txn` is nil, it will create a transaction.
 // If the provided `txn` is not nil, it will use that transaction, and let the
 // parent take care of commiting/rolling it back.
-func (st *Storage) inTxn(ctx context.Context, txn SQLQueryable, f func(ctx context.Context, txn SQLQueryable) error) error {
+func (st *Storage) inTxnRO(ctx context.Context, txn SQLReadOnly, f func(ctx context.Context, txn SQLReadOnly) error) error {
+	if txn != nil {
+		// TODO: semantics of `CleanAbortTxn` is very dubious with those
+		// pseudo nested transactions.
+		return f(ctx, txn)
+	}
+
+	localTxn, err := st.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer localTxn.Rollback()
+
+	err = f(ctx, localTxn)
+	if errors.Is(err, ErrCleanAbortTxn) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return localTxn.Commit()
+}
+
+func (st *Storage) inTxnRW(ctx context.Context, txn SQLReadWrite, f func(ctx context.Context, txn SQLReadWrite) error) error {
 	if txn != nil {
 		// TODO: semantics of `CleanAbortTxn` is very dubious with those
 		// pseudo nested transactions.
@@ -142,7 +173,7 @@ type ListUserEntry struct {
 
 func (st *Storage) ListUsers(ctx context.Context) ([]*ListUserEntry, error) {
 	resp := []*ListUserEntry{}
-	err := st.InTxn(ctx, func(ctx context.Context, txn SQLQueryable) error {
+	err := st.InTxnRO(ctx, func(ctx context.Context, txn SQLReadOnly) error {
 		rows, err := txn.QueryContext(ctx, `
 			SELECT
 				uid
@@ -184,11 +215,11 @@ func (st *Storage) ListUsers(ctx context.Context) ([]*ListUserEntry, error) {
 }
 
 // CreateUser creates a new mastopoof user, with all the necessary bit and pieces.
-func (st *Storage) CreateUser(ctx context.Context, txn SQLQueryable, serverAddr string, accountID mastodon.ID, username string) (*UserState, *AccountState, *StreamState, error) {
+func (st *Storage) CreateUser(ctx context.Context, txn SQLReadWrite, serverAddr string, accountID mastodon.ID, username string) (*UserState, *AccountState, *StreamState, error) {
 	var userState *UserState
 	var accountState *AccountState
 	var streamState *StreamState
-	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
+	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		// Create the local user.
 		var err error
 		userState, err = st.CreateUserState(ctx, txn)
@@ -220,7 +251,7 @@ func (st *Storage) appRegStateKey(serverAddr string) string {
 }
 
 // CreateAppRegState creates a server with the given address.
-func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLQueryable, serverAddr string) (*AppRegState, error) {
+func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLReadWrite, serverAddr string) (*AppRegState, error) {
 	key := st.appRegStateKey(serverAddr)
 	appRegState := &AppRegState{
 		Key:         key,
@@ -229,7 +260,7 @@ func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLQueryable, serv
 		RedirectURI: st.redirectURI(serverAddr),
 	}
 
-	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
+	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		// Do not use SetAppRegState(), as it will not fail if that already exists.
 		state, err := json.Marshal(appRegState)
 		if err != nil {
@@ -247,9 +278,9 @@ func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLQueryable, serv
 
 // AppRegState returns the current AppRegState for a given, well, server.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) AppRegState(ctx context.Context, txn SQLQueryable, serverAddr string) (*AppRegState, error) {
+func (st *Storage) AppRegState(ctx context.Context, txn SQLReadOnly, serverAddr string) (*AppRegState, error) {
 	as := &AppRegState{}
-	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
+	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		var state string
 		key := st.appRegStateKey(serverAddr)
 		err := txn.QueryRowContext(ctx,
@@ -272,8 +303,8 @@ func (st *Storage) AppRegState(ctx context.Context, txn SQLQueryable, serverAddr
 	return as, nil
 }
 
-func (st *Storage) SetAppRegState(ctx context.Context, txn SQLQueryable, ss *AppRegState) error {
-	return st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
+func (st *Storage) SetAppRegState(ctx context.Context, txn SQLReadWrite, ss *AppRegState) error {
+	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		state, err := json.Marshal(ss)
 		if err != nil {
 			return err
@@ -285,9 +316,9 @@ func (st *Storage) SetAppRegState(ctx context.Context, txn SQLQueryable, ss *App
 }
 
 // CreateAccountState creates a new account for the given UID and assign it an ASID.
-func (st *Storage) CreateAccountState(ctx context.Context, txn SQLQueryable, uid UID, serverAddr string, accountID string, username string) (*AccountState, error) {
+func (st *Storage) CreateAccountState(ctx context.Context, txn SQLReadWrite, uid UID, serverAddr string, accountID string, username string) (*AccountState, error) {
 	var as *AccountState
-	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
+	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		var asid sql.NullInt64
 		err := txn.QueryRowContext(ctx, "SELECT MAX(asid) FROM accountstate").Scan(&asid)
 		if err != nil {
@@ -312,9 +343,9 @@ func (st *Storage) CreateAccountState(ctx context.Context, txn SQLQueryable, uid
 
 // AccountStateByUID gets a the mastodon account of a mastopoof user identified by its UID.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) AccountStateByUID(ctx context.Context, txn SQLQueryable, uid UID) (*AccountState, error) {
+func (st *Storage) AccountStateByUID(ctx context.Context, txn SQLReadOnly, uid UID) (*AccountState, error) {
 	as := &AccountState{}
-	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
+	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		var state string
 		err := txn.QueryRowContext(ctx, "SELECT state FROM accountstate WHERE uid=?", uid).Scan(&state)
 		if err == sql.ErrNoRows {
@@ -337,9 +368,9 @@ func (st *Storage) AccountStateByUID(ctx context.Context, txn SQLQueryable, uid 
 
 // AccountStateByAccountID gets a the mastodon account based on server address and account ID on that server.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) AccountStateByAccountID(ctx context.Context, txn SQLQueryable, serverAddr string, accountID string) (*AccountState, error) {
+func (st *Storage) AccountStateByAccountID(ctx context.Context, txn SQLReadOnly, serverAddr string, accountID string) (*AccountState, error) {
 	as := &AccountState{}
-	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
+	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		var state string
 		err := txn.QueryRowContext(ctx, `
 			SELECT state
@@ -366,8 +397,8 @@ func (st *Storage) AccountStateByAccountID(ctx context.Context, txn SQLQueryable
 	return as, nil
 }
 
-func (st *Storage) SetAccountState(ctx context.Context, txn SQLQueryable, as *AccountState) error {
-	return st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
+func (st *Storage) SetAccountState(ctx context.Context, txn SQLReadWrite, as *AccountState) error {
+	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		state, err := json.Marshal(as)
 		if err != nil {
 			return err
@@ -381,9 +412,9 @@ func (st *Storage) SetAccountState(ctx context.Context, txn SQLQueryable, as *Ac
 }
 
 // CreateUserState creates a new account and assign it a UID.
-func (st *Storage) CreateUserState(ctx context.Context, txn SQLQueryable) (*UserState, error) {
+func (st *Storage) CreateUserState(ctx context.Context, txn SQLReadWrite) (*UserState, error) {
 	userState := &UserState{}
-	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
+	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		var uid sql.NullInt64
 		// If there is no entry, a row is still returned, but with a NULL value.
 		err := txn.QueryRowContext(ctx, "SELECT MAX(uid) FROM userstate").Scan(&uid)
@@ -402,9 +433,9 @@ func (st *Storage) CreateUserState(ctx context.Context, txn SQLQueryable) (*User
 
 // UserState returns information about a given mastopoof user.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) UserState(ctx context.Context, txn SQLQueryable, uid UID) (*UserState, error) {
+func (st *Storage) UserState(ctx context.Context, txn SQLReadOnly, uid UID) (*UserState, error) {
 	userState := &UserState{}
-	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
+	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		var jsonString string
 		err := txn.QueryRowContext(ctx, "SELECT state FROM userstate WHERE uid = ?", uid).Scan(&jsonString)
 		if err == sql.ErrNoRows {
@@ -424,13 +455,13 @@ func (st *Storage) UserState(ctx context.Context, txn SQLQueryable, uid UID) (*U
 	return userState, nil
 }
 
-func (st *Storage) SetUserState(ctx context.Context, txn SQLQueryable, userState *UserState) error {
+func (st *Storage) SetUserState(ctx context.Context, txn SQLReadWrite, userState *UserState) error {
 	jsonString, err := json.Marshal(userState)
 	if err != nil {
 		return err
 	}
 
-	return st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
+	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		stmt := `INSERT INTO userstate(uid, state) VALUES(?, ?) ON CONFLICT(uid) DO UPDATE SET state = ?`
 		_, err = txn.ExecContext(ctx, stmt, userState.UID, string(jsonString), string(jsonString))
 		return err
@@ -438,10 +469,10 @@ func (st *Storage) SetUserState(ctx context.Context, txn SQLQueryable, userState
 }
 
 // CreateStreamState creates a new stream for the given user and return the stream ID (stid).
-func (st *Storage) CreateStreamState(ctx context.Context, txn SQLQueryable, uid UID) (*StreamState, error) {
+func (st *Storage) CreateStreamState(ctx context.Context, txn SQLReadWrite, uid UID) (*StreamState, error) {
 	var streamState *StreamState
 
-	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
+	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		var stid sql.NullInt64
 		err := txn.QueryRowContext(ctx, "SELECT MAX(stid) FROM streamstate").Scan(&stid)
 		if err != nil {
@@ -461,9 +492,9 @@ func (st *Storage) CreateStreamState(ctx context.Context, txn SQLQueryable, uid 
 	return streamState, nil
 }
 
-func (st *Storage) StreamState(ctx context.Context, txn SQLQueryable, stid StID) (*StreamState, error) {
+func (st *Storage) StreamState(ctx context.Context, txn SQLReadOnly, stid StID) (*StreamState, error) {
 	streamState := &StreamState{}
-	err := st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
+	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		var jsonString string
 		err := txn.QueryRowContext(ctx, "SELECT state FROM streamstate WHERE stid = ?", stid).Scan(&jsonString)
 		if err == sql.ErrNoRows {
@@ -484,8 +515,8 @@ func (st *Storage) StreamState(ctx context.Context, txn SQLQueryable, stid StID)
 	return streamState, nil
 }
 
-func (st *Storage) SetStreamState(ctx context.Context, txn SQLQueryable, streamState *StreamState) error {
-	return st.inTxn(ctx, txn, func(ctx context.Context, txn SQLQueryable) error {
+func (st *Storage) SetStreamState(ctx context.Context, txn SQLReadWrite, streamState *StreamState) error {
+	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		jsonBytes, err := json.Marshal(streamState)
 		if err != nil {
 			return err
@@ -498,7 +529,7 @@ func (st *Storage) SetStreamState(ctx context.Context, txn SQLQueryable, streamS
 
 // RecomputeStreamState recreates what it can about StreamState from
 // the state of the DB.
-func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLQueryable, stid StID) (*StreamState, error) {
+func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLReadOnly, stid StID) (*StreamState, error) {
 	if txn == nil {
 		return nil, errors.New("missing transaction")
 	}
@@ -555,7 +586,7 @@ func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLQueryable, s
 
 // FixDuplicateStatuses look for statuses which have been inserted
 // twice in a given stream. It keeps only the oldest entry.
-func (st *Storage) FixDuplicateStatuses(ctx context.Context, txn SQLQueryable, stid StID) error {
+func (st *Storage) FixDuplicateStatuses(ctx context.Context, txn SQLReadWrite, stid StID) error {
 	if txn == nil {
 		return errors.New("missing transaction")
 	}
@@ -616,7 +647,7 @@ func (st *Storage) FixDuplicateStatuses(ctx context.Context, txn SQLQueryable, s
 
 // FixCrossStatuses looks for statuses coming from another user.
 // It removes all of them.
-func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLQueryable, stid StID) error {
+func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLReadWrite, stid StID) error {
 	if txn == nil {
 		return errors.New("missing transaction")
 	}
@@ -671,7 +702,7 @@ func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLQueryable, stid 
 }
 
 func (st *Storage) ClearApp(ctx context.Context) error {
-	return st.InTxn(ctx, func(ctx context.Context, txn SQLQueryable) error {
+	return st.InTxnRW(ctx, func(ctx context.Context, txn SQLReadWrite) error {
 		// Remove everything from the stream.
 		_, err := txn.ExecContext(ctx, `DELETE FROM appregstate`)
 		return err
@@ -679,7 +710,7 @@ func (st *Storage) ClearApp(ctx context.Context) error {
 }
 
 func (st *Storage) ClearStream(ctx context.Context, stid StID) error {
-	return st.InTxn(ctx, func(ctx context.Context, txn SQLQueryable) error {
+	return st.InTxnRW(ctx, func(ctx context.Context, txn SQLReadWrite) error {
 		// Remove everything from the stream.
 		if _, err := txn.ExecContext(ctx, `DELETE FROM streamcontent WHERE stid = ?`, stid); err != nil {
 			return err
@@ -698,7 +729,7 @@ func (st *Storage) ClearStream(ctx context.Context, stid StID) error {
 }
 
 func (st *Storage) ClearPoolAndStream(ctx context.Context, uid UID) error {
-	return st.InTxn(ctx, func(ctx context.Context, txn SQLQueryable) error {
+	return st.InTxnRW(ctx, func(ctx context.Context, txn SQLReadWrite) error {
 		userState, err := st.UserState(ctx, txn, uid)
 		if err != nil {
 			return err
@@ -745,7 +776,7 @@ type Item struct {
 // Return (nil, nil) if there is no next status.
 func (st *Storage) PickNext(ctx context.Context, stid StID) (*Item, error) {
 	var item *Item
-	err := st.InTxn(ctx, func(ctx context.Context, txn SQLQueryable) error {
+	err := st.InTxnRW(ctx, func(ctx context.Context, txn SQLReadWrite) error {
 		streamState, err := st.StreamState(ctx, txn, stid)
 		if err != nil {
 			return err
@@ -764,7 +795,7 @@ func (st *Storage) PickNext(ctx context.Context, stid StID) (*Item, error) {
 
 // pickNextInTxn adds a new status from the pool to the stream.
 // It updates streamState IN PLACE.
-func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLQueryable, streamState *StreamState) (*Item, error) {
+func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamState *StreamState) (*Item, error) {
 	// List all statuses which are not listed yet in "streamcontent".
 	rows, err := txn.QueryContext(ctx, `
 		SELECT
@@ -870,7 +901,7 @@ func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int6
 
 	result := &ListResult{}
 
-	err := st.InTxn(ctx, func(ctx context.Context, txn SQLQueryable) error {
+	err := st.InTxnRO(ctx, func(ctx context.Context, txn SQLReadOnly) error {
 		streamState, err := st.StreamState(ctx, txn, stid)
 		if err != nil {
 			return err
@@ -949,7 +980,8 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 
 	result := &ListResult{}
 
-	err := st.InTxn(ctx, func(ctx context.Context, txn SQLQueryable) error {
+	// TODO: Make it readonly when no update of stream is needed.
+	err := st.InTxnRW(ctx, func(ctx context.Context, txn SQLReadWrite) error {
 		streamState, err := st.StreamState(ctx, txn, stid)
 		if err != nil {
 			return err
@@ -1035,7 +1067,7 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 
 // InsertStatuses add the given statuses to the user storage.
 // It updates `streamState` IN PLACE.
-func (st *Storage) InsertStatuses(ctx context.Context, txn SQLQueryable, asid ASID, streamState *StreamState, statuses []*mastodon.Status, filters []*mastodon.Filter) error {
+func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid ASID, streamState *StreamState, statuses []*mastodon.Status, filters []*mastodon.Filter) error {
 	for _, status := range statuses {
 		jsonBytes, err := json.Marshal(status)
 		if err != nil {
@@ -1086,7 +1118,7 @@ func computeState(status *mastodon.Status, filters []*mastodon.Filter) StatusSta
 	return state
 }
 
-func (st *Storage) SearchByStatusID(ctx context.Context, txn SQLQueryable, uid UID, statusID mastodon.ID) ([]*Item, error) {
+func (st *Storage) SearchByStatusID(ctx context.Context, txn SQLReadOnly, uid UID, statusID mastodon.ID) ([]*Item, error) {
 	accountState, err := st.AccountStateByUID(ctx, txn, uid)
 	if err != nil {
 		return nil, err

@@ -184,7 +184,7 @@ func cmdPickNext(ctx context.Context, st *storage.Storage, stid storage.StID) er
 }
 
 func cmdSetRead(ctx context.Context, st *storage.Storage, stid storage.StID, position int64) error {
-	return st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
+	return st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
 		streamState, err := st.StreamState(ctx, txn, stid)
 		if err != nil {
 			return err
@@ -203,7 +203,7 @@ func cmdSetRead(ctx context.Context, st *storage.Storage, stid storage.StID, pos
 }
 
 func cmdCheckStreamState(ctx context.Context, st *storage.Storage, stid storage.StID) error {
-	return st.InTxn(ctx, func(ctx context.Context, txn storage.SQLQueryable) error {
+	return st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
 		// Stream content - check for duplicates
 		fmt.Println("### Duplicate statuses in stream")
 		if err := st.FixDuplicateStatuses(ctx, txn, stid); err != nil {
