@@ -281,11 +281,14 @@ export class MastStream extends LitElement {
     } else {
       const lastPosition = this.items[this.items.length - 1].position;
       const lastVisible = this.lastVisiblePosition ?? 0n;
-      // We've got:
-      //   - visible statuses which are already on stream but not yet on screen/loaded.
-      //   - statuses still in pool and not yet sorted in stream.
+
+      // loadedCount are statuses available in the browser, but not yet displayed.
       loadedCount = lastPosition - lastVisible;
-      availableCount = this.streamInfo.remainingPool + loadedCount;
+      // availableCount are statuses below the last one visible.
+      // So that's whatever is in the untriaged pool, plus what is is triaged in the
+      // stream (streamInfo.lastPosition - does not have to be loaded), but ignoring
+      // what is already visible.
+      availableCount = this.streamInfo.remainingPool + this.streamInfo.lastPosition - lastVisible;
     }
 
     return html`

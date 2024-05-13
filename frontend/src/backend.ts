@@ -142,7 +142,7 @@ export class Backend {
     return resp.status === pb.FetchResponse_Status.DONE
   }
 
-  public async search(statusID: string) : Promise<pb.SearchResponse> {
-    return await this.client.search({statusId: statusID});
+  public async search(statusID: string): Promise<pb.SearchResponse> {
+    return await this.client.search({ statusId: statusID });
   }
 }
