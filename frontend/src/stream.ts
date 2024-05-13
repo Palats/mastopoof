@@ -199,23 +199,26 @@ export class MastStream extends LitElement {
   }
 
   // Just trigger a fetch of status mastodon->mastopoof.
-  async fetch() {
+  // Return `true` if everything was fetched from Mastodon.
+  async fetch(singleFetch = false): Promise<boolean> {
     const stid = this.stid;
     if (!stid) {
       throw new Error("missing stream id");
     }
+    const maxCount = singleFetch ? 1 : 10;
     console.log("Fetching...");
     try {
       this.loadingBarUsers++;
       // Limit the number of fetch we're requesting.
       // TODO: do limiting on server side.
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < maxCount; i++) {
         const done = await common.backend.fetch(stid);
-        if (done) { break; }
+        if (done) { return true; }
       }
     } finally {
       this.loadingBarUsers--;
     }
+    return false;
   }
 
   async getMoreStatuses() {
@@ -235,10 +238,11 @@ export class MastStream extends LitElement {
     }
 
     // Trigger fetching.
-    // TODO: do a first one, the trigger the other one in background.
-    // However that first requires having the backend retry transaction, as it conflicts
-    // otherwise.
-    await this.fetch();
+    // Do a first one, and then let the other run in background.
+    const isDone = await this.fetch(true);
+    if (!isDone) {
+      this.fetch();
+    }
 
     // And get those we already got listed.
     await this.listNext();
