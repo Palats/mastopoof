@@ -371,7 +371,7 @@ func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadReq
 
 		requestedValue := req.Msg.GetLastRead()
 		if requestedValue < streamState.FirstPosition-1 || requestedValue > streamState.LastPosition {
-			return fmt.Errorf("position %d is invalid", requestedValue)
+			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("position %d is invalid; first=%d, last=%d", requestedValue, streamState.FirstPosition, streamState.LastPosition))
 		}
 
 		switch req.Msg.Mode {
@@ -411,12 +411,10 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	// Do a first transaction to get the state of the stream. That will serve as
 	// reference when trying to inject in the DB the statuses - while avoiding
 	// having a transaction opened while fetching.
-	var streamState *storage.StreamState
 	var accountState *storage.AccountState
 	var appRegState *storage.AppRegState
 	err := s.st.InTxnRO(ctx, func(ctx context.Context, txn storage.SQLReadOnly) error {
-		var err error
-		streamState, err = s.st.StreamState(ctx, txn, stid)
+		streamState, err := s.st.StreamState(ctx, txn, stid)
 		if err != nil {
 			return err
 		}
@@ -494,11 +492,25 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	}
 	glog.Infof("Found %d new status on home timeline (LastHomeStatusID=%v) (max_id:%v, min_id:%v, since_id:%v)%s", len(timeline), newStatusID, pg.MaxID, pg.MinID, pg.SinceID, boundaries)
 
-	streamState.LastFetchSecs = time.Now().Unix()
+	lastFetchSecs := time.Now().Unix()
+
+	// Start preparing the response.
+	resp := &pb.FetchResponse{
+		Status:       pb.FetchResponse_MORE,
+		FetchedCount: int64(len(timeline)),
+	}
 
 	// Now do another transaction to update the DB - both statuses
 	// and inserting statuses.
 	err = s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
+		// Refetch stream state - we do not want to use an old one from a previous transaction, which
+		// might have outdated content.
+		streamState, err := s.st.StreamState(ctx, txn, stid)
+		if err != nil {
+			return err
+		}
+		streamState.LastFetchSecs = lastFetchSecs
+
 		currentAccountState, err := s.st.AccountStateByUID(ctx, txn, streamState.UID)
 		if err != nil {
 			return fmt.Errorf("unable to verify for race conditions: %w", err)
@@ -516,17 +528,11 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		if err := s.st.InsertStatuses(ctx, txn, accountState.ASID, streamState, timeline, filters); err != nil {
 			return err
 		}
+		resp.StreamInfo = streamState.ToStreamInfo()
 		return nil
 	})
 	if err != nil {
 		return nil, err
-	}
-
-	// And prepare the response.
-	resp := &pb.FetchResponse{
-		Status:       pb.FetchResponse_MORE,
-		FetchedCount: int64(len(timeline)),
-		StreamInfo:   streamState.ToStreamInfo(),
 	}
 
 	// Pagination got updated.
