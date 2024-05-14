@@ -50,7 +50,8 @@ export class MastStream extends LitElement {
   // screen.
   @state() private lastVisiblePosition?: bigint;
   @state() private streamInfo?: pb.StreamInfo;
-  @state() loadingBarUsers = 0;
+  @state() private loadingBarUsers = 0;
+  @state() private isFetching = false;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -209,6 +210,7 @@ export class MastStream extends LitElement {
     console.log("Fetching...");
     try {
       this.loadingBarUsers++;
+      this.isFetching = true;
       // Limit the number of fetch we're requesting.
       // TODO: do limiting on server side.
       for (let i = 0; i < maxCount; i++) {
@@ -217,6 +219,7 @@ export class MastStream extends LitElement {
       }
     } finally {
       this.loadingBarUsers--;
+      this.isFetching = false;
     }
     return false;
   }
@@ -310,7 +313,8 @@ export class MastStream extends LitElement {
               <span class="material-symbols-outlined">arrow_downward</span>
             </span>
           </div>
-          <div class="fetchtime">Last check: <time-since .unix=${this.streamInfo?.lastFetchSecs}></time-since></div>
+          <div class="fetchtime">${this.isFetching ? html`Checking...`
+        : html`Last check: <time-since .unix=${this.streamInfo?.lastFetchSecs}></time-since>`}</div>
         </div>
       </mast-main-view>
     `;
