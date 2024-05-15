@@ -107,40 +107,59 @@ export class MastStream extends LitElement {
       // delay-based fetching and resets the delay.
       let delayTimeoutID: number | undefined;
       let delay = new Promise<boolean>(resolve => {
-        delayTimeoutID = setTimeout(resolve, fuzzy(5000, 0.1), false);
+        delayTimeoutID = setTimeout(resolve, fuzzy(60_000, 0.1), false);
       });
 
-      // Wait for sometime or an explicit request to fetch.
+      // Wait for some time, or an explicit request to fetch.
+      // It also reacts if the infinite loop is requested to terminate.
       const shallExit = await Promise.race([delay, trigger, exitRequest]);
       if (shallExit) {
         console.log("stopped background fetch")
         break;
       }
 
-      // Remove the timeout, whether it was triggered or not.
+      // Remove the setTimeout, whether it was triggered or not.
       clearTimeout(delayTimeoutID);
 
-      // Get the list of waiters before starting fetch. If we get a fetch
-      // request while we're in the middle of it, there might be a race
-      // condition - i.e, part of the fetching was already done while the fetch
-      // was requested.
-      const waiters = this.triggerFetchWaiters;
-      this.triggerFetchWaiters = [];
-      // Also reset the trigger promise now, whether it was resolved or not. We
-      // need to do that at the same moment we're getting the waiters list -
-      // otherwise some of them might get dropped.
-      trigger = prepTrigger();
+      // Start fetching - that might take a while.
+      console.log("Fetching...");
 
-      // Do the actual fetch - that might take a while.
-      console.log("start fetch", Date.now());
-      await new Promise(resolve => setTimeout(resolve, 500));
-      console.log("end fetch", Date.now());
-
-      // And notify all that were waiting for their fetch trigger to be done.
-      for (const w of waiters) {
-        w();
+      const stid = this.stid;
+      if (!stid) {
+        throw new Error("missing stream id");
       }
+      try {
+        this.isFetching = true;
 
+        // Limit the number of fetch we're requesting.
+        // TODO: do limiting on server side.
+        for (let i = 0; i < 10; i++) {
+          // Get the list of waiters before starting a single fetch . If we get
+          // a fetch request while we're in the middle of it, there might be a
+          // race condition - i.e, part of the fetching was already done while
+          // the fetch was requested. Also, do that on every attempt - a request
+          // can happen in the middle of a series of attempts, and any content
+          // is fine to notify for.
+          const waiters = this.triggerFetchWaiters;
+          this.triggerFetchWaiters = [];
+          // Reset the trigger promise now, whether it was resolved or not. We
+          // need to do that at the same moment we're getting the waiters list -
+          // otherwise some of them might get dropped.
+          trigger = prepTrigger();
+
+          // Do the actual fetch.
+          const done = await common.backend.fetch(stid);
+
+          // Notify all that were waiting for their fetch trigger to be done.
+          for (const w of waiters) {
+            w();
+          }
+
+          if (done) { break; }
+        }
+      } finally {
+        this.isFetching = false;
+      }
     }
   }
 
@@ -276,31 +295,6 @@ export class MastStream extends LitElement {
     this.requestUpdate();
   }
 
-  // Just trigger a fetch of status mastodon->mastopoof.
-  // Return `true` if everything was fetched from Mastodon.
-  async fetch(singleFetch = false): Promise<boolean> {
-    const stid = this.stid;
-    if (!stid) {
-      throw new Error("missing stream id");
-    }
-    const maxCount = singleFetch ? 1 : 10;
-    console.log("Fetching...");
-    try {
-      this.loadingBarUsers++;
-      this.isFetching = true;
-      // Limit the number of fetch we're requesting.
-      // TODO: do limiting on server side.
-      for (let i = 0; i < maxCount; i++) {
-        const done = await common.backend.fetch(stid);
-        if (done) { return true; }
-      }
-    } finally {
-      this.loadingBarUsers--;
-      this.isFetching = false;
-    }
-    return false;
-  }
-
   async getMoreStatuses() {
     if (!this.streamInfo) {
       throw new Error("missing streaminfo");
@@ -311,21 +305,17 @@ export class MastStream extends LitElement {
       return;
     }
 
-    // No more statuses to list, so some fetching is needed.
-    const stid = this.stid;
-    if (!stid) {
-      throw new Error("missing stream id");
-    }
+    try {
+      this.loadingBarUsers++;
+      // Trigger fetching.
+      // This returns once the first fetch is done, even if more are on-going.
+      await this.triggerFetch();
 
-    // Trigger fetching.
-    // Do a first one, and then let the other run in background.
-    const isDone = await this.fetch(true);
-    if (!isDone) {
-      this.fetch();
+      // And get those we already got listed.
+      await this.listNext();
+    } finally {
+      this.loadingBarUsers--;
     }
-
-    // And get those we already got listed.
-    await this.listNext();
   }
 
   updateStatusRef(item: StatusItem, elt?: Element) {
@@ -376,7 +366,7 @@ export class MastStream extends LitElement {
         <span slot="header">Stream</span>
         <div slot="menu">
           <div>
-            <button @click=${this.fetch}>Fetch now</button>
+            <button @click=${this.triggerFetch}>Fetch now</button>
           </div>
         </div>
         <div slot="list">
