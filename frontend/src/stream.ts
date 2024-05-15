@@ -4,7 +4,7 @@ import { repeat } from 'lit/directives/repeat.js';
 import { ref } from 'lit/directives/ref.js';
 
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
-import { StreamUpdateEvent } from "./backend";
+import { StreamUpdateEvent, fuzzy } from "./backend";
 import * as common from "./common";
 import * as mastodon from "./mastodon";
 
@@ -75,6 +75,20 @@ export class MastStream extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this.observer?.disconnect();
+  }
+
+  async backgroundFetch() {
+    let cancelDelay;
+
+    /*let p = new Promise(resolve => {
+      cancelDelay = setTimeout(resolve, fuzzy(1000, 0.1))
+    });*/
+
+    let p = Promise.withResolvers();
+
+    while (true) {
+
+    }
   }
 
   // Called when intersections of statuses changes - i.e., that

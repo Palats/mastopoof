@@ -9,16 +9,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@bufbuild/protobuf": "1.7.2",
+    "@bufbuild/protobuf": "1.9.0",
     "@connectrpc/connect": "1.4.0",
     "@connectrpc/connect-web": "1.4.0",
     "@lit-labs/virtualizer": "2.0.12",
-    "dayjs": "1.11.10",
-    "lit": "3.1.2",
+    "dayjs": "1.11.11",
+    "lit": "3.1.3",
     "mastopoof-proto": "file:../proto"
   },
   "devDependencies": {
-    "typescript": "5.4.2",
-    "vite": "5.1.5"
+    "typescript": "5.4.5",
+    "vite": "5.2.11"
   }
 }
