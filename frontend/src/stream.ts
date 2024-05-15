@@ -53,6 +53,11 @@ export class MastStream extends LitElement {
   @state() private loadingBarUsers = 0;
   @state() private isFetching = false;
 
+  // Background fetch management
+  private triggerFetchResolve: (() => void) | undefined;
+  private triggerFetchWaiters: (() => void)[] = [];
+  private clearBackgroundFetch: (() => void) | undefined;
+
   connectedCallback(): void {
     super.connectedCallback();
     this.observer = new IntersectionObserver(
@@ -68,6 +73,9 @@ export class MastStream extends LitElement {
       }
     }) as EventListener);
 
+    // Start background fetching.
+    this.backgroundFetch();
+
     // Trigger loading of content.
     this.listNext();
   }
@@ -75,20 +83,75 @@ export class MastStream extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this.observer?.disconnect();
+    if (this.clearBackgroundFetch) {
+      this.clearBackgroundFetch();
+    }
   }
 
   async backgroundFetch() {
-    let cancelDelay;
+    const exitRequest = new Promise<boolean>(resolve => {
+      this.clearBackgroundFetch = () => resolve(true);
+    });
 
-    /*let p = new Promise(resolve => {
-      cancelDelay = setTimeout(resolve, fuzzy(1000, 0.1))
-    });*/
+    const prepTrigger = () => {
+      return new Promise<boolean>(resolve => {
+        this.triggerFetchResolve = () => resolve(false);
+      });
+    }
 
-    let p = Promise.withResolvers();
-
+    // Create the trigger resolve before any await - this way a caller of
+    // backgroundFetch() can immediately set a trigger afterward.
+    let trigger = prepTrigger();
     while (true) {
+      // Delay is from the last fetch - explicit fetch trigger fetch request disrupt the
+      // delay-based fetching and resets the delay.
+      let delayTimeoutID: number | undefined;
+      let delay = new Promise<boolean>(resolve => {
+        delayTimeoutID = setTimeout(resolve, fuzzy(5000, 0.1), false);
+      });
+
+      // Wait for sometime or an explicit request to fetch.
+      const shallExit = await Promise.race([delay, trigger, exitRequest]);
+      if (shallExit) {
+        console.log("stopped background fetch")
+        break;
+      }
+
+      // Remove the timeout, whether it was triggered or not.
+      clearTimeout(delayTimeoutID);
+
+      // Get the list of waiters before starting fetch. If we get a fetch
+      // request while we're in the middle of it, there might be a race
+      // condition - i.e, part of the fetching was already done while the fetch
+      // was requested.
+      const waiters = this.triggerFetchWaiters;
+      this.triggerFetchWaiters = [];
+      // Also reset the trigger promise now, whether it was resolved or not. We
+      // need to do that at the same moment we're getting the waiters list -
+      // otherwise some of them might get dropped.
+      trigger = prepTrigger();
+
+      // Do the actual fetch - that might take a while.
+      console.log("start fetch", Date.now());
+      await new Promise(resolve => setTimeout(resolve, 500));
+      console.log("end fetch", Date.now());
+
+      // And notify all that were waiting for their fetch trigger to be done.
+      for (const w of waiters) {
+        w();
+      }
 
     }
+  }
+
+  async triggerFetch() {
+    await new Promise<void>(resolve => {
+      if (!this.triggerFetchResolve) {
+        throw new Error("invalid trigger");
+      }
+      this.triggerFetchWaiters.push(resolve);
+      this.triggerFetchResolve();
+    });
   }
 
   // Called when intersections of statuses changes - i.e., that

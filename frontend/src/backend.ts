@@ -8,8 +8,7 @@ import * as protobuf from "@bufbuild/protobuf";
 
 // Return a random value around [ref-delta, ref+delta[, where
 // delta = ref * deltaRatio.
-// @ts-ignore
-function fuzzy(ref: number, deltaRatio: number): number {
+export function fuzzy(ref: number, deltaRatio: number): number {
   return ref + (2 * Math.random() - 1) * (ref * deltaRatio);
 }
 
