@@ -75,6 +75,8 @@ export class MastStream extends LitElement {
 
     // Start background fetching.
     this.backgroundFetch();
+    // ... and request an initial fetch.
+    this.triggerFetch();
 
     // Trigger loading of content.
     this.listNext();
