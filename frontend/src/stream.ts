@@ -480,6 +480,7 @@ export class MastStream extends LitElement {
     .loadmore {
       padding-top: 4px;
       padding-bottom: 4px;
+      height: 40px;
     }
   `];
 }
