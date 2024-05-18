@@ -39,7 +39,7 @@ var (
 	showAccount = flag.Bool("show_account", false, "Query and show account state from Mastodon server")
 	selfURL     = flag.String("self_url", "", "URL to use for authentication redirection on the frontend. When empty, uses out-of-band auth.")
 	inviteCode  = flag.String("invite_code", "", "If not empty, users can only be created by providing this code.")
-	testData    = flag.String("testdata", "testdata", "Directory with backend testdata, for testserve")
+	testData    = flag.String("testdata", "localtestdata", "Directory with backend testdata, for testserve")
 	doFix       = flag.Bool("fix", false, "If set, update streamstate based on computed value.")
 	insecure    = flag.Bool("insecure", false, "If true, mark cookies as insecure, allowing serving without https")
 )

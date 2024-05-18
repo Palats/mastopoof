@@ -10,6 +10,8 @@ backend/*.db-shm
 backend/*.db-wal
 # backend built binary
 backend/backend
+backend/localdata
+backend/localtestdata
 
 # IDEs
 .vscode/
