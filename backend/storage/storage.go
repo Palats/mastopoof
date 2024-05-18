@@ -292,6 +292,7 @@ func (st *Storage) ListUsers(ctx context.Context) ([]*ListUserEntry, error) {
 		if err != nil {
 			return err
 		}
+		defer rows.Close()
 
 		for rows.Next() {
 			var uid UID
@@ -724,6 +725,7 @@ func (st *Storage) FixDuplicateStatuses(ctx context.Context, txn SQLReadWrite, s
 	if err != nil {
 		return err
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		var sid int64
@@ -784,6 +786,7 @@ func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLReadWrite, stid 
 	if err != nil {
 		return err
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		var sid int64
@@ -920,6 +923,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	var selectedID int64
 	var selected *mastodon.Status
@@ -1045,6 +1049,7 @@ func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int6
 		if err != nil {
 			return err
 		}
+		defer rows.Close()
 
 		// Result is descending by position, so reversed compared to what we want.
 		var reverseItems []*Item
@@ -1130,6 +1135,7 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 		if err != nil {
 			return err
 		}
+		defer rows.Close()
 
 		for rows.Next() {
 			var position int64
@@ -1245,6 +1251,7 @@ func (st *Storage) SearchByStatusID(ctx context.Context, txn SQLReadOnly, uid UI
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	var results []*Item
 	for rows.Next() {
