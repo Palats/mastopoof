@@ -148,7 +148,7 @@ export class MastStatus extends LitElement {
             <video controls src=${ma.url} alt=${ma.description || nothing}></video>
           `);
       } else {
-        attachments.push(html`unsupported attachment type ${ma.type}`);
+        attachments.push(html`<span>Unsupported attachment type: ${ma.type}. <a href=${ma.url}>Direct link</a>.</span>`);
       }
     }
 
