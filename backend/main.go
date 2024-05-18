@@ -258,9 +258,7 @@ func cmdCheckStreamState(ctx context.Context, st *storage.Storage, stid storage.
 var spaces = regexp.MustCompile(`\s+`)
 
 func cmdTestServe(ctx context.Context) error {
-	// Do NOT use `?cache=shared` - it causes lock issues between the read-only
-	// and read-write connections.
-	st, err := getStorage(ctx, "file:memdb1?mode=memory")
+	st, err := getStorage(ctx, ":memory:")
 	if err != nil {
 		return err
 	}

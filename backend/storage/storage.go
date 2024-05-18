@@ -92,29 +92,32 @@ func newStorageNoInit(ctx context.Context, dbURI string, selfURL string, scopes 
 		scopes: scopes,
 	}
 
-	// Parse dbURL to be able to extend it with extra parameters.
 	if dbURI == ":memory:" {
-		return nil, errors.New("db :memory: is not supported. Use file::memory:?cache=shared instead")
+		// Just ':memory:' is not parseable as URI, so special case it.
+		dbURI = "file::memory:"
 	}
+
 	u, err := url.Parse(dbURI)
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse DB URI %q: %w", dbURI, err)
 	}
+
+	// When it is memory only, we want to open only a single connection.
+	singleConnection := u.Opaque == ":memory:" || u.Query().Get("mode") == "memory"
+
 	rwURI := *u
 	q := rwURI.Query()
-	q.Set("mode", "rwc")
+	// Do not override mode=memory.
+	if q.Get("mode") == "" {
+		q.Set("mode", "rwc")
+	}
 	// Indicate that all transactions are immediate, thus considered as write-txn
 	// from the get go. In theory this should be in SQL statement `BEGIN IMMEDIATE`,
 	// but Go SQL libraries do not allow for it.
 	q.Set("_txlock", "immediate")
 	rwURI.RawQuery = q.Encode()
 
-	roURI := *u
-	q = roURI.Query()
-	q.Set("mode", "ro")
-	roURI.RawQuery = q.Encode()
-
-	glog.Infof("Storage URIs, read-write: %s; read-only: %s", rwURI.String(), roURI.String())
+	glog.Infof("Storage URI, read-write: %s", rwURI.String())
 
 	// Storage setup is largely inspired from https://kerkour.com/sqlite-for-servers
 	const defaultDBsetup = `
@@ -144,13 +147,27 @@ func newStorageNoInit(ctx context.Context, dbURI string, selfURL string, scopes 
 		return nil, fmt.Errorf("unable to configure DB connection: %w", err)
 	}
 
-	st.roDB, err = sql.Open("sqlite3", roURI.String())
-	if err != nil {
-		return nil, fmt.Errorf("unable to open storage %s: %w", dbURI, err)
-	}
-	st.roDB.SetMaxOpenConns(max(4, runtime.NumCPU()))
-	if _, err := st.roDB.ExecContext(ctx, defaultDBsetup); err != nil {
-		return nil, fmt.Errorf("unable to configure DB connection: %w", err)
+	if singleConnection {
+		glog.Infof("Using read-write connection for read-only access")
+		st.roDB = st.rwDB
+	} else {
+		roURI := *u
+		q = roURI.Query()
+		// Do not override mode=memory.
+		if q.Get("mode") == "" {
+			q.Set("mode", "ro")
+		}
+		roURI.RawQuery = q.Encode()
+		glog.Infof("Storage URI, read-only: %s", roURI.String())
+
+		st.roDB, err = sql.Open("sqlite3", roURI.String())
+		if err != nil {
+			return nil, fmt.Errorf("unable to open storage %s: %w", dbURI, err)
+		}
+		st.roDB.SetMaxOpenConns(max(4, runtime.NumCPU()))
+		if _, err := st.roDB.ExecContext(ctx, defaultDBsetup); err != nil {
+			return nil, fmt.Errorf("unable to configure DB connection: %w", err)
+		}
 	}
 
 	if selfURL != "" {
