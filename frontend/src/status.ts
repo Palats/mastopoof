@@ -234,9 +234,7 @@ export class MastStatus extends LitElement {
         <button @click="${() => this.markUnread()}" title="Mark as unread and move read-marker above">
           <span class="material-symbols-outlined">mark_as_unread</span>
         </button>
-        <button @click="${() => {
-          this.showRaw = !this.showRaw
-        }}" title="Show raw status">
+        <button @click="${() => { this.showRaw = !this.showRaw }}" title="Show raw status">
           <span class="material-symbols-outlined">${this.showRaw ? 'collapse_all' : 'expand_all'}</span>
         </button>
       </div>
@@ -247,7 +245,7 @@ export class MastStatus extends LitElement {
     `;
 
     return html`
-      <div class="status ${classMap({read: this.isRead, unread: !this.isRead})}">
+      <div class="status ${classMap({ read: this.isRead, unread: !this.isRead })}">
         <div class="account">
             <span class="centered">
               <img class="avatar" src=${s.account.avatar}></img>
@@ -260,7 +258,8 @@ export class MastStatus extends LitElement {
                                                            title="Open status on original server">travel_explore</span></a>
             </span>
         </div>
-        ${!!filtered ? html`<div class="filtered">filtered by ${filtered}</div>` : contentHtml }`;
+        ${!!filtered ? html`<div class="filtered">filtered by ${filtered}</div>` : contentHtml}
+      </div>`;
   }
 
   static styles = [common.sharedCSS, css`
@@ -296,7 +295,7 @@ export class MastStatus extends LitElement {
         justify-content: space-between;
         background-color: var(--color-blue-100);
       }
-      
+
       .filtered {
         background-color: var(--color-blue-100);
       }
