@@ -275,7 +275,8 @@ func TestBasic(t *testing.T) {
 
 	// Try to list them
 	listResp := MustCall[pb.ListResponse](env, "List", &pb.ListRequest{
-		Stid: stid,
+		Stid:      stid,
+		Direction: pb.ListRequest_FORWARD,
 	})
 	if got, want := len(listResp.Items), fetchResp.FetchedCount; int64(got) != want {
 		t.Errorf("List returned %d statuses, while fetch provided %d", got, want)
@@ -298,7 +299,8 @@ func TestSetRead(t *testing.T) {
 
 	// Need to start at 0.
 	listResp := MustCall[pb.ListResponse](env, "List", &pb.ListRequest{
-		Stid: userInfo.DefaultStid,
+		Stid:      userInfo.DefaultStid,
+		Direction: pb.ListRequest_FORWARD,
 	})
 	if got, want := listResp.StreamInfo.LastRead, int64(0); got != want {
 		t.Errorf("Got last read %d, wanted %d", got, want)
