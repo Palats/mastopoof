@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	mastodon2 "github.com/mattn/go-mastodon"
 	"net/url"
 	"runtime"
 	"strings"
@@ -1179,17 +1180,29 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid AS
 
 func computeState(status *mastodon.Status, filters []*mastodon.Filter) StatusState {
 	var content string
+	var tags []mastodon2.Tag
 	if status.Reblog != nil {
-		content = status.Reblog.Content
+		content = strings.ToLower(status.Reblog.Content)
+		tags = status.Reblog.Tags
 	} else {
-		content = status.Content
+		content = strings.ToLower(status.Content)
+		tags = status.Tags
 	}
 
 	state := StatusState{}
 	// TODO depending on the number and type of filters, it might be worth building a regex instead of looping?
 	for _, filter := range filters {
+		var phrase = strings.ToLower(filter.Phrase)
 		// TODO filters are actually fancier than that. but let's try this first!
-		matched := strings.Contains(content, filter.Phrase)
+		matched := strings.Contains(content, phrase)
+		if !matched && phrase[0] == '#' {
+			for _, tag := range tags {
+				if strings.ToLower(tag.Name) == phrase[1:] {
+					matched = true
+					break
+				}
+			}
+		}
 		state.Filters = append(state.Filters, FilterStateMatch{string(filter.ID), matched})
 	}
 	return state
