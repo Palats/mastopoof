@@ -16,6 +16,7 @@ export interface StatusItem {
   status: mastodon.Status;
   // The account where this status was obtained from.
   account: pb.Account;
+  statusstate: pb.StatusState;
 }
 
 function qualifiedAccount(account: mastodon.Account): string {
@@ -123,8 +124,17 @@ export class MastStatus extends LitElement {
 
   render() {
     if (!this.item) {
-      return html`<div class="status">oops.</div>`
+      return html`
+        <div class="status">oops.</div>`
     }
+
+    var filteredAr: string[] = [];
+    for (const filter of this.item.statusstate.filterstate ?? []) {
+      if (filter.matched == true) {
+        filteredAr.push(filter.desc);
+      }
+    }
+    const filtered = filteredAr.join(", ");
 
     // This actual status - i.e., the reblogged one when it is a reblogged, or
     // the basic one.
@@ -137,16 +147,16 @@ export class MastStatus extends LitElement {
       if (ma.type === "image") {
         // TODO: preview_url is probably wrong?
         attachments.push(html`
-            <img src=${ma.preview_url} alt=${ma.description || ""}></img>
-          `);
+          <img src=${ma.preview_url} alt=${ma.description || ""}></img>
+        `);
       } else if (ma.type === "gifv") {
         attachments.push(html`
-            <video controls muted src=${ma.url} alt=${ma.description || nothing}></video>
-          `);
+          <video controls muted src=${ma.url} alt=${ma.description || nothing}></video>
+        `);
       } else if (ma.type === "video") {
         attachments.push(html`
-            <video controls src=${ma.url} alt=${ma.description || nothing}></video>
-          `);
+          <video controls src=${ma.url} alt=${ma.description || nothing}></video>
+        `);
       } else {
         attachments.push(html`<span>Unsupported attachment type: ${ma.type}. <a href=${ma.url}>Direct link</a>.</span>`);
       }
@@ -156,26 +166,26 @@ export class MastStatus extends LitElement {
     if (s.poll) {
       for (const option of s.poll.options) {
         poll.push(html`
-              <div class="poll-option"><input type="radio" disabled>${option.title}</input></div>
-          `);
+          <div class="poll-option"><input type="radio" disabled>${option.title}</input></div>
+        `);
       }
     }
 
     const card: TemplateResult[] = [];
     if (s.card && s.media_attachments.length === 0) {
       card.push(html`
-          <a href="${s.card.url}" target="_blank" class="previewcard-link">
-            <div class="previewcard-container">
-              <div class="previewcard-image">
-                  <img src="${s.card.image ?? ''}" />
-              </div>
-              <div class="previewcard-meta">
-                  <div class="previewcard-provider">${s.card.provider_name}</div>
-                  <div class="previewcard-title">${s.card.title}</div>
-              </div>
+        <a href="${s.card.url}" target="_blank" class="previewcard-link">
+          <div class="previewcard-container">
+            <div class="previewcard-image">
+              <img src="${s.card.image ?? ''}"/>
             </div>
-          </a>
-        `)
+            <div class="previewcard-meta">
+              <div class="previewcard-provider">${s.card.provider_name}</div>
+              <div class="previewcard-title">${s.card.title}</div>
+            </div>
+          </div>
+        </a>
+      `)
     }
 
     // Main created time is the time of the status or of the reblog content
@@ -189,58 +199,68 @@ export class MastStatus extends LitElement {
 
     const openTarget = localStatusURL(this.item);
 
+    const contentHtml = html`
+      ${!!reblog ? html`
+        <div class="reblog">
+          <span class="centered">
+            <img class="avatar" src=${account.avatar}></img>
+            Reblog by ${expandEmojis(account.display_name, account.emojis)} &lt;${qualifiedAccount(account)}&gt;
+          </span>
+          <span class="timestamp" title="${reblogTimeLabel}">${reblogTime.fromNow()}</span>
+        </div>
+      ` : nothing}
+    <div class="content">
+      ${expandEmojis(s.content, s.emojis)}
+    </div>
+    <div class="poll">
+      ${poll}
+    </div>
+    <div class="previewcard">
+      ${card}
+    </div>
+    <div class="attachments">
+      ${attachments}
+    </div>
+    <div class="tools">
+      <div>
+        <button disabled><span class="material-symbols-outlined" title="Favorite">star</span></button>
+        <span class="count">${s.favourites_count}</span>
+        <button disabled><span class="material-symbols-outlined" title="Boost">repeat</span></button>
+        <span class="count">${s.reblogs_count}</span>
+        <button disabled><span class="material-symbols-outlined" title="Reply...">reply</span></button>
+        <span class="count">${s.replies_count}</span>
+      </div>
+      <div>
+        <button @click="${() => this.markUnread()}" title="Mark as unread and move read-marker above">
+          <span class="material-symbols-outlined">mark_as_unread</span>
+        </button>
+        <button @click="${() => {
+          this.showRaw = !this.showRaw
+        }}" title="Show raw status">
+          <span class="material-symbols-outlined">${this.showRaw ? 'collapse_all' : 'expand_all'}</span>
+        </button>
+      </div>
+    </div>
+    ${this.showRaw ? html`
+      <pre class="rawcontent">${JSON.stringify(this.item.status, null, "  ")}</pre>` : nothing}
+    </div>
+    `;
+
     return html`
-        <div class="status ${classMap({ read: this.isRead, unread: !this.isRead })}">
-          <div class="account">
+      <div class="status ${classMap({read: this.isRead, unread: !this.isRead})}">
+        <div class="account">
             <span class="centered">
               <img class="avatar" src=${s.account.avatar}></img>
               ${expandEmojis(s.account.display_name, s.account.emojis)} &lt;${qualifiedAccount(s.account)}&gt;
             </span>
-            <span>
+          <span>
               <span class="timestamp" title="${createdTimeLabel}">${createdTime.fromNow()}</span>
               <a href=${openTarget} target="_blank"><span class="material-symbols-outlined" title="Open status">open_in_new</span></a>
-              <a href=${s.url ?? ""} target="_blank"><span class="material-symbols-outlined" title="Open status on original server">travel_explore</span></a>
+              <a href=${s.url ?? ""} target="_blank"><span class="material-symbols-outlined"
+                                                           title="Open status on original server">travel_explore</span></a>
             </span>
-          </div>
-          ${!!reblog ? html`
-            <div class="reblog">
-              <span class="centered">
-                <img class="avatar" src=${account.avatar}></img>
-                Reblog by ${expandEmojis(account.display_name, account.emojis)} &lt;${qualifiedAccount(account)}&gt;
-              </span>
-              <span class="timestamp" title="${reblogTimeLabel}">${reblogTime.fromNow()}</span>
-            </div>
-          `: nothing}
-          <div class="content">
-            ${expandEmojis(s.content, s.emojis)}
-          </div>
-          <div class="poll">
-            ${poll}
-          </div>
-          <div class="previewcard">
-            ${card}
-          </div>
-          <div class="attachments">
-            ${attachments}
-          </div>
-          <div class="tools">
-            <div>
-              <button disabled><span class="material-symbols-outlined" title="Favorite">star</span></button><span class="count">${s.favourites_count}</span>
-              <button disabled><span class="material-symbols-outlined" title="Boost">repeat</span></button><span class="count">${s.reblogs_count}</span>
-              <button disabled><span class="material-symbols-outlined" title="Reply...">reply</span></button><span class="count">${s.replies_count}</span>
-            </div>
-            <div>
-              <button @click="${() => this.markUnread()}" title="Mark as unread and move read-marker above">
-                <span class="material-symbols-outlined">mark_as_unread</span>
-              </button>
-              <button @click="${() => { this.showRaw = !this.showRaw }}" title="Show raw status">
-                <span class="material-symbols-outlined">${this.showRaw ? 'collapse_all' : 'expand_all'}</span>
-              </button>
-            </div>
-          </div>
-          ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(this.item.status, null, "  ")}</pre>` : nothing}
         </div>
-      `
+        ${!!filtered ? html`<div class="filtered">filtered by ${filtered}</div>` : contentHtml }`;
   }
 
   static styles = [common.sharedCSS, css`
@@ -274,6 +294,10 @@ export class MastStatus extends LitElement {
         align-items: center;
         padding: 3px;
         justify-content: space-between;
+        background-color: var(--color-blue-100);
+      }
+      
+      .filtered {
         background-color: var(--color-blue-100);
       }
 

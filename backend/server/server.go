@@ -354,6 +354,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 			Position: item.Position,
 			// TODO: account is potentially per status, while it is currently considered per user.
 			Account: accountStateProto,
+			State:   item.StatusState.ToStatusStateProto(),
 		})
 	}
 

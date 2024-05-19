@@ -896,8 +896,9 @@ func (st *Storage) ClearPoolAndStream(ctx context.Context, uid UID) error {
 
 type Item struct {
 	// Position in the stream.
-	Position int64           `json:"position"`
-	Status   mastodon.Status `json:"status"`
+	Position    int64           `json:"position"`
+	Status      mastodon.Status `json:"status"`
+	StatusState StatusState     `json:"statusstate"`
 }
 
 // PickNext
@@ -928,7 +929,8 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 	rows, err := txn.QueryContext(ctx, `
 		SELECT
 			streamcontent.sid,
-			statuses.status
+			statuses.status,
+			statuses.statusstate
 		FROM
 			streamcontent
 			JOIN statuses USING (sid)
@@ -944,16 +946,22 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 
 	var selectedID int64
 	var selected *mastodon.Status
+	var selstatustate *StatusState
 	var found int64
 	for rows.Next() {
 		found++
 		var sid int64
 		var jsonString string
-		if err := rows.Scan(&sid, &jsonString); err != nil {
+		var statusString string
+		if err := rows.Scan(&sid, &jsonString, &statusString); err != nil {
 			return nil, err
 		}
 		var status mastodon.Status
 		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
+			return nil, err
+		}
+		var statusstate StatusState
+		if err := json.Unmarshal([]byte(statusString), &statusstate); err != nil {
 			return nil, err
 		}
 
@@ -962,6 +970,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 		if selected == nil {
 			match = true
 			selected = &status
+			selstatustate = &statusstate
 		} else {
 			// For now, just pick the oldest one.
 			if status.CreatedAt.Before(selected.CreatedAt) {
@@ -972,6 +981,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 		if match {
 			selectedID = sid
 			selected = &status
+			selstatustate = &statusstate
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -983,6 +993,11 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 		// Update 'remaining' while at it.
 		streamState.Remaining = found
 		return nil, st.SetStreamState(ctx, txn, streamState)
+	}
+
+	if selstatustate == nil {
+		glog.Errorf("No status state for current status")
+		selstatustate = &StatusState{}
 	}
 
 	// Now, add that status to the stream.
@@ -1011,8 +1026,9 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 	}
 
 	return &Item{
-		Position: position,
-		Status:   *selected,
+		Position:    position,
+		Status:      *selected,
+		StatusState: *selstatustate,
 	}, nil
 }
 
@@ -1051,7 +1067,8 @@ func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int6
 		rows, err := txn.QueryContext(ctx, `
 			SELECT
 				streamcontent.position,
-				statuses.status
+				statuses.status,
+				statuses.statusstate
 			FROM
 				statuses
 				INNER JOIN streamcontent
@@ -1073,16 +1090,22 @@ func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int6
 		for rows.Next() {
 			var position int64
 			var jsonString string
-			if err := rows.Scan(&position, &jsonString); err != nil {
+			var statusstring string
+			if err := rows.Scan(&position, &jsonString, &statusstring); err != nil {
 				return err
 			}
 			var status mastodon.Status
 			if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
 				return err
 			}
+			var statusstate StatusState
+			if err := json.Unmarshal([]byte(statusstring), &statusstate); err != nil {
+				return err
+			}
 			reverseItems = append(reverseItems, &Item{
-				Position: position,
-				Status:   status,
+				Position:    position,
+				Status:      status,
+				StatusState: statusstate,
 			})
 		}
 		if err := rows.Err(); err != nil {
@@ -1142,7 +1165,8 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 		rows, err := txn.QueryContext(ctx, `
 			SELECT
 				streamcontent.position,
-				statuses.status
+				statuses.status,
+				statuses.statusstate
 			FROM
 				statuses
 				INNER JOIN streamcontent
@@ -1162,16 +1186,22 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 		for rows.Next() {
 			var position int64
 			var jsonString string
-			if err := rows.Scan(&position, &jsonString); err != nil {
+			var statusstring string
+			if err := rows.Scan(&position, &jsonString, &statusstring); err != nil {
 				return err
 			}
 			var status mastodon.Status
 			if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
 				return err
 			}
+			var statusstate StatusState
+			if err := json.Unmarshal([]byte(statusstring), &statusstate); err != nil {
+				return err
+			}
 			result.Items = append(result.Items, &Item{
-				Position: position,
-				Status:   status,
+				Position:    position,
+				Status:      status,
+				StatusState: statusstate,
 			})
 		}
 		if err := rows.Err(); err != nil {

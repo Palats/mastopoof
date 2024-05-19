@@ -131,6 +131,19 @@ type FilterStateMatch struct {
 	Matched bool `json:"matched"`
 }
 
+func (StatusState *StatusState) ToStatusStateProto() *pb.StatusState {
+	var filters []*pb.FilterStateMatch
+	for _, filter := range StatusState.Filters {
+		filters = append(filters, &pb.FilterStateMatch{
+			Desc:    filter.ID,
+			Matched: filter.Matched,
+		})
+	}
+	return &pb.StatusState{
+		Filterstate: filters,
+	}
+}
+
 func (accountState *AccountState) ToAccountProto() *pb.Account {
 	return &pb.Account{
 		ServerAddr: accountState.ServerAddr,
