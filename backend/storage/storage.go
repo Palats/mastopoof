@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	mastodon2 "github.com/mattn/go-mastodon"
 	"net/url"
 	"runtime"
 	"strings"
@@ -1272,7 +1271,7 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid AS
 
 func computeState(status *mastodon.Status, filters []*mastodon.Filter) StatusState {
 	var content string
-	var tags []mastodon2.Tag
+	var tags []mastodon.Tag
 	if status.Reblog != nil {
 		content = strings.ToLower(status.Reblog.Content)
 		tags = status.Reblog.Tags

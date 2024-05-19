@@ -17,6 +17,7 @@ type AppConfig = gomastodon.AppConfig
 type Pagination = gomastodon.Pagination
 type Application = gomastodon.Application
 type Filter = gomastodon.Filter
+type Tag = gomastodon.Tag
 
 func NewClient(config *Config) *Client {
 	return gomastodon.NewClient(config)
