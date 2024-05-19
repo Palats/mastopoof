@@ -128,12 +128,13 @@ export class MastStatus extends LitElement {
         <div class="status">oops.</div>`
     }
 
-    var filtered = '';
+    var filteredAr: string[] = [];
     for (const filter of this.item.statusstate.filterstate ?? []) {
       if (filter.matched == true) {
-        filtered = filter.desc;
+        filteredAr.push(filter.desc);
       }
     }
+    const filtered = filteredAr.join(", ");
 
     // This actual status - i.e., the reblogged one when it is a reblogged, or
     // the basic one.
@@ -198,15 +199,16 @@ export class MastStatus extends LitElement {
 
     const openTarget = localStatusURL(this.item);
 
-    const contentHtml = html`${!!reblog ? html`
-      <div class="reblog">
-              <span class="centered">
-                <img class="avatar" src=${account.avatar}></img>
-    Reblog by ${expandEmojis(account.display_name, account.emojis)} &lt;${qualifiedAccount(account)}&gt;
-    </span>
-        <span class="timestamp" title="${reblogTimeLabel}">${reblogTime.fromNow()}</span>
-      </div>
-    ` : nothing}
+    const contentHtml = html`
+      ${!!reblog ? html`
+        <div class="reblog">
+          <span class="centered">
+            <img class="avatar" src=${account.avatar}></img>
+            Reblog by ${expandEmojis(account.display_name, account.emojis)} &lt;${qualifiedAccount(account)}&gt;
+          </span>
+          <span class="timestamp" title="${reblogTimeLabel}">${reblogTime.fromNow()}</span>
+        </div>
+      ` : nothing}
     <div class="content">
       ${expandEmojis(s.content, s.emojis)}
     </div>

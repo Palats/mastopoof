@@ -996,7 +996,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 	}
 
 	if selstatustate == nil {
-		fmt.Println("No status state for current status")
+		glog.Errorf("No status state for current status")
 		selstatustate = &StatusState{}
 	}
 
