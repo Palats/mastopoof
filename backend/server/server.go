@@ -316,8 +316,15 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 
 	var listResult *storage.ListResult
 	switch req.Msg.Direction {
-	case pb.ListRequest_FORWARD, pb.ListRequest_DEFAULT:
-		listResult, err = s.st.ListForward(ctx, stid, req.Msg.Position)
+	case pb.ListRequest_DEFAULT:
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("missing direction specification"))
+	case pb.ListRequest_INITIAL:
+		listResult, err = s.st.ListForward(ctx, stid, req.Msg.Position, true /* isInitial */)
+		if err != nil {
+			return nil, err
+		}
+	case pb.ListRequest_FORWARD:
+		listResult, err = s.st.ListForward(ctx, stid, req.Msg.Position, false /* isInitial */)
 		if err != nil {
 			return nil, err
 		}

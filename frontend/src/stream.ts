@@ -79,7 +79,7 @@ export class MastStream extends LitElement {
     this.triggerFetch();
 
     // Trigger loading of content.
-    this.listNext();
+    this.listNext(true /* isInitial */);
   }
 
   disconnectedCallback() {
@@ -260,7 +260,7 @@ export class MastStream extends LitElement {
   // List newer statuses.
   // This does NOT trigger a mastodon->mastopoof fetch, it just
   // list what's available from mastopoof.
-  async listNext() {
+  async listNext(isInitial = false) {
     const stid = this.stid;
     if (!stid) {
       throw new Error("missing stream id");
@@ -274,7 +274,11 @@ export class MastStream extends LitElement {
     let resp: pb.ListResponse;
     try {
       this.loadingBarUsers++;
-      resp = await common.backend.list({ stid: stid, position: position, direction: pb.ListRequest_Direction.FORWARD })
+      resp = await common.backend.list({
+        stid: stid,
+        position: position,
+        direction: isInitial ? pb.ListRequest_Direction.INITIAL : pb.ListRequest_Direction.FORWARD,
+      })
     } finally {
       this.loadingBarUsers--;
     }

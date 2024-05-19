@@ -126,13 +126,16 @@ message Account {
 
 message ListRequest {
     enum Direction {
-        // If unspecified - behaves as "FORWARD".
+        // Fails.
         DEFAULT = 0;
         // Get more recent statuses with item > (strict) request.position.
         FORWARD = 1;
         // Go back in the history of the stream.
         // Returns item < (strict) request.position.
         BACKWARD = 2;
+        // Get initial list of statuses on UI load. Can be empty (e.g., when stream
+        // has no statuses yet).
+        INITIAL = 3;
     }
     Direction direction = 1;
 

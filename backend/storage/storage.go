@@ -1103,7 +1103,7 @@ func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int6
 // ListForward get statuses after the provided position.
 // It can triage things in the stream if necessary.
 // If refPosition is 0, gives data around the provided position.
-func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64) (*ListResult, error) {
+func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64, isInitial bool) (*ListResult, error) {
 	if refPosition < 0 {
 		return nil, fmt.Errorf("invalid position %d", refPosition)
 	}
@@ -1118,14 +1118,19 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 		}
 		result.StreamState = streamState
 
-		if refPosition == 0 {
-			// Also pick the one last read status, for context.
-			refPosition = streamState.LastRead - 1
-			if refPosition < streamState.FirstPosition {
-				refPosition = streamState.FirstPosition
-			}
-		} else if streamState.FirstPosition == streamState.LastPosition {
+		// There are different cases to be careful of:
+		//  - Initial load, when the frontend loads up.
+		//  - Requesting more stuff, while the stream was empty before.
+		//  - Requesting more stuff, while the stream was not empty.
+
+		emptyStream := streamState.FirstPosition == streamState.LastPosition
+		if emptyStream && refPosition != 0 {
 			return fmt.Errorf("forward requests with non-null position on empty stream are not allowed")
+		}
+
+		if isInitial {
+			// Load things after the last-read status.
+			refPosition = streamState.LastRead
 		}
 		if refPosition < streamState.FirstPosition || refPosition > streamState.LastPosition {
 			return fmt.Errorf("position %d does not exists", refPosition)
@@ -1174,7 +1179,10 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 		}
 
 		// Do we want to triage more?
-		for len(result.Items) < maxCount {
+		// Nothing is triaged on initial load - the idea is to try to reload similarly as
+		// what it was before and keep triage on explicit request (as long as no auto-loading is
+		// enabled).
+		for len(result.Items) < maxCount && !isInitial {
 			// If we're here, it means we've reached the end of the current stream,
 			// so we need to try to inject new items.
 			ost, err := st.pickNextInTxn(ctx, txn, streamState)
