@@ -241,7 +241,7 @@ export class MastStream extends LitElement {
     const position = this.items[0].position;
     const resp = await common.backend.list({ stid: stid, position: position, direction: pb.ListRequest_Direction.BACKWARD })
 
-    const newItems = [];
+    const newItems: StatusItem[] = [];
     for (let i = 0; i < resp.items.length; i++) {
       const item = resp.items[i];
       const position = item.position;
@@ -250,7 +250,7 @@ export class MastStream extends LitElement {
         status: status,
         position: position,
         account: item.account!,
-        statusstate: item.state,
+        statusstate: item.state!,   // TODO: check presence
         isVisible: false,
         wasSeen: false,
         disappeared: false,
@@ -294,7 +294,7 @@ export class MastStream extends LitElement {
         status: status,
         position: position,
         account: item.account!,
-        statusstate: item.state,
+        statusstate: item.state!,  // TODO: check presence
         isVisible: false,
         wasSeen: false,
         disappeared: false,
