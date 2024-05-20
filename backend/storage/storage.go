@@ -1162,7 +1162,7 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid AS
 		`
 
 		// TODO move filtering out of transaction
-		statusState := computeState(status, filters)
+		statusState := ComputeState(status, filters)
 		_, err := txn.ExecContext(ctx, stmt, asid, &sqlStatus{*status}, &statusState, streamState.StID)
 		if err != nil {
 			return err
@@ -1177,7 +1177,7 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid AS
 	return nil
 }
 
-func computeState(status *mastodon.Status, filters []*mastodon.Filter) StatusState {
+func ComputeState(status *mastodon.Status, filters []*mastodon.Filter) StatusState {
 	var content string
 	var tags []mastodon.Tag
 	if status.Reblog != nil {
@@ -1189,13 +1189,21 @@ func computeState(status *mastodon.Status, filters []*mastodon.Filter) StatusSta
 	}
 
 	state := StatusState{}
-	// TODO depending on the number and type of filters, it might be worth building a regex instead of looping?
+
+	// note: we lower-case ALL THE THINGS (oh the irony) to normalize
 	for _, filter := range filters {
 		var phrase = strings.ToLower(filter.Phrase)
 		// TODO filters are actually fancier than that. but let's try this first!
+		// first we check if the phase is, case-insensitively, in the content (if it is, we're done)
 		matched := strings.Contains(content, phrase)
+
+		// otherwise we check tags; tags are formatted in the post (to add links and whatnot), which trips the
+		// stupid "let's just check for strings". if we're actually looking for a tag, we could either drop the # to
+		// look through content (meh) or do things a bit more As Intended and check against the list of tags of the post
+		// (that also drop the # in the tag name)
 		if !matched && phrase[0] == '#' {
 			for _, tag := range tags {
+				// tags are stored in the post as strings without the #
 				if strings.ToLower(tag.Name) == phrase[1:] {
 					matched = true
 					break
