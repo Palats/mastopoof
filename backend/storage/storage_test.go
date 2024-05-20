@@ -724,7 +724,7 @@ func TestComputeState(t *testing.T) {
 	f3 := mastodon.Filter{ID: "3", Phrase: "smurf"}
 	f4 := mastodon.Filter{ID: "3", Phrase: "text"}
 
-	statusState := ComputeState(&status, []*mastodon.Filter{&f1, &f2, &f3, &f4})
+	statusState := computeState(&status, []*mastodon.Filter{&f1, &f2, &f3, &f4})
 	if len(statusState.Filters) != 4 {
 		t.Errorf("Got %d filters, wanted 1", len(statusState.Filters))
 	}

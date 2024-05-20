@@ -1162,7 +1162,7 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid AS
 		`
 
 		// TODO move filtering out of transaction
-		statusState := ComputeState(status, filters)
+		statusState := computeState(status, filters)
 		_, err := txn.ExecContext(ctx, stmt, asid, &sqlStatus{*status}, &statusState, streamState.StID)
 		if err != nil {
 			return err
@@ -1177,7 +1177,7 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid AS
 	return nil
 }
 
-func ComputeState(status *mastodon.Status, filters []*mastodon.Filter) StatusState {
+func computeState(status *mastodon.Status, filters []*mastodon.Filter) StatusState {
 	var content string
 	var tags []mastodon.Tag
 	if status.Reblog != nil {
