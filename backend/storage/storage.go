@@ -1179,17 +1179,37 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid AS
 
 func computeState(status *mastodon.Status, filters []*mastodon.Filter) StatusState {
 	var content string
+	var tags []mastodon.Tag
 	if status.Reblog != nil {
-		content = status.Reblog.Content
+		content = strings.ToLower(status.Reblog.Content)
+		tags = status.Reblog.Tags
 	} else {
-		content = status.Content
+		content = strings.ToLower(status.Content)
+		tags = status.Tags
 	}
 
 	state := StatusState{}
-	// TODO depending on the number and type of filters, it might be worth building a regex instead of looping?
+
+	// Note: we lower-case ALL THE THINGS (oh the irony) to normalize
 	for _, filter := range filters {
+		var phrase = strings.ToLower(filter.Phrase)
 		// TODO filters are actually fancier than that. but let's try this first!
-		matched := strings.Contains(content, filter.Phrase)
+		// first we check if the phrase is, case-insensitively, in the content (if it is, we're done)
+		matched := strings.Contains(content, phrase)
+
+		// otherwise we check tags; tags are formatted in the post (to add links and whatnot), which trips the
+		// stupid "let's just check for strings". if we're actually looking for a tag, we could either drop the # to
+		// look through content (meh) or do things a bit more As Intended and check against the list of tags of the post
+		// (that also drop the # in the tag name)
+		if !matched && phrase[0] == '#' {
+			for _, tag := range tags {
+				// tags are stored in the post as strings without the #
+				if strings.ToLower(tag.Name) == phrase[1:] {
+					matched = true
+					break
+				}
+			}
+		}
 		state.Filters = append(state.Filters, FilterStateMatch{string(filter.ID), matched})
 	}
 	return state

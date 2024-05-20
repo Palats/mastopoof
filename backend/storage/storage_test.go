@@ -710,3 +710,29 @@ func TestFilters(t *testing.T) {
 		t.Errorf("Got filter %#v, wanted {456, false}", status.Filters[1])
 	}
 }
+
+func TestComputeState(t *testing.T) {
+	status := mastodon.Status{
+		Content: "Here is some text to be able to filter <span>#</span>filter #<span>NoFilter</span>",
+		Tags:    make([]mastodon.Tag, 0),
+	}
+	status.Tags = append(status.Tags, mastodon.Tag{Name: "filter"})
+	status.Tags = append(status.Tags, mastodon.Tag{Name: "nofilter"})
+
+	f1 := mastodon.Filter{ID: "1", Phrase: "#nofilter"}
+	f2 := mastodon.Filter{ID: "2", Phrase: "Filters"}
+	f3 := mastodon.Filter{ID: "3", Phrase: "smurf"}
+	f4 := mastodon.Filter{ID: "3", Phrase: "text"}
+
+	statusState := computeState(&status, []*mastodon.Filter{&f1, &f2, &f3, &f4})
+	if len(statusState.Filters) != 4 {
+		t.Errorf("Got %d filters, wanted 1", len(statusState.Filters))
+	}
+	if !statusState.Filters[0].Matched ||
+		statusState.Filters[1].Matched ||
+		statusState.Filters[2].Matched ||
+		!statusState.Filters[3].Matched {
+		t.Errorf("Got filter %#v, wanted {true, false, false, true}", statusState.Filters)
+	}
+
+}
