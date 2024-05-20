@@ -194,9 +194,9 @@ func (ss *StatusState) Value() (driver.Value, error) {
 	return string(data), err
 }
 
-func (StatusState *StatusState) ToStatusStateProto() *pb.StatusState {
+func (ss *StatusState) ToStatusStateProto() *pb.StatusState {
 	var filters []*pb.FilterStateMatch
-	for _, filter := range StatusState.Filters {
+	for _, filter := range ss.Filters {
 		filters = append(filters, &pb.FilterStateMatch{
 			Desc:    filter.ID,
 			Matched: filter.Matched,
