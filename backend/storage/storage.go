@@ -1190,11 +1190,11 @@ func computeState(status *mastodon.Status, filters []*mastodon.Filter) StatusSta
 
 	state := StatusState{}
 
-	// note: we lower-case ALL THE THINGS (oh the irony) to normalize
+	// Note: we lower-case ALL THE THINGS (oh the irony) to normalize
 	for _, filter := range filters {
 		var phrase = strings.ToLower(filter.Phrase)
 		// TODO filters are actually fancier than that. but let's try this first!
-		// first we check if the phase is, case-insensitively, in the content (if it is, we're done)
+		// first we check if the phrase is, case-insensitively, in the content (if it is, we're done)
 		matched := strings.Contains(content, phrase)
 
 		// otherwise we check tags; tags are formatted in the post (to add links and whatnot), which trips the
