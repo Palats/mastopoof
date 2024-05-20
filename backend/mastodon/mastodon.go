@@ -29,7 +29,7 @@ func RegisterApp(ctx context.Context, appConfig *AppConfig) (*Application, error
 // ValidateAddress verifies that a Mastodon server adress is vaguely looking good.
 func ValidateAddress(addr string) error {
 	if !strings.HasPrefix(addr, "http://") && !strings.HasPrefix(addr, "https://") {
-		return fmt.Errorf("Mastodon server address should start with https:// or http:// ; got: %s", addr)
+		return fmt.Errorf("mastodon server address should start with https:// or http:// ; got: %s", addr)
 	}
 	return nil
 }
