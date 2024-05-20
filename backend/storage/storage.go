@@ -562,18 +562,11 @@ func (st *Storage) CreateUserState(ctx context.Context, txn SQLReadWrite) (*User
 func (st *Storage) UserState(ctx context.Context, txn SQLReadOnly, uid UID) (*UserState, error) {
 	userState := &UserState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
-		var jsonString string
-		err := txn.QueryRowContext(ctx, "SELECT state FROM userstate WHERE uid = ?", uid).Scan(&jsonString)
+		err := txn.QueryRowContext(ctx, "SELECT state FROM userstate WHERE uid = ?", uid).Scan(&userState)
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("no user for uid=%v: %w", uid, ErrNotFound)
 		}
-		if err != nil {
-			return err
-		}
-		if err := json.Unmarshal([]byte(jsonString), userState); err != nil {
-			return fmt.Errorf("unable to decode userstate state: %v", err)
-		}
-		return nil
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -582,14 +575,9 @@ func (st *Storage) UserState(ctx context.Context, txn SQLReadOnly, uid UID) (*Us
 }
 
 func (st *Storage) SetUserState(ctx context.Context, txn SQLReadWrite, userState *UserState) error {
-	jsonString, err := json.Marshal(userState)
-	if err != nil {
-		return err
-	}
-
 	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
-		stmt := `INSERT INTO userstate(uid, state) VALUES(?, ?) ON CONFLICT(uid) DO UPDATE SET state = ?`
-		_, err = txn.ExecContext(ctx, stmt, userState.UID, string(jsonString), string(jsonString))
+		stmt := `INSERT INTO userstate(uid, state) VALUES(?, ?) ON CONFLICT(uid) DO UPDATE SET state = excluded.state`
+		_, err := txn.ExecContext(ctx, stmt, userState.UID, userState)
 		return err
 	})
 }

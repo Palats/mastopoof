@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 
@@ -91,6 +92,24 @@ type UserState struct {
 
 	// Default stream of that user.
 	DefaultStID StID `json:"default_stid"`
+}
+
+// Scan implements the [Scanner] interface.
+func (u *UserState) Scan(src any) error {
+	s, ok := src.(string)
+	if !ok {
+		return fmt.Errorf("expected a string for UserState json, got %T", src)
+	}
+	return json.Unmarshal([]byte(s), u)
+}
+
+// Value implements the [driver.Valuer] interface.
+func (u *UserState) Value() (driver.Value, error) {
+	data, err := json.Marshal(u)
+	if err != nil {
+		return nil, err
+	}
+	return string(data), err
 }
 
 type ASID int64
