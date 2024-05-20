@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -388,12 +387,8 @@ func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLReadWrite, serv
 
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		// Do not use SetAppRegState(), as it will not fail if that already exists.
-		state, err := json.Marshal(appRegState)
-		if err != nil {
-			return err
-		}
 		stmt := `INSERT INTO appregstate(key, state) VALUES(?, ?)`
-		_, err = txn.ExecContext(ctx, stmt, appRegState.Key, string(state))
+		_, err := txn.ExecContext(ctx, stmt, appRegState.Key, appRegState)
 		return err
 	})
 	if err != nil {
@@ -407,21 +402,13 @@ func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLReadWrite, serv
 func (st *Storage) AppRegState(ctx context.Context, txn SQLReadOnly, serverAddr string) (*AppRegState, error) {
 	as := &AppRegState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
-		var state string
 		key := st.appRegStateKey(serverAddr)
 		err := txn.QueryRowContext(ctx,
-			"SELECT state FROM appregstate WHERE key=?", key).Scan(&state)
+			"SELECT state FROM appregstate WHERE key=?", key).Scan(&as)
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("no state for server_addr=%s, key=%s: %w", serverAddr, key, ErrNotFound)
 		}
-		if err != nil {
-			return err
-		}
-
-		if err := json.Unmarshal([]byte(state), as); err != nil {
-			return fmt.Errorf("unable to decode appregstate state: %v", err)
-		}
-		return nil
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -431,12 +418,8 @@ func (st *Storage) AppRegState(ctx context.Context, txn SQLReadOnly, serverAddr 
 
 func (st *Storage) SetAppRegState(ctx context.Context, txn SQLReadWrite, ss *AppRegState) error {
 	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
-		state, err := json.Marshal(ss)
-		if err != nil {
-			return err
-		}
 		stmt := `UPDATE appregstate SET state = ? WHERE key = ?`
-		_, err = txn.ExecContext(ctx, stmt, string(state), ss.Key)
+		_, err := txn.ExecContext(ctx, stmt, ss, ss.Key)
 		return err
 	})
 }
@@ -472,19 +455,11 @@ func (st *Storage) CreateAccountState(ctx context.Context, txn SQLReadWrite, uid
 func (st *Storage) AccountStateByUID(ctx context.Context, txn SQLReadOnly, uid UID) (*AccountState, error) {
 	as := &AccountState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
-		var state string
-		err := txn.QueryRowContext(ctx, "SELECT state FROM accountstate WHERE uid=?", uid).Scan(&state)
+		err := txn.QueryRowContext(ctx, "SELECT state FROM accountstate WHERE uid=?", uid).Scan(as)
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("no mastodon account for uid=%v: %w", uid, ErrNotFound)
 		}
-		if err != nil {
-			return err
-		}
-
-		if err := json.Unmarshal([]byte(state), as); err != nil {
-			return fmt.Errorf("unable to decode accountstate state: %v", err)
-		}
-		return nil
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -497,25 +472,17 @@ func (st *Storage) AccountStateByUID(ctx context.Context, txn SQLReadOnly, uid U
 func (st *Storage) AccountStateByAccountID(ctx context.Context, txn SQLReadOnly, serverAddr string, accountID string) (*AccountState, error) {
 	as := &AccountState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
-		var state string
 		err := txn.QueryRowContext(ctx, `
 			SELECT state
 			FROM accountstate
 			WHERE
 				json_extract(state, "$.server_addr") = ?
 				AND json_extract(state, "$.account_id") = ?
-		`, serverAddr, accountID).Scan(&state)
+		`, serverAddr, accountID).Scan(&as)
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("no mastodon account for server=%q, account id=%v: %w", serverAddr, accountID, ErrNotFound)
 		}
-		if err != nil {
-			return err
-		}
-
-		if err := json.Unmarshal([]byte(state), as); err != nil {
-			return fmt.Errorf("unable to decode accountstate state: %v", err)
-		}
-		return nil
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -525,14 +492,9 @@ func (st *Storage) AccountStateByAccountID(ctx context.Context, txn SQLReadOnly,
 
 func (st *Storage) SetAccountState(ctx context.Context, txn SQLReadWrite, as *AccountState) error {
 	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
-		state, err := json.Marshal(as)
-		if err != nil {
-			return err
-		}
-
 		// TODO: make SetAccountState support only update and verify primary key existin for ON CONFLICT.
-		stmt := `INSERT INTO accountstate(asid, state, uid) VALUES(?, ?, ?) ON CONFLICT(asid) DO UPDATE SET state = ?`
-		_, err = txn.ExecContext(ctx, stmt, as.ASID, string(state), as.UID, string(state))
+		stmt := `INSERT INTO accountstate(asid, state, uid) VALUES(?, ?, ?) ON CONFLICT(asid) DO UPDATE SET state = excluded.state`
+		_, err := txn.ExecContext(ctx, stmt, as.ASID, as, as.UID)
 		return err
 	})
 }
@@ -609,19 +571,11 @@ func (st *Storage) CreateStreamState(ctx context.Context, txn SQLReadWrite, uid 
 func (st *Storage) StreamState(ctx context.Context, txn SQLReadOnly, stid StID) (*StreamState, error) {
 	streamState := &StreamState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
-		var jsonString string
-		err := txn.QueryRowContext(ctx, "SELECT state FROM streamstate WHERE stid = ?", stid).Scan(&jsonString)
+		err := txn.QueryRowContext(ctx, "SELECT state FROM streamstate WHERE stid = ?", stid).Scan(streamState)
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("stream with stid=%d not found", stid)
 		}
-		if err != nil {
-			return err
-		}
-
-		if err := json.Unmarshal([]byte(jsonString), streamState); err != nil {
-			return fmt.Errorf("unable to decode streamstate state: %v", err)
-		}
-		return nil
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -631,12 +585,8 @@ func (st *Storage) StreamState(ctx context.Context, txn SQLReadOnly, stid StID) 
 
 func (st *Storage) SetStreamState(ctx context.Context, txn SQLReadWrite, streamState *StreamState) error {
 	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
-		jsonBytes, err := json.Marshal(streamState)
-		if err != nil {
-			return err
-		}
-		stmt := `INSERT INTO streamstate(stid, state) VALUES(?, ?) ON CONFLICT(stid) DO UPDATE SET state = ?`
-		_, err = txn.ExecContext(ctx, stmt, streamState.StID, string(jsonBytes), string(jsonBytes))
+		stmt := `INSERT INTO streamstate(stid, state) VALUES(?, ?) ON CONFLICT(stid) DO UPDATE SET state = excluded.state`
+		_, err := txn.ExecContext(ctx, stmt, streamState.StID, streamState)
 		return err
 	})
 }
@@ -939,17 +889,10 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 	for rows.Next() {
 		found++
 		var sid int64
-		var jsonString string
-		var statusString string
-		if err := rows.Scan(&sid, &jsonString, &statusString); err != nil {
-			return nil, err
-		}
-		var status mastodon.Status
-		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
-			return nil, err
-		}
-		var statusstate StatusState
-		if err := json.Unmarshal([]byte(statusString), &statusstate); err != nil {
+		var status sqlStatus
+		var statusState StatusState
+
+		if err := rows.Scan(&sid, &status, &statusState); err != nil {
 			return nil, err
 		}
 
@@ -957,8 +900,8 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 		match := false
 		if selected == nil {
 			match = true
-			selected = &status
-			selstatustate = &statusstate
+			selected = &status.Status
+			selstatustate = &statusState
 		} else {
 			// For now, just pick the oldest one.
 			if status.CreatedAt.Before(selected.CreatedAt) {
@@ -968,8 +911,8 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 
 		if match {
 			selectedID = sid
-			selected = &status
-			selstatustate = &statusstate
+			selected = &status.Status
+			selstatustate = &statusState
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -1077,23 +1020,15 @@ func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int6
 		var reverseItems []*Item
 		for rows.Next() {
 			var position int64
-			var jsonString string
-			var statusstring string
-			if err := rows.Scan(&position, &jsonString, &statusstring); err != nil {
-				return err
-			}
-			var status mastodon.Status
-			if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
-				return err
-			}
-			var statusstate StatusState
-			if err := json.Unmarshal([]byte(statusstring), &statusstate); err != nil {
+			var status sqlStatus
+			var statusState StatusState
+			if err := rows.Scan(&position, &status, &statusState); err != nil {
 				return err
 			}
 			reverseItems = append(reverseItems, &Item{
 				Position:    position,
-				Status:      status,
-				StatusState: statusstate,
+				Status:      status.Status,
+				StatusState: statusState,
 			})
 		}
 		if err := rows.Err(); err != nil {
@@ -1173,23 +1108,15 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 
 		for rows.Next() {
 			var position int64
-			var jsonString string
-			var statusstring string
-			if err := rows.Scan(&position, &jsonString, &statusstring); err != nil {
-				return err
-			}
-			var status mastodon.Status
-			if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
-				return err
-			}
-			var statusstate StatusState
-			if err := json.Unmarshal([]byte(statusstring), &statusstate); err != nil {
+			var status sqlStatus
+			var statusState StatusState
+			if err := rows.Scan(&position, &status, &statusState); err != nil {
 				return err
 			}
 			result.Items = append(result.Items, &Item{
 				Position:    position,
-				Status:      status,
-				StatusState: statusstate,
+				Status:      status.Status,
+				StatusState: statusState,
 			})
 		}
 		if err := rows.Err(); err != nil {
@@ -1226,10 +1153,6 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 // It updates `streamState` IN PLACE.
 func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid ASID, streamState *StreamState, statuses []*mastodon.Status, filters []*mastodon.Filter) error {
 	for _, status := range statuses {
-		jsonBytes, err := json.Marshal(status)
-		if err != nil {
-			return err
-		}
 		// TODO: batching
 
 		// Insert in the statuses cache.
@@ -1239,11 +1162,8 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid AS
 		`
 
 		// TODO move filtering out of transaction
-		statusState, err := json.Marshal(computeState(status, filters))
-		if err != nil {
-			return err
-		}
-		_, err = txn.ExecContext(ctx, stmt, asid, string(jsonBytes), string(statusState), streamState.StID)
+		statusState := computeState(status, filters)
+		_, err := txn.ExecContext(ctx, stmt, asid, &sqlStatus{*status}, &statusState, streamState.StID)
 		if err != nil {
 			return err
 		}
@@ -1298,17 +1218,14 @@ func (st *Storage) SearchByStatusID(ctx context.Context, txn SQLReadOnly, uid UI
 
 	var results []*Item
 	for rows.Next() {
-		var jsonString string
-		if err := rows.Scan(&jsonString); err != nil {
+		var status sqlStatus
+		if err := rows.Scan(&status); err != nil {
 			return nil, err
 		}
-		var status mastodon.Status
-		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
-			return nil, err
-		}
+
 		results = append(results, &Item{
 			Position: int64(len(results)),
-			Status:   status,
+			Status:   status.Status,
 		})
 	}
 	if err := rows.Err(); err != nil {

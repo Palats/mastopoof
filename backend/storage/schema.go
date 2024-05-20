@@ -137,6 +137,32 @@ type AccountState struct {
 	LastHomeStatusID mastodon.ID `json:"last_home_status_id"`
 }
 
+// Scan implements the [Scanner] interface.
+func (a *AccountState) Scan(src any) error {
+	s, ok := src.(string)
+	if !ok {
+		return fmt.Errorf("expected a string for AccountState json, got %T", src)
+	}
+	return json.Unmarshal([]byte(s), a)
+}
+
+// Value implements the [driver.Valuer] interface.
+func (a *AccountState) Value() (driver.Value, error) {
+	data, err := json.Marshal(a)
+	if err != nil {
+		return nil, err
+	}
+	return string(data), err
+}
+
+func (accountState *AccountState) ToAccountProto() *pb.Account {
+	return &pb.Account{
+		ServerAddr: accountState.ServerAddr,
+		AccountId:  accountState.AccountID,
+		Username:   accountState.Username,
+	}
+}
+
 // StatusState represent metadata about a status - for now only filter state
 type StatusState struct {
 	Filters []FilterStateMatch `json:"filters"`
@@ -150,6 +176,24 @@ type FilterStateMatch struct {
 	Matched bool `json:"matched"`
 }
 
+// Scan implements the [Scanner] interface.
+func (ss *StatusState) Scan(src any) error {
+	s, ok := src.(string)
+	if !ok {
+		return fmt.Errorf("expected a string for AppRegState json, got %T", src)
+	}
+	return json.Unmarshal([]byte(s), ss)
+}
+
+// Value implements the [driver.Valuer] interface.
+func (ss *StatusState) Value() (driver.Value, error) {
+	data, err := json.Marshal(ss)
+	if err != nil {
+		return nil, err
+	}
+	return string(data), err
+}
+
 func (StatusState *StatusState) ToStatusStateProto() *pb.StatusState {
 	var filters []*pb.FilterStateMatch
 	for _, filter := range StatusState.Filters {
@@ -160,14 +204,6 @@ func (StatusState *StatusState) ToStatusStateProto() *pb.StatusState {
 	}
 	return &pb.StatusState{
 		Filterstate: filters,
-	}
-}
-
-func (accountState *AccountState) ToAccountProto() *pb.Account {
-	return &pb.Account{
-		ServerAddr: accountState.ServerAddr,
-		AccountId:  accountState.AccountID,
-		Username:   accountState.Username,
 	}
 }
 
@@ -185,6 +221,24 @@ type AppRegState struct {
 	ClientSecret string `json:"client_secret"`
 	AuthURI      string `json:"auth_uri"`
 	RedirectURI  string `json:"redirect_uri"`
+}
+
+// Scan implements the [Scanner] interface.
+func (a *AppRegState) Scan(src any) error {
+	s, ok := src.(string)
+	if !ok {
+		return fmt.Errorf("expected a string for AppRegState json, got %T", src)
+	}
+	return json.Unmarshal([]byte(s), a)
+}
+
+// Value implements the [driver.Valuer] interface.
+func (a *AppRegState) Value() (driver.Value, error) {
+	data, err := json.Marshal(a)
+	if err != nil {
+		return nil, err
+	}
+	return string(data), err
 }
 
 type StID int64
@@ -208,6 +262,24 @@ type StreamState struct {
 	LastFetchSecs int64 `json:"last_fetch_secs"`
 }
 
+// Scan implements the [Scanner] interface.
+func (ss *StreamState) Scan(src any) error {
+	s, ok := src.(string)
+	if !ok {
+		return fmt.Errorf("expected a string for StreamState json, got %T", src)
+	}
+	return json.Unmarshal([]byte(s), ss)
+}
+
+// Value implements the [driver.Valuer] interface.
+func (ss *StreamState) Value() (driver.Value, error) {
+	data, err := json.Marshal(ss)
+	if err != nil {
+		return nil, err
+	}
+	return string(data), err
+}
+
 func (ss *StreamState) ToStreamInfo() *pb.StreamInfo {
 	return &pb.StreamInfo{
 		Stid:          int64(ss.StID),
@@ -217,6 +289,31 @@ func (ss *StreamState) ToStreamInfo() *pb.StreamInfo {
 		RemainingPool: ss.Remaining,
 		LastFetchSecs: ss.LastFetchSecs,
 	}
+}
+
+// sqlStatus encapsulate a mastodon status to allow for easier SQL
+// serialization, as it is not possible to add it on the original type
+// on the Mastodon library.
+type sqlStatus struct {
+	mastodon.Status
+}
+
+// Scan implements the [Scanner] interface.
+func (ss *sqlStatus) Scan(src any) error {
+	s, ok := src.(string)
+	if !ok {
+		return fmt.Errorf("expected a string for Status json, got %T", src)
+	}
+	return json.Unmarshal([]byte(s), ss)
+}
+
+// Value implements the [driver.Valuer] interface.
+func (ss *sqlStatus) Value() (driver.Value, error) {
+	data, err := json.Marshal(ss)
+	if err != nil {
+		return nil, err
+	}
+	return string(data), err
 }
 
 // prepareDB creates the schema for the database or update
