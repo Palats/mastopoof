@@ -352,7 +352,7 @@ func (st *Storage) CreateUser(ctx context.Context, txn SQLReadWrite, serverAddr 
 			return err
 		}
 		// Create the mastodon account state.
-		accountState, err = st.CreateAccountState(ctx, txn, userState.UID, serverAddr, string(accountID), username)
+		accountState, err = st.CreateAccountState(ctx, txn, userState.UID, serverAddr, accountID, username)
 		if err != nil {
 			return err
 		}
@@ -425,10 +425,10 @@ func (st *Storage) SetAppRegState(ctx context.Context, txn SQLReadWrite, ss *App
 }
 
 // CreateAccountState creates a new account for the given UID and assign it an ASID.
-func (st *Storage) CreateAccountState(ctx context.Context, txn SQLReadWrite, uid UID, serverAddr string, accountID string, username string) (*AccountState, error) {
+func (st *Storage) CreateAccountState(ctx context.Context, txn SQLReadWrite, uid UID, serverAddr string, accountID mastodon.ID, username string) (*AccountState, error) {
 	var as *AccountState
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
-		var asid sql.NullInt64
+		var asid sql.Null[ASID]
 		err := txn.QueryRowContext(ctx, "SELECT MAX(asid) FROM accountstate").Scan(&asid)
 		if err != nil {
 			return err
@@ -436,7 +436,7 @@ func (st *Storage) CreateAccountState(ctx context.Context, txn SQLReadWrite, uid
 
 		as = &AccountState{
 			// DB is empty, consider previous asid is zero, to get first real entry at 1.
-			ASID:       ASID(asid.Int64) + 1,
+			ASID:       asid.V + 1,
 			UID:        uid,
 			ServerAddr: serverAddr,
 			AccountID:  accountID,
@@ -469,7 +469,7 @@ func (st *Storage) AccountStateByUID(ctx context.Context, txn SQLReadOnly, uid U
 
 // AccountStateByAccountID gets a the mastodon account based on server address and account ID on that server.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) AccountStateByAccountID(ctx context.Context, txn SQLReadOnly, serverAddr string, accountID string) (*AccountState, error) {
+func (st *Storage) AccountStateByAccountID(ctx context.Context, txn SQLReadOnly, serverAddr string, accountID mastodon.ID) (*AccountState, error) {
 	as := &AccountState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		err := txn.QueryRowContext(ctx, `
@@ -503,14 +503,14 @@ func (st *Storage) SetAccountState(ctx context.Context, txn SQLReadWrite, as *Ac
 func (st *Storage) CreateUserState(ctx context.Context, txn SQLReadWrite) (*UserState, error) {
 	userState := &UserState{}
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
-		var uid sql.NullInt64
+		var uid sql.Null[UID]
 		// If there is no entry, a row is still returned, but with a NULL value.
 		err := txn.QueryRowContext(ctx, "SELECT MAX(uid) FROM userstate").Scan(&uid)
 		if err != nil {
 			return fmt.Errorf("unable to create new user: %w", err)
 		}
 		// If DB is empty, consider previous uid is zero, to get first real entry at 1.
-		userState.UID = UID(uid.Int64) + 1
+		userState.UID = uid.V + 1
 		return st.SetUserState(ctx, txn, userState)
 	})
 	if err != nil {
@@ -549,7 +549,7 @@ func (st *Storage) CreateStreamState(ctx context.Context, txn SQLReadWrite, uid 
 	var streamState *StreamState
 
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
-		var stid sql.NullInt64
+		var stid sql.Null[StID]
 		err := txn.QueryRowContext(ctx, "SELECT MAX(stid) FROM streamstate").Scan(&stid)
 		if err != nil {
 			return err
@@ -557,7 +557,7 @@ func (st *Storage) CreateStreamState(ctx context.Context, txn SQLReadWrite, uid 
 
 		streamState = &StreamState{
 			// Pick the largest existing (or 0) stream ID and just add one to create a new one.
-			StID: StID(stid.Int64 + 1),
+			StID: stid.V + 1,
 			UID:  uid,
 		}
 		return st.SetStreamState(ctx, txn, streamState)
@@ -744,7 +744,7 @@ func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLReadWrite, stid 
 	defer rows.Close()
 
 	for rows.Next() {
-		var sid int64
+		var sid SID
 		if err := rows.Scan(&sid); err != nil {
 			return err
 		}
@@ -882,13 +882,13 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 	}
 	defer rows.Close()
 
-	var selectedID int64
+	var selectedID SID
 	var selected *mastodon.Status
 	var selstatustate *StatusState
 	var found int64
 	for rows.Next() {
 		found++
-		var sid int64
+		var sid SID
 		var status sqlStatus
 		var statusState StatusState
 

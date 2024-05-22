@@ -255,7 +255,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 		username := mastodonAccount.Username
 
 		// Find the account state (Mastodon).
-		accountState, err := s.st.AccountStateByAccountID(ctx, txn, serverAddr, string(accountID))
+		accountState, err := s.st.AccountStateByAccountID(ctx, txn, serverAddr, accountID)
 		if errors.Is(err, storage.ErrNotFound) {
 			// No mastodon account - and the way to find actual user is through the mastodon
 			// account, so it means we need to create a user and then we can create

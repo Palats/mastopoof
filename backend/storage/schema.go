@@ -23,6 +23,9 @@ const maxSchemaVersion = 20
 //go:embed schema.sql
 var refSchema string
 
+// SID is the type of status IDs in `statuses` and `streamcontent` databases.
+type SID int64
+
 type UID int64
 
 // UserState is the state of a Mastopoof user, stored as JSON in the DB.
@@ -64,7 +67,7 @@ type AccountState struct {
 	ServerAddr string `json:"server_addr"`
 	// The Mastodon account ID on the server.
 	// E.g., `123456789765432132`
-	AccountID string `json:"account_id"`
+	AccountID mastodon.ID `json:"account_id"`
 	// The Mastodon username
 	// E.g., `foobar`
 	Username string `json:"username"`
@@ -98,7 +101,7 @@ func (a *AccountState) Value() (driver.Value, error) {
 func (accountState *AccountState) ToAccountProto() *pb.Account {
 	return &pb.Account{
 		ServerAddr: accountState.ServerAddr,
-		AccountId:  accountState.AccountID,
+		AccountId:  string(accountState.AccountID),
 		Username:   accountState.Username,
 	}
 }
