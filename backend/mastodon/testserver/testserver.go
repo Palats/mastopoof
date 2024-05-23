@@ -3,6 +3,7 @@ package testserver
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -14,31 +15,48 @@ import (
 	"github.com/golang/glog"
 )
 
+func NewFakeAccount(accountID mastodon.ID, username string) mastodon.Account {
+	return mastodon.Account{
+		ID:             accountID,
+		Username:       username,
+		Acct:           fmt.Sprintf("%s@example.com", username),
+		URL:            fmt.Sprintf("https://example.com/%s", username),
+		DisplayName:    fmt.Sprintf("Account of user %s", username),
+		Note:           "Fake user",
+		Avatar:         "http://www.gravatar.com/avatar/?d=mp",
+		AvatarStatic:   "http://www.gravatar.com/avatar/?d=mp",
+		CreatedAt:      time.Now(),
+		StatusesCount:  1,
+		FollowersCount: 1,
+		FollowingCount: 1,
+	}
+}
+
 func NewFakeStatus(statusID mastodon.ID, accountID mastodon.ID) *mastodon.Status {
 	username := fmt.Sprintf("fakeuser-%s", accountID)
 	status := &mastodon.Status{
-		ID:  statusID,
-		URI: fmt.Sprintf("https://example.com/users/%s/statuses/%s", username, statusID),
-		URL: fmt.Sprintf("https://example.com/@%s/%s", username, statusID),
-		Account: mastodon.Account{
-			ID:             accountID,
-			Username:       username,
-			Acct:           fmt.Sprintf("%s@example.com", username),
-			URL:            fmt.Sprintf("https://example.com/%s", username),
-			DisplayName:    fmt.Sprintf("Account of user %s", username),
-			Note:           "Fake user",
-			Avatar:         "http://www.gravatar.com/avatar/?d=mp",
-			AvatarStatic:   "http://www.gravatar.com/avatar/?d=mp",
-			CreatedAt:      time.Now(),
-			StatusesCount:  1,
-			FollowersCount: 1,
-			FollowingCount: 1,
-		},
+		ID:         statusID,
+		URI:        fmt.Sprintf("https://example.com/users/%s/statuses/%s", username, statusID),
+		URL:        fmt.Sprintf("https://example.com/@%s/%s", username, statusID),
+		Account:    NewFakeAccount(accountID, username),
 		CreatedAt:  time.Now(),
 		Content:    fmt.Sprintf("Status content for user %s, status %s", username, statusID),
 		Visibility: "public",
 	}
 	return status
+}
+
+func NewFakeNotification(notifID mastodon.ID, notifType string, accountSrcID mastodon.ID, status *mastodon.Status) *mastodon.Notification {
+	srcUsername := fmt.Sprintf("fakenotifier-%s", accountSrcID)
+	notif := &mastodon.Notification{
+		ID:        notifID,
+		Type:      notifType,
+		CreatedAt: time.Now(),
+		Account:   NewFakeAccount(accountSrcID, srcUsername),
+		Status:    status,
+		// Report & RelationshipSeveranceEvent missing from go-mastodon.
+	}
+	return notif
 }
 
 type Server struct {
@@ -57,14 +75,12 @@ type Server struct {
 	fakeCounter int64
 	// Introduce a waiting delay before answering listing statuses.
 	listDelay time.Duration
+
+	notifications EntityList[*mastodon.Notification]
 }
 
 func New() *Server {
 	return &Server{}
-}
-
-func (s *Server) addStatus(status *mastodon.Status) error {
-	return s.statuses.Insert(status, string(status.ID))
 }
 
 func (s *Server) SetListDelay(delay time.Duration) {
@@ -92,7 +108,7 @@ func (s *Server) AddJSONStatuses(statusesFS fs.FS) error {
 			return fmt.Errorf("unable to decode %s as status json: %w", filename, err)
 		}
 
-		if err := s.addStatus(status); err != nil {
+		if err := s.statuses.Insert(status, string(status.ID)); err != nil {
 			return fmt.Errorf("unable to add status from file %s: %w", filename, err)
 		}
 	}
@@ -108,7 +124,26 @@ func (s *Server) AddFakeStatus() error {
 	s.fakeCounter += 1
 
 	status := NewFakeStatus(mastodon.ID(id), mastodon.ID(strconv.FormatInt(gen, 10)))
-	return s.addStatus(status)
+	return s.statuses.Insert(status, string(status.ID))
+}
+
+func (s *Server) AddFakeNotification() error {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	if len(s.statuses.entities) == 0 {
+		return errors.New("no status to notify about")
+	}
+	status := s.statuses.entities[len(s.statuses.entities)-1].Value
+	id := s.statuses.CreateNextID()
+	notif := NewFakeNotification(mastodon.ID(id), "favourite", "987", status)
+	return s.notifications.Insert(notif, string(notif.ID))
+}
+
+func (s *Server) ClearNotifications() {
+	s.m.Lock()
+	defer s.m.Unlock()
+	s.notifications.Clear()
 }
 
 func (s *Server) RegisterOn(mux *http.ServeMux) {
@@ -117,6 +152,7 @@ func (s *Server) RegisterOn(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/accounts/verify_credentials", s.serverAPIAccountsVerifyCredentials)
 	mux.HandleFunc("/api/v1/timelines/home", s.serveAPITimelinesHome)
 	mux.HandleFunc("/api/v1/filters", s.serveAPIFilters)
+	mux.HandleFunc("/api/v1/notifications", s.serveAPINotifications)
 }
 
 func (s *Server) returnJSON(w http.ResponseWriter, _ *http.Request, data any) {
@@ -250,4 +286,21 @@ func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request)
 	}
 
 	s.returnJSON(w, req, statuses)
+}
+
+// https://docs.joinmastodon.org/methods/notifications/#get
+func (s *Server) serveAPINotifications(w http.ResponseWriter, req *http.Request) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	notifs, link, err := s.notifications.List(req, "/api/v1/notifications")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if link != "" {
+		w.Header().Set("Link", link)
+	}
+
+	s.returnJSON(w, req, notifs)
 }

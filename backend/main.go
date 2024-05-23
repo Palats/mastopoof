@@ -342,6 +342,29 @@ func cmdTestServe(ctx context.Context) error {
 					ts.AddFakeStatus()
 				}
 				fmt.Printf("Added %d fake statuses.\n", count)
+			case "fake-notifications":
+				if len(args) > 1 {
+					fmt.Printf("At most one parameter allowed")
+					break
+				}
+				count := int64(10)
+				if len(args) > 0 {
+					count, err = strconv.ParseInt(args[0], 10, 64)
+					if err != nil {
+						fmt.Printf("unable to parse %s: %v", args[0], err)
+						break
+					}
+				}
+				for i := int64(0); i < count; i++ {
+					ts.AddFakeNotification()
+				}
+				fmt.Printf("Added %d fake notifications.\n", count)
+			case "clear-notifications":
+				if len(args) > 0 {
+					fmt.Printf("'clear-notifications' does not take parameters")
+					break
+				}
+				ts.ClearNotifications()
 			case "set-list-delay":
 				if len(args) != 1 {
 					fmt.Printf("One parameter needed to specify the delay, as Go ParseDuration format (e.g., '3s').")
@@ -368,6 +391,8 @@ func cmdTestServe(ctx context.Context) error {
 	completer := func(d prompt.Document) []prompt.Suggest {
 		s := []prompt.Suggest{
 			{Text: "fake-statuses", Description: "Add fake statuses; opt: number of statuses"},
+			{Text: "fake-notifications", Description: "Add notifications statuses; opt: number of notifications"},
+			{Text: "clear-notifications", Description: "Clear all notifications"},
 			{Text: "set-list-delay", Description: "Introduce delay when listing statuses from Mastodon"},
 			{Text: "exit", Description: "Shutdown"},
 		}

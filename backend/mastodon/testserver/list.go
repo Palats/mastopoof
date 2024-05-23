@@ -55,6 +55,10 @@ func (list *EntityList[T]) idx(id string) (int, error) {
 	return idx, nil
 }
 
+func (list *EntityList[T]) Clear() {
+	list.entities = nil
+}
+
 // CreateNextID gives back an ID suitable for this list which would insert
 // an entity at the end of the list. The ID is not reserved, so multiple call
 // to this function without insertion might return the same value.
