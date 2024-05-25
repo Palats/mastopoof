@@ -1,6 +1,7 @@
 import { LitElement, css, html, TemplateResult } from 'lit'
 import { customElement, state, property } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js';
+import { classMap } from 'lit/directives/class-map.js';
 import { ref } from 'lit/directives/ref.js';
 
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
@@ -371,9 +372,20 @@ export class MastStream extends LitElement {
       availableCount = this.streamInfo.remainingPool + this.streamInfo.lastPosition - lastVisible;
     }
 
+    let notifs = this.streamInfo.notificationsCount.toString();
+    let notifsAlert = this.streamInfo.notificationsCount > 0;
+    if (this.streamInfo.notificationState === pb.StreamInfo_NotificationsState.NOTIF_UNKNOWN) {
+      notifs = "";
+    } else if (this.streamInfo.notificationState === pb.StreamInfo_NotificationsState.NOTIF_MORE) {
+      notifs = notifs + "+";
+    }
+
     return html`
       <mast-main-view .loadingBarUsers=${this.loadingBarUsers}>
-        <span slot="header">Stream</span>
+        <div slot="header" class="header">
+          <div class="title">Stream</div>
+          <div class=${classMap({ "notifs": true, "notifs-alert": notifsAlert })}>${notifs}</div>
+        </div>
         <div slot="menu">
           <div>
             <button @click=${this.triggerFetch}>Fetch now</button>
@@ -448,6 +460,30 @@ export class MastStream extends LitElement {
   }
 
   static styles = [common.sharedCSS, css`
+    .header {
+      width: 100%;
+      display: flex;
+    }
+
+    .title {
+      flex-grow: 1;
+    }
+
+    .notifs {
+      width: 30px;
+      border: 1px dashed;
+      border-radius: 4px;
+      padding-left: 2px;
+      padding-right: 2px;
+
+      display: flex;
+      justify-content: center;
+    }
+
+    .notifs-alert {
+      background-color: var(--color-red-100);
+    }
+
     .footer {
       display: grid;
       grid-template-columns: 0.6fr 1fr 0.6fr;

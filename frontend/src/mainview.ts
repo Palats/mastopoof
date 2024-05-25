@@ -45,16 +45,14 @@ export class MastMainView extends LitElement {
     return html`
       <div class="header">
         <div class="headercontent">
-          <div>
-            <button style="font-size: 24px" @click=${() => { this.showMenu = !this.showMenu }}>
-              ${this.showMenu ? html`
-              <span class="material-symbols-outlined" title="Close menu">close</span>
-              `: html`
-              <span class="material-symbols-outlined" title="Open menu">menu</span>
-              `}
-            </button>
-            <slot name="header"></slot>
-          </div>
+          <button style="font-size: 24px" @click=${() => { this.showMenu = !this.showMenu }}>
+            ${this.showMenu ? html`
+            <span class="material-symbols-outlined" title="Close menu">close</span>
+            `: html`
+            <span class="material-symbols-outlined" title="Open menu">menu</span>
+            `}
+          </button>
+          <slot name="header"></slot>
         </div>
         ${this.showMenu ? html`
           <div class="menucontent">
@@ -125,7 +123,6 @@ export class MastMainView extends LitElement {
 
       display: flex;
       align-items: center;
-      justify-content: space-between;
     }
 
     .menucontent {
