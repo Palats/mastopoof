@@ -209,6 +209,9 @@ export class MastStatus extends LitElement {
           <span class="timestamp" title="${reblogTimeLabel}">${reblogTime.fromNow()}</span>
         </div>
       ` : nothing}
+    ${s.sensitive ? html`
+      <div class="spoilertext">${expandEmojis(s.spoiler_text)}</div>
+    ` : nothing}
     <div class="content">
       ${expandEmojis(s.content, s.emojis)}
     </div>
@@ -220,7 +223,9 @@ export class MastStatus extends LitElement {
     </div>
     <div class="attachments">
       ${attachments}
-    </div>
+    </div>`;
+
+    const toolsHtml = html`
     <div class="tools">
       <div>
         <button disabled><span class="material-symbols-outlined" title="Favorite">star</span></button>
@@ -259,6 +264,7 @@ export class MastStatus extends LitElement {
             </span>
         </div>
         ${!!filtered ? html`<div class="filtered">filtered by ${filtered}</div>` : contentHtml}
+        ${toolsHtml}
       </div>`;
   }
 
@@ -298,6 +304,10 @@ export class MastStatus extends LitElement {
 
       .filtered {
         background-color: var(--color-blue-100);
+      }
+      
+      .spoilertext {
+        background-color: var(--color-purple-200);
       }
 
       .reblog {
