@@ -500,6 +500,22 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	}
 	glog.Infof("Found %d new status on home timeline (LastHomeStatusID=%v) (max_id:%v, min_id:%v, since_id:%v)%s", len(timeline), newStatusID, pg.MaxID, pg.MinID, pg.SinceID, boundaries)
 
+	// Get notifications count
+	maxNotifs := int64(20)
+	notifsPg := mastodon.Pagination{
+		Limit: maxNotifs,
+	}
+	notifs, err := client.GetNotifications(ctx, &notifsPg)
+	if err != nil {
+		return nil, fmt.Errorf("unable to list notifications: %v", err)
+	}
+	notifsCount := int64(len(notifs))
+	notifsState := pb.StreamInfo_NOTIF_EXACT
+	if notifsCount >= maxNotifs {
+		notifsState = pb.StreamInfo_NOTIF_MORE
+	}
+
+	// Record a timestamp for reference.
 	lastFetchSecs := time.Now().Unix()
 
 	// Start preparing the response.
@@ -518,6 +534,8 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 			return err
 		}
 		streamState.LastFetchSecs = lastFetchSecs
+		streamState.NotificationsState = notifsState
+		streamState.NotificationsCount = notifsCount
 
 		currentAccountState, err := s.st.AccountStateByUID(ctx, txn, streamState.UID)
 		if err != nil {

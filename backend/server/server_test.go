@@ -508,3 +508,68 @@ func TestSearchStatusID(t *testing.T) {
 		t.Errorf("Got %d statuses, wanted %d; response:\n%v", got, want, searchResp)
 	}
 }
+
+func TestNotifs(t *testing.T) {
+	ctx := context.Background()
+	env := (&TestEnv{
+		t: t,
+	}).Init(ctx)
+	defer env.Close()
+	userInfo := env.Login()
+
+	// Fist, no statuses.
+	resp := MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
+		Stid: userInfo.DefaultStid,
+	})
+	if got, want := resp.StreamInfo.NotificationState, pb.StreamInfo_NOTIF_EXACT; got != want {
+		t.Errorf("Got notif state %v, wanted %v", got, want)
+	}
+	if got, want := resp.StreamInfo.NotificationsCount, int64(0); got != want {
+		t.Errorf("Got %d notifications, wanted %d", got, want)
+	}
+
+	// Now, let's add a few statuses and see that we get them.
+	// It needs to have a status to notify about.
+	if err := env.mastodonServer.AddFakeStatus(); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		if err := env.mastodonServer.AddFakeNotification(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resp = MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
+		Stid: userInfo.DefaultStid,
+	})
+	if got, want := resp.StreamInfo.NotificationState, pb.StreamInfo_NOTIF_EXACT; got != want {
+		t.Errorf("Got notif state %v, wanted %v", got, want)
+	}
+	if got, want := resp.StreamInfo.NotificationsCount, int64(5); got != want {
+		t.Errorf("Got %d notifications, wanted %d", got, want)
+	}
+
+	// Add a lot more notifications - it should not have the exact number.
+	for i := 0; i < 100; i++ {
+		if err := env.mastodonServer.AddFakeNotification(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resp = MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
+		Stid: userInfo.DefaultStid,
+	})
+	if got, want := resp.StreamInfo.NotificationState, pb.StreamInfo_NOTIF_MORE; got != want {
+		t.Errorf("Got notif state %v, wanted %v", got, want)
+	}
+
+	// And reset notifications.
+	env.mastodonServer.ClearNotifications()
+	resp = MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
+		Stid: userInfo.DefaultStid,
+	})
+	if got, want := resp.StreamInfo.NotificationState, pb.StreamInfo_NOTIF_EXACT; got != want {
+		t.Errorf("Got notif state %v, wanted %v", got, want)
+	}
+	if got, want := resp.StreamInfo.NotificationsCount, int64(0); got != want {
+		t.Errorf("Got %d notifications, wanted %d", got, want)
+	}
+}

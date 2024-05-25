@@ -203,6 +203,10 @@ type StreamState struct {
 
 	// Last time a fetch from mastodon finished, as unix timestamp in seconds.
 	LastFetchSecs int64 `json:"last_fetch_secs"`
+
+	NotificationsState pb.StreamInfo_NotificationsState `json:"notifications_state"`
+	// Number of unread notifications
+	NotificationsCount int64 `json:"notifications_count"`
 }
 
 // Scan implements the [Scanner] interface.
@@ -225,12 +229,14 @@ func (ss *StreamState) Value() (driver.Value, error) {
 
 func (ss *StreamState) ToStreamInfo() *pb.StreamInfo {
 	return &pb.StreamInfo{
-		Stid:          int64(ss.StID),
-		LastRead:      ss.LastRead,
-		FirstPosition: ss.FirstPosition,
-		LastPosition:  ss.LastPosition,
-		RemainingPool: ss.Remaining,
-		LastFetchSecs: ss.LastFetchSecs,
+		Stid:               int64(ss.StID),
+		LastRead:           ss.LastRead,
+		FirstPosition:      ss.FirstPosition,
+		LastPosition:       ss.LastPosition,
+		RemainingPool:      ss.Remaining,
+		LastFetchSecs:      ss.LastFetchSecs,
+		NotificationState:  ss.NotificationsState,
+		NotificationsCount: ss.NotificationsCount,
 	}
 }
 

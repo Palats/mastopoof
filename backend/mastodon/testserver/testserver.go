@@ -135,7 +135,7 @@ func (s *Server) AddFakeNotification() error {
 		return errors.New("no status to notify about")
 	}
 	status := s.statuses.entities[len(s.statuses.entities)-1].Value
-	id := s.statuses.CreateNextID()
+	id := s.notifications.CreateNextID()
 	notif := NewFakeNotification(mastodon.ID(id), "favourite", "987", status)
 	return s.notifications.Insert(notif, string(notif.ID))
 }

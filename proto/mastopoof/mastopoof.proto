@@ -18,7 +18,10 @@ service Mastopoof {
     // Set the position of the read-marker.
     rpc SetRead(SetReadRequest) returns (SetReadResponse);
 
-    // Contact the Mastodon server and add more statuses to the pool.
+    // Tell Mastopoof server to contact Mastodon server to update
+    // local state, including:
+    //  - Getting new statuses adding them to the pool.
+    //  - Get state of notifications.
     rpc Fetch(FetchRequest) returns (FetchResponse);
 
     // Look for specific statuses.
@@ -56,6 +59,15 @@ message StreamInfo {
 
     // Last time a fetch from mastodon finished, as unix timestamp in seconds.
     int64 last_fetch_secs = 6;
+
+    // Unread notifications available in Mastodon.
+    enum NotificationsState {
+      NOTIF_UNKNOWN = 0;  // Notifications were not looked up.
+      NOTIF_EXACT = 1; // The notifications count is exact.
+      NOTIF_MORE = 2; // Notifications count is under counted.
+    };
+    NotificationsState notification_state = 7;
+    int64 notifications_count = 8;
 }
 
 message LoginRequest {}
