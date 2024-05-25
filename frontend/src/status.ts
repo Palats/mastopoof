@@ -188,13 +188,6 @@ export class MastStatus extends LitElement {
       `)
     }
 
-    const sensitive: TemplateResult[] = [];
-    if (s.sensitive && s.spoiler_text !== "") {
-      sensitive.push(html`
-      
-      `)
-    }
-
     // Main created time is the time of the status or of the reblog content
     // if the status is a reblog.
     const createdTime = dayjs(s.created_at);
