@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"strconv"
 	"sync"
 	"time"
@@ -153,6 +154,7 @@ func (s *Server) RegisterOn(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/timelines/home", s.serveAPITimelinesHome)
 	mux.HandleFunc("/api/v1/filters", s.serveAPIFilters)
 	mux.HandleFunc("/api/v1/notifications", s.serveAPINotifications)
+	mux.HandleFunc("/api/v1/markers", s.serverAPIMarkers)
 }
 
 func (s *Server) returnJSON(w http.ResponseWriter, _ *http.Request, data any) {
@@ -254,10 +256,17 @@ func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request)
 	ctx := req.Context()
 
 	if s.TestBlockList != nil {
-		ch := make(chan struct{})
-		s.TestBlockList <- ch
+		blockCh := make(chan struct{})
+		// Tell test that method has been called
 		select {
-		case <-ch:
+		case s.TestBlockList <- blockCh:
+		case <-ctx.Done():
+			http.Error(w, "interrupted", http.StatusInternalServerError)
+			return
+		}
+		// And wait for test to unblock
+		select {
+		case <-blockCh:
 		case <-ctx.Done():
 			http.Error(w, "interrupted", http.StatusInternalServerError)
 			return
@@ -303,4 +312,37 @@ func (s *Server) serveAPINotifications(w http.ResponseWriter, req *http.Request)
 	}
 
 	s.returnJSON(w, req, notifs)
+}
+
+// https://docs.joinmastodon.org/methods/markers/#get
+func (s *Server) serverAPIMarkers(w http.ResponseWriter, req *http.Request) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	markers := map[string]*mastodon.Marker{}
+	v, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("unable to parse query; got: %s", req.URL.RawQuery), http.StatusBadRequest)
+		return
+	}
+	timelines := v["timeline[]"]
+	if len(timelines) == 0 {
+		http.Error(w, fmt.Sprintf("no timeline specified; request: %s", req.URL.String()), http.StatusBadRequest)
+		return
+	}
+	for _, timeline := range timelines {
+		if timeline != "notifications" {
+			http.Error(w, fmt.Sprintf("unsupported timeline %q", timeline), http.StatusBadRequest)
+			return
+		}
+
+		markers[timeline] = &mastodon.Marker{
+			LastReadID: "",
+			Version:    1,
+			// TODO: add a timestamp
+			UpdatedAt: "2019-11-26T22:37:25.239Z",
+		}
+	}
+
+	s.returnJSON(w, req, markers)
 }

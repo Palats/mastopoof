@@ -501,9 +501,21 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	glog.Infof("Found %d new status on home timeline (LastHomeStatusID=%v) (max_id:%v, min_id:%v, since_id:%v)%s", len(timeline), newStatusID, pg.MaxID, pg.MinID, pg.SinceID, boundaries)
 
 	// Get notifications count
+	// Start by getting marker position on notifications to know what has been read.
+	markers, err := mastodon.GetMarkers(ctx, client, []string{"notifications"})
+	if err != nil {
+		return nil, fmt.Errorf("unable to get notification marker: %w", err)
+	}
+	marker := markers["notifications"]
+	if marker == nil {
+		return nil, fmt.Errorf("server failed to return a 'notifications' marker; got: %v", markers)
+	}
+
+	// And do request notifications.
 	maxNotifs := int64(20)
 	notifsPg := mastodon.Pagination{
-		Limit: maxNotifs,
+		Limit:   maxNotifs,
+		SinceID: marker.LastReadID,
 	}
 	notifs, err := client.GetNotifications(ctx, &notifsPg)
 	if err != nil {

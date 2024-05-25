@@ -455,6 +455,14 @@ func TestConcurrentFetch(t *testing.T) {
 	// Unblock the first request.
 	close(block1ch)
 	resp1 := <-resp1ch
+	// Unblock the second request, which should fail because the first request
+	// was happening.
+	// This needs to be done even in case of test not passing - otherwise, the request stays in flight, which
+	// prevents the test server to close all outstanding connections. And it seems that
+	// connection cleanup does not cancel the context, so it is not detected.
+	close(block2ch)
+	resp2 := <-resp2ch
+
 	if resp1.err != nil {
 		t.Fatal(resp1.err)
 	}
@@ -462,10 +470,6 @@ func TestConcurrentFetch(t *testing.T) {
 		t.Errorf("Got status %v, wanted %v; fetched %d statuses", got, want, resp1.value.FetchedCount)
 	}
 
-	// Unblock the second request, which should fail because the first request
-	// was happening.
-	close(block2ch)
-	resp2 := <-resp2ch
 	if resp2.err != nil {
 		t.Fatal(resp1.err)
 	}
