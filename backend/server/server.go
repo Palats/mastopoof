@@ -511,7 +511,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 
 	// Get notifications count
 	// Start by getting marker position on notifications to know what has been read.
-	markers, err := mastodon.GetMarkers(ctx, client, []string{"notifications"})
+	markers, err := client.GetMarkers(ctx, []string{"notifications"})
 	if err != nil {
 		return nil, fmt.Errorf("unable to get notification marker: %w", err)
 	}

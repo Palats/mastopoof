@@ -339,8 +339,7 @@ func (s *Server) serverAPIMarkers(w http.ResponseWriter, req *http.Request) {
 		markers[timeline] = &mastodon.Marker{
 			LastReadID: "",
 			Version:    1,
-			// TODO: add a timestamp
-			UpdatedAt: "2019-11-26T22:37:25.239Z",
+			UpdatedAt:  time.Now(),
 		}
 	}
 
