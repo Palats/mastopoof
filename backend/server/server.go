@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -18,6 +19,14 @@ import (
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	"github.com/Palats/mastopoof/proto/gen/mastopoof/mastopoofconnect"
 )
+
+// validateAddress verifies that a Mastodon server adress is vaguely looking good.
+func validateAddress(addr string) error {
+	if !strings.HasPrefix(addr, "http://") && !strings.HasPrefix(addr, "https://") {
+		return fmt.Errorf("mastodon server address should start with https:// or http:// ; got: %s", addr)
+	}
+	return nil
+}
 
 func NewSessionManager(st *storage.Storage) *scs.SessionManager {
 	sessionManager := scs.New()
@@ -131,7 +140,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 	}
 
 	serverAddr := req.Msg.ServerAddr
-	if err := mastodon.ValidateAddress(serverAddr); err != nil {
+	if err := validateAddress(serverAddr); err != nil {
 		return nil, err
 	}
 
@@ -209,7 +218,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 
 	// TODO: sanitization of server addr to be factorized with Authorize.
 	serverAddr := req.Msg.ServerAddr
-	if err := mastodon.ValidateAddress(serverAddr); err != nil {
+	if err := validateAddress(serverAddr); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unable to validate address %s: %w", serverAddr, err))
 	}
 

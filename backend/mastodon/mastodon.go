@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-	"strings"
 
 	gomastodon "github.com/mattn/go-mastodon"
 )
@@ -31,14 +30,6 @@ func NewClient(config *Config) *Client {
 
 func RegisterApp(ctx context.Context, appConfig *AppConfig) (*Application, error) {
 	return gomastodon.RegisterApp(ctx, appConfig)
-}
-
-// ValidateAddress verifies that a Mastodon server adress is vaguely looking good.
-func ValidateAddress(addr string) error {
-	if !strings.HasPrefix(addr, "http://") && !strings.HasPrefix(addr, "https://") {
-		return fmt.Errorf("mastodon server address should start with https:// or http:// ; got: %s", addr)
-	}
-	return nil
 }
 
 // GetMarkers gets current marker position.
