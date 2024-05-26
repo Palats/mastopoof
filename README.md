@@ -66,6 +66,28 @@ to serve the frontend using the Go binary:
 To run tests:
  - `cd backend && go test ./...`
 
+### Updating go-mastodon
+
+Mastopoof uses a fork of https://github.com/mattn/go-mastodon available at https://github.com/Palats/go-mastodon . The goal of this fork is to add missing APIs, while waiting to have them upstreamed.
+
+Per Go conventions, the exact commit being used is hard-coded in go.mod; it can be updated by running:
+
+```
+cd backend && go mod edit --replace github.com/mattn/go-mastodon=github.com/Palats/go-mastodon@master && GONOPROXY='*' go mod tidy
+```
+
+The `GONOPROXY` is to allow it to see recent pushes to the other repository - see https://sum.golang.org/ FAQ.
+
+To try with local modification of go-mastodon, clone the repository, and create a `go.work` similar to:
+
+```
+go 1.22.2
+
+use ./backend
+
+use ../go-mastodon/
+```
+
 ### Release
 
 ```

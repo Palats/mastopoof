@@ -2,6 +2,9 @@ secrets
 tmp/
 proto/gen/
 
+go.work
+go.work.sum
+
 # Frontend build output
 prod/
 # sqlite files
