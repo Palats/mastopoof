@@ -182,7 +182,6 @@ message ListResponse {
 
     // Position to use for continuation requests.
     // In practice, position of the first and last item of the response.
-    // Zero if there are no items.
     int64 backward_position = 2;
     int64 forward_position = 3;
 

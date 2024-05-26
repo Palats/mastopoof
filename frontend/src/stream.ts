@@ -56,6 +56,10 @@ export class MastStream extends LitElement {
   @state() private loadingBarUsers = 0;
   @state() private isFetching = false;
 
+  // Continuation position for future list requests.
+  private backwardPosition?: bigint;
+  private forwardPosition?: bigint;
+
   // Background fetch management
   private triggerFetchResolve: (() => void) | undefined;
   private triggerFetchWaiters: (() => void)[] = [];
@@ -239,8 +243,8 @@ export class MastStream extends LitElement {
     if (this.items.length === 0) {
       throw new Error("loading previous status without successful forward loading");
     }
-    const position = this.items[0].position;
-    const resp = await common.backend.list({ stid: stid, position: position, direction: pb.ListRequest_Direction.BACKWARD })
+    const resp = await common.backend.list({ stid: stid, position: this.backwardPosition, direction: pb.ListRequest_Direction.BACKWARD })
+    this.backwardPosition = resp.backwardPosition;
 
     const newItems: StatusItem[] = [];
     for (let i = 0; i < resp.items.length; i++) {
@@ -270,21 +274,20 @@ export class MastStream extends LitElement {
       throw new Error("missing stream id");
     }
 
-    let position = 0n;
-    if (this.items.length > 0) {
-      position = this.items[this.items.length - 1].position;
-    }
-
     let resp: pb.ListResponse;
     try {
       this.loadingBarUsers++;
       resp = await common.backend.list({
         stid: stid,
-        position: position,
+        position: this.forwardPosition,
         direction: isInitial ? pb.ListRequest_Direction.INITIAL : pb.ListRequest_Direction.FORWARD,
       })
     } finally {
       this.loadingBarUsers--;
+    }
+    this.forwardPosition = resp.forwardPosition;
+    if (this.backwardPosition === undefined) {
+      this.backwardPosition = resp.backwardPosition;
     }
 
     for (let i = 0; i < resp.items.length; i++) {

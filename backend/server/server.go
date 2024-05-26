@@ -351,6 +351,13 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 	if len(listResult.Items) > 0 {
 		resp.BackwardPosition = listResult.Items[0].Position
 		resp.ForwardPosition = listResult.Items[len(listResult.Items)-1].Position
+	} else {
+		// Got not result. That can happen if there are not statuses,
+		// or if on initial load, the read marker was placed on the latest status - therefore
+		// giving back zero status.
+		// TODO: add testing
+		resp.BackwardPosition = listResult.StreamState.LastPosition
+		resp.ForwardPosition = listResult.StreamState.LastPosition
 	}
 
 	for _, item := range listResult.Items {
