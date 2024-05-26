@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/Palats/mastopoof/backend/mastodon"
 	"github.com/Palats/mastopoof/backend/storage"
 	"github.com/alexedwards/scs/v2"
 	"github.com/golang/glog"
+	"github.com/mattn/go-mastodon"
 
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	"github.com/Palats/mastopoof/proto/gen/mastopoof/mastopoofconnect"

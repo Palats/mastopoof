@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Palats/mastopoof/backend/mastodon"
 	"github.com/golang/glog"
+	"github.com/mattn/go-mastodon"
 )
 
 func NewFakeAccount(accountID mastodon.ID, username string) mastodon.Account {

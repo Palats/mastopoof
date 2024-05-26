@@ -9,9 +9,9 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/Palats/mastopoof/backend/mastodon"
 	"github.com/alexedwards/scs/sqlite3store"
 	"github.com/golang/glog"
+	"github.com/mattn/go-mastodon"
 
 	_ "github.com/mattn/go-sqlite3"
 )
