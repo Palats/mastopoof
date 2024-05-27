@@ -37,6 +37,9 @@ interface StatusItem {
 // Page displaying the main mastodon stream.
 @customElement('mast-stream')
 export class MastStream extends LitElement {
+  // User currently logged in.
+  @property({ attribute: false }) userInfo?: pb.UserInfo;
+
   // Which stream to display.
   // TODO: support changing it.
   @property({ attribute: false }) stid?: bigint;
@@ -368,7 +371,7 @@ export class MastStream extends LitElement {
   }
 
   render() {
-    if (!this.firstListDone || !this.streamInfo) {
+    if (!this.firstListDone || !this.streamInfo || !this.userInfo) {
       // TODO: better presentation on loading
       return html`Loading...`;
     }
@@ -398,12 +401,16 @@ export class MastStream extends LitElement {
     } else if (this.streamInfo.notificationState === pb.StreamInfo_NotificationsState.NOTIF_MORE) {
       notifs = notifs + "+";
     }
+    // TODO: support multiple account
+    const notifAddr = `${this.userInfo.accounts[0].serverAddr}/notifications`;
 
     return html`
       <mast-main-view .loadingBarUsers=${this.loadingBarUsers}>
         <div slot="header" class="header">
           <div class="title">Stream</div>
-          <div class=${classMap({ "notifs": true, "notifs-alert": notifsAlert })}>${notifs}</div>
+          <div class=${classMap({ "notifs": true, "notifs-alert": notifsAlert })}>
+            <a href=${notifAddr}>${notifs}</a>
+          </div>
         </div>
         <div slot="menu">
           <div>

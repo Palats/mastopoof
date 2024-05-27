@@ -56,19 +56,18 @@ export class AppRoot extends LitElement {
     if (!this.lastLoginUpdate || this.lastLoginUpdate.state === LoginState.LOADING) {
       return html`Loading...`;
     }
-
     if (this.lastLoginUpdate.state === LoginState.NOT_LOGGED) {
       return html`<mast-login></mast-login>`;
     }
-    const stid = this.lastLoginUpdate.userInfo?.defaultStid;
-    if (!stid) {
-      throw new Error("missing stid");
-    }
-
     if (this.currentView === "search") {
       return html`<mast-search></mast-search>`;
     };
-    return html`<mast-stream .stid=${stid}></mast-stream>`;
+
+    if (!this.lastLoginUpdate?.userInfo) {
+      throw new Error("missing login information");
+    }
+    const userInfo = this.lastLoginUpdate.userInfo;
+    return html`<mast-stream .userInfo=${userInfo} .stid=${userInfo.defaultStid}></mast-stream>`;
   }
 
   static styles = [common.sharedCSS, css``];
