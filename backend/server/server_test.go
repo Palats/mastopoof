@@ -148,8 +148,8 @@ func (env *TestEnv) Close() {
 	}
 }
 
-// Login makes sure that the client is logged on a test user, with some statuses already fetched.
-func (env *TestEnv) Login() *pb.UserInfo {
+// FullLogin makes sure that the client is logged on a test user, with some statuses already fetched.
+func (env *TestEnv) FullLogin() *pb.UserInfo {
 	MustCall[pb.AuthorizeResponse](env, "Authorize", &pb.AuthorizeRequest{
 		ServerAddr: env.addr,
 		InviteCode: "invite1",
@@ -290,7 +290,7 @@ func TestSetRead(t *testing.T) {
 		StatusesCount: 10,
 	}).Init(ctx)
 	defer env.Close()
-	userInfo := env.Login()
+	userInfo := env.FullLogin()
 
 	// Make sure some statuses are in the pool.
 	MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
@@ -353,7 +353,7 @@ func TestMultiFetch(t *testing.T) {
 		StatusesCount: 100,
 	}).Init(ctx)
 	defer env.Close()
-	userInfo := env.Login()
+	userInfo := env.FullLogin()
 
 	// Read some statuses. We've added quite a few, but on first fetch,
 	// it just gets the recent ones. That appears has one fetch with continuation
@@ -417,7 +417,7 @@ func TestConcurrentFetch(t *testing.T) {
 
 	env.mastodonServer.TestBlockList = make(chan chan struct{})
 
-	userInfo := env.Login()
+	userInfo := env.FullLogin()
 
 	// Trigger first fetch request.
 	resp1ch := make(chan WithError[*pb.FetchResponse])
@@ -487,7 +487,7 @@ func TestSearchStatusID(t *testing.T) {
 	}).Init(ctx)
 	defer env.Close()
 
-	userInfo := env.Login()
+	userInfo := env.FullLogin()
 
 	// Must fetch the statuses from Mastodon - otherwise, they're not in cache and not
 	// visible to search.
@@ -519,7 +519,7 @@ func TestNotifs(t *testing.T) {
 		t: t,
 	}).Init(ctx)
 	defer env.Close()
-	userInfo := env.Login()
+	userInfo := env.FullLogin()
 
 	// Fist, no statuses.
 	resp := MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
@@ -575,5 +575,33 @@ func TestNotifs(t *testing.T) {
 	}
 	if got, want := resp.StreamInfo.NotificationsCount, int64(0); got != want {
 		t.Errorf("Got %d notifications, wanted %d", got, want)
+	}
+}
+
+func TestSendUserInfo(t *testing.T) {
+	ctx := context.Background()
+	env := (&TestEnv{
+		t: t,
+	}).Init(ctx)
+	defer env.Close()
+
+	// Check user info content when initially logging in.
+	userInfo := env.FullLogin()
+	if got, want := len(userInfo.GetAccounts()), 1; got != want {
+		t.Fatalf("Got %d accounts, wanted %d", got, want)
+	}
+	if got, want := userInfo.Accounts[0].Username, "testuser1"; got != want {
+		t.Errorf("Got username %s, wanted %s", got, want)
+	}
+
+	// Also check Login() method, which is really verifying that
+	// the cookie exists and is valid.
+	resp := MustCall[pb.LoginResponse](env, "Login", &pb.LoginRequest{})
+	userInfo = resp.UserInfo
+	if got, want := len(userInfo.GetAccounts()), 1; got != want {
+		t.Fatalf("Got %d accounts, wanted %d", got, want)
+	}
+	if got, want := userInfo.Accounts[0].Username, "testuser1"; got != want {
+		t.Errorf("Got username %s, wanted %s", got, want)
 	}
 }

@@ -28,17 +28,12 @@ service Mastopoof {
     rpc Search(SearchRequest) returns (SearchResponse);
 }
 
-message PingRequest {
-    string msg = 1;
-}
-
-message PingResponse {
-    string msg = 2;
-}
-
 message UserInfo {
     // Default stream ID for that user.
     int64 default_stid = 1;
+    // List of mastodon accounts attached to that user.
+    // At least one will be available.
+    repeated Account accounts = 2;
 }
 
 // Information about the state of the stream.
@@ -134,7 +129,7 @@ message Account {
 	string account_id = 2;
 	// The Mastodon username
 	// E.g., `foobar`
-    string username = 3;
+  string username = 3;
 }
 
 // A Mastodon status state info

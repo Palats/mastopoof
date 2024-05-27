@@ -123,7 +123,7 @@ func cmdMe(ctx context.Context, st *storage.Storage, uid storage.UID, showAccoun
 	fmt.Println("# Default stream ID:", userState.DefaultStID)
 	stid := userState.DefaultStID
 
-	accountState, err := st.AccountStateByUID(ctx, nil, uid)
+	accountState, err := st.FirstAccountStateByUID(ctx, nil, uid)
 	if err != nil {
 		return err
 	}

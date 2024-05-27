@@ -230,7 +230,7 @@ func TestV12ToV13(t *testing.T) {
 	}
 
 	// Verify that the account state can be loaded.
-	accountState, err := env.st.AccountStateByUID(ctx, nil, 1)
+	accountState, err := env.st.FirstAccountStateByUID(ctx, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +238,7 @@ func TestV12ToV13(t *testing.T) {
 		t.Errorf("Got username %s, wanted %s", got, want)
 	}
 
-	accountState, err = env.st.AccountStateByUID(ctx, nil, 2)
+	accountState, err = env.st.FirstAccountStateByUID(ctx, nil, 2)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -321,7 +321,7 @@ func (st *Storage) ListUsers(ctx context.Context) ([]*ListUserEntry, error) {
 				return err
 			}
 
-			accountState, err := st.AccountStateByUID(ctx, txn, uid)
+			accountState, err := st.FirstAccountStateByUID(ctx, txn, uid)
 			if err != nil {
 				return err
 			}
@@ -450,9 +450,9 @@ func (st *Storage) CreateAccountState(ctx context.Context, txn SQLReadWrite, uid
 	return as, nil
 }
 
-// AccountStateByUID gets a the mastodon account of a mastopoof user identified by its UID.
+// FirstAccountStateByUID gets a the mastodon account of a mastopoof user identified by its UID.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) AccountStateByUID(ctx context.Context, txn SQLReadOnly, uid UID) (*AccountState, error) {
+func (st *Storage) FirstAccountStateByUID(ctx context.Context, txn SQLReadOnly, uid UID) (*AccountState, error) {
 	as := &AccountState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		err := txn.QueryRowContext(ctx, "SELECT state FROM accountstate WHERE uid=?", uid).Scan(as)
@@ -465,6 +465,41 @@ func (st *Storage) AccountStateByUID(ctx context.Context, txn SQLReadOnly, uid U
 		return nil, err
 	}
 	return as, nil
+}
+
+// AllAccountStateByUID returns all the Mastodon accounts of that one Mastopoof user.
+func (st *Storage) AllAccountStateByUID(ctx context.Context, txn SQLReadOnly, uid UID) ([]*AccountState, error) {
+	var accountStates []*AccountState
+	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
+		rows, err := txn.QueryContext(ctx, `
+			SELECT
+				state
+			FROM accountstate
+			WHERE uid=?
+			ORDER BY accountstate.asid
+		`, uid)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			as := &AccountState{}
+			if err := rows.Scan(&as); err != nil {
+				return err
+			}
+			accountStates = append(accountStates, as)
+		}
+
+		if len(accountStates) == 0 {
+			return fmt.Errorf("no mastodon account for uid=%v: %w", uid, ErrNotFound)
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return accountStates, nil
 }
 
 // AccountStateByAccountID gets a the mastodon account based on server address and account ID on that server.
@@ -720,7 +755,7 @@ func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLReadWrite, stid 
 	if err != nil {
 		return fmt.Errorf("unable to get streamstate from DB: %w", err)
 	}
-	accountState, err := st.AccountStateByUID(ctx, txn, streamState.UID)
+	accountState, err := st.FirstAccountStateByUID(ctx, txn, streamState.UID)
 	if err != nil {
 		return err
 	}
@@ -802,7 +837,7 @@ func (st *Storage) ClearPoolAndStream(ctx context.Context, uid UID) error {
 		}
 
 		// Reset the fetch-from-server state.
-		accountState, err := st.AccountStateByUID(ctx, txn, uid)
+		accountState, err := st.FirstAccountStateByUID(ctx, txn, uid)
 		if err != nil {
 			return err
 		}
@@ -1216,7 +1251,7 @@ func computeState(status *mastodon.Status, filters []*mastodon.Filter) StatusSta
 }
 
 func (st *Storage) SearchByStatusID(ctx context.Context, txn SQLReadOnly, uid UID, statusID mastodon.ID) ([]*Item, error) {
-	accountState, err := st.AccountStateByUID(ctx, txn, uid)
+	accountState, err := st.FirstAccountStateByUID(ctx, txn, uid)
 	if err != nil {
 		return nil, err
 	}

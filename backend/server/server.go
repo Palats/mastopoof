@@ -76,6 +76,19 @@ func (s *Server) isLogged(ctx context.Context) (storage.UID, error) {
 	return userID, nil
 }
 
+func (s *Server) getUserInfo(ctx context.Context, userState *storage.UserState) (*pb.UserInfo, error) {
+	userInfo := &pb.UserInfo{DefaultStid: int64(userState.DefaultStID)}
+
+	accountStates, err := s.st.AllAccountStateByUID(ctx, nil, userState.UID)
+	if err != nil {
+		return nil, err
+	}
+	for _, accountState := range accountStates {
+		userInfo.Accounts = append(userInfo.Accounts, accountState.ToAccountProto())
+	}
+	return userInfo, nil
+}
+
 // verifyStdID checks that the logged in user is allowed access to that
 // stream.
 func (s *Server) verifyStID(ctx context.Context, stid storage.StID) (*storage.UserState, error) {
@@ -115,9 +128,13 @@ func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest
 	if err != nil {
 		return nil, err
 	}
+	userInfo, err := s.getUserInfo(ctx, userState)
+	if err != nil {
+		return nil, err
+	}
 
 	return connect.NewResponse(&pb.LoginResponse{
-		UserInfo: &pb.UserInfo{DefaultStid: int64(userState.DefaultStID)},
+		UserInfo: userInfo,
 	}), nil
 }
 
@@ -303,8 +320,13 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	}
 	s.setSessionUserID(ctx, userState.UID)
 
+	userInfo, err := s.getUserInfo(ctx, userState)
+	if err != nil {
+		return nil, err
+	}
+
 	return connect.NewResponse(&pb.TokenResponse{
-		UserInfo: &pb.UserInfo{DefaultStid: int64(userState.DefaultStID)},
+		UserInfo: userInfo,
 	}), nil
 }
 
@@ -315,7 +337,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 		return nil, err
 	}
 
-	accountState, err := s.st.AccountStateByUID(ctx, nil, userState.UID)
+	accountState, err := s.st.FirstAccountStateByUID(ctx, nil, userState.UID)
 	if err != nil {
 		return nil, err
 	}
@@ -445,7 +467,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 
 		// For support for having multiple Mastodon account, this would
 		// need to list the accounts and do the fetching from each account.
-		accountState, err = s.st.AccountStateByUID(ctx, txn, streamState.UID)
+		accountState, err = s.st.FirstAccountStateByUID(ctx, txn, streamState.UID)
 		if err != nil {
 			return err
 		}
@@ -565,7 +587,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		streamState.NotificationsState = notifsState
 		streamState.NotificationsCount = notifsCount
 
-		currentAccountState, err := s.st.AccountStateByUID(ctx, txn, streamState.UID)
+		currentAccountState, err := s.st.FirstAccountStateByUID(ctx, txn, streamState.UID)
 		if err != nil {
 			return fmt.Errorf("unable to verify for race conditions: %w", err)
 		}
@@ -618,7 +640,7 @@ func (s *Server) Search(ctx context.Context, req *connect.Request[pb.SearchReque
 	var accountState *storage.AccountState
 	err = s.st.InTxnRO(ctx, func(ctx context.Context, txn storage.SQLReadOnly) error {
 		var err error
-		accountState, err = s.st.AccountStateByUID(ctx, txn, uid)
+		accountState, err = s.st.FirstAccountStateByUID(ctx, txn, uid)
 		if err != nil {
 			return err
 		}
