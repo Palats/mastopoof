@@ -262,6 +262,16 @@ export class MastStream extends LitElement {
       });
     }
     this.items = [...newItems, ...this.items];
+    // TODO: make more efficient
+    let prevPosition: bigint | undefined;
+    for (const item of this.items) {
+      if (prevPosition !== undefined) {
+        if (prevPosition + 1n != item.position) {
+          console.error(`out of order items: prev=${prevPosition}, item=${item.position}`);
+        }
+      }
+      prevPosition = item.position;
+    }
     this.requestUpdate();
   }
 
@@ -293,6 +303,12 @@ export class MastStream extends LitElement {
     for (let i = 0; i < resp.items.length; i++) {
       const item = resp.items[i];
       const position = item.position;
+      if (this.items.length > 0) {
+        const prevPosition = this.items[this.items.length - 1].position;
+        if (position != prevPosition + 1n) {
+          console.error(`missing position; previous=${prevPosition}, item=${position}`);
+        }
+      }
       const status = JSON.parse(item.status!.content) as mastodon.Status;
       this.items.push({
         status: status,
