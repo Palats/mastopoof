@@ -45,26 +45,57 @@ where:
 
 ### Setup
 
-This assumes the repository has been cloned locally.
+This assumes the repository has been cloned locally:
 
-Initial setup:
 ```
 (cd proto; npm install; npm run gen)
 (cd frontend; npm install; npm run build)
 ```
 
-Running:
-- Start `go run main.go --alsologtostderr --db [DBFILE] --self_url http://localhost:5173 serve` in `backend/`
-- Start `npm run dev` in `frontend/`
+### Running
 
-This will run frontend separately from the backend, and with automatic recompile+reload for the frontend. It is also possible
-to serve the frontend using the Go binary:
+#### Split backend/frontend
+During dev, it is convenient to run backend and frontend separately.
 
-- Run `npm run build` in `frontend/`
-- Start `go run main.go --alsologtostderr serve --self_url http://localhost:8079` in `backend/`
+The backend:
+```
+cd backend && go run main.go --alsologtostderr --db [DBFILE] --self_url http://localhost:5173 serve
+```
 
+The frontend:
+```
+cd frontend && npm run dev
+```
+This frontend will automatically recompile and reload as needed.
+
+#### Backend serving frontend
+It is also possible to serve the frontend using the backend. In this case:
+
+```
+(cd frontend/ && npm run build)
+cd backend && go run main.go --alsologtostderr serve --self_url http://localhost:8079
+```
+
+#### Fake Mastodon server
+There is a backend with a fake Mastodon server; to run it:
+```
+cd backend && go run main.go --alsologtostderr testserve
+```
+The test server provides a small prompt to manipulate the content - e.g., adding fake statuses. This testserver will use any `.json` file in `backend/localtestdata` (flag: `--testdata`) to seed the stream content. The `.json` files must contain raw JSON dump of Mastodon statuses.
+
+To have access from another host, in different terminals:
+
+```
+cd backend && go run main.go --alsologtostderr --insecure testserve
+cd frontend && npm run dev -- --host 0.0.0.0
+```
+
+
+#### Tests
 To run tests:
- - `cd backend && go test ./...`
+```
+cd backend && go test ./...
+```
 
 ### Updating go-mastodon
 
