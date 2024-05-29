@@ -252,16 +252,22 @@ export class MastStatus extends LitElement {
     return html`
       <div class="status ${classMap({ read: this.isRead, unread: !this.isRead })}">
         <div class="account">
-            <span class="centered">
-              <img class="avatar" src=${s.account.avatar}></img>
-              ${expandEmojis(s.account.display_name, s.account.emojis)} &lt;${qualifiedAccount(s.account)}&gt;
-            </span>
+          <span class="centered">
+            <img class="avatar" src=${s.account.avatar}></img>
+            <div class="namebox">
+              <div class="name">${expandEmojis(s.account.display_name, s.account.emojis)}</div>
+              <div class="address">${qualifiedAccount(s.account)}</div>
+            </div>
+          </span>
           <span>
+            <a href=${openTarget} target="_blank" class="openstatus">
               <span class="timestamp" title="${createdTimeLabel}">${createdTime.fromNow()}</span>
-              <a href=${openTarget} target="_blank"><span class="material-symbols-outlined" title="Open status">open_in_new</span></a>
-              <a href=${s.url ?? ""} target="_blank"><span class="material-symbols-outlined"
-                                                           title="Open status on original server">travel_explore</span></a>
-            </span>
+              <span class="material-symbols-outlined" title="Open status">open_in_new</span>
+            </a>
+            <a href=${s.url ?? ""} target="_blank" class="openremote">
+              <span class="material-symbols-outlined" title="Open status on original server">travel_explore</span>
+            </a>
+          </span>
         </div>
         ${!!filtered ? html`<div class="filtered">filtered by ${filtered}</div>` : contentHtml}
         ${toolsHtml}
@@ -300,12 +306,18 @@ export class MastStatus extends LitElement {
         padding: 3px;
         justify-content: space-between;
         background-color: var(--color-blue-100);
+
+        height: 40px;
+      }
+
+      .namebox .address {
+        font-size: 0.6rem;
       }
 
       .filtered {
         background-color: var(--color-blue-100);
       }
-      
+
       .spoilertext {
         background-color: var(--color-purple-200);
       }
@@ -365,6 +377,8 @@ export class MastStatus extends LitElement {
         margin-top: 2px;
         background-color: var(--color-blue-400);
         color: var(--color-grey-000);
+
+        height: 40px;
       }
 
       .count {
@@ -375,6 +389,18 @@ export class MastStatus extends LitElement {
 
       .timestamp {
         font-size: 0.8rem;
+      }
+
+      .openstatus {
+        padding-top: 20px;
+        padding-bottom: 20px;
+      }
+
+      .openremote {
+        padding-top: 20px;
+        padding-bottom: 20px;
+        padding-left: 10px;
+        padding-right: 10px;
       }
 
       .previewcard-link {
