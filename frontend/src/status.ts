@@ -381,6 +381,11 @@ export class MastStatus extends LitElement {
         height: 40px;
       }
 
+      .tools button {
+        height: 35px;
+        min-width: 40px;
+      }
+
       .count {
         font-size: 0.8rem;
         margin-left: 2px;
