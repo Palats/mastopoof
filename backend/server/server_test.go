@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"github.com/Palats/mastopoof/backend/mastodon/testserver"
 	"github.com/Palats/mastopoof/backend/storage"
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
+	"github.com/mattn/go-mastodon"
 	"golang.org/x/net/publicsuffix"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -567,5 +569,44 @@ func TestSendUserInfo(t *testing.T) {
 	}
 	if got, want := userInfo.Accounts[0].Username, "testuser1"; got != want {
 		t.Errorf("Got username %s, wanted %s", got, want)
+	}
+}
+
+func TestFavourite(t *testing.T) {
+	ctx := context.Background()
+	env := (&TestEnv{
+		t: t,
+	}).Init(ctx)
+	defer env.Close()
+	env.FullLogin()
+
+	refStatus, err := env.mastodonServer.AddFakeStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set favourite
+	resp := MustCall[pb.SetStatusResponse](env, "SetStatus", &pb.SetStatusRequest{
+		StatusId:  string(refStatus.ID),
+		Favourite: &pb.Bool{Value: true},
+	})
+	var gotStatus mastodon.Status
+	if err := json.Unmarshal([]byte(resp.GetStatus().GetContent()), &gotStatus); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := gotStatus.Favourited, true; got != want {
+		t.Errorf("got favourite %v, want %v", got, want)
+	}
+
+	// And unset
+	resp = MustCall[pb.SetStatusResponse](env, "SetStatus", &pb.SetStatusRequest{
+		StatusId:  string(refStatus.ID),
+		Favourite: &pb.Bool{Value: false},
+	})
+	if err := json.Unmarshal([]byte(resp.GetStatus().GetContent()), &gotStatus); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := gotStatus.Favourited, false; got != want {
+		t.Errorf("got favourite %v, want %v", got, want)
 	}
 }

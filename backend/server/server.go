@@ -670,6 +670,63 @@ func (s *Server) Search(ctx context.Context, req *connect.Request[pb.SearchReque
 	return connect.NewResponse(resp), nil
 }
 
+func (s *Server) SetStatus(ctx context.Context, req *connect.Request[pb.SetStatusRequest]) (*connect.Response[pb.SetStatusResponse], error) {
+	uid, err := s.isLogged(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var accountState *storage.AccountState
+	var appRegState *storage.AppRegState
+	err = s.st.InTxnRO(ctx, func(ctx context.Context, txn storage.SQLReadOnly) error {
+		accountState, err = s.st.FirstAccountStateByUID(ctx, txn, uid)
+		if err != nil {
+			return err
+		}
+
+		appRegState, err = s.st.AppRegState(ctx, txn, accountState.ServerAddr)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
+	// TODO: Re-use mastodon clients.
+	client := mastodon.NewClient(&mastodon.Config{
+		Server:       appRegState.ServerAddr,
+		ClientID:     appRegState.ClientID,
+		ClientSecret: appRegState.ClientSecret,
+		AccessToken:  accountState.AccessToken,
+	})
+	client.Client = s.client
+
+	if req.Msg.Favourite == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("'favourite' field must be set"))
+	}
+
+	var status *mastodon.Status
+	if req.Msg.Favourite.Value {
+		status, err = client.Favourite(ctx, mastodon.ID(req.Msg.StatusId))
+	} else {
+		status, err = client.Unfavourite(ctx, mastodon.ID(req.Msg.StatusId))
+	}
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnknown, fmt.Errorf("unable to set favourite status for %s: %w", req.Msg.StatusId, err))
+	}
+
+	// TODO: update status in DB.
+
+	raw, err := json.Marshal(status)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &pb.SetStatusResponse{
+		Status: &pb.MastodonStatus{Content: string(raw)},
+	}
+	return connect.NewResponse(resp), nil
+}
+
 func (s *Server) RedirectHandler(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 

@@ -26,6 +26,9 @@ service Mastopoof {
 
     // Look for specific statuses.
     rpc Search(SearchRequest) returns (SearchResponse);
+
+    // SetStatus updates info about a status - e.g., mark it as favourite.
+    rpc SetStatus(SetStatusRequest) returns (SetStatusResponse);
 }
 
 message UserInfo {
@@ -235,4 +238,22 @@ message SearchRequest {
 message SearchResponse {
     // List of matching statuses, in a stream like fashion.
     repeated Item items = 1;
+}
+
+// Makes it possible to have an optional boolean.
+message Bool {
+  bool value = 1;
+}
+
+message SetStatusRequest {
+  // The Mastodon status to update.
+  string status_id = 1;
+
+  // If present, set/unset favourite bit.
+  Bool favourite = 2;
+}
+
+message SetStatusResponse {
+  // The updated status.
+  MastodonStatus status = 1;
 }
