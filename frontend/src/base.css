@@ -3,81 +3,80 @@
 /* Shadow dom does not fallback to :root, so piggy
  back on :host instead. */
 :host {
-    font-size: 1rem;
+  font-size: 16px;
 
-    --stream-min-width: 100px;
-    --stream-max-width: 600px;
+  --stream-min-width: 100px;
+  --stream-max-width: 640px;
 
-    --color-red-100: #EBBAB9;
-    --color-red-200: #dfa1a1;
-    --color-red-400: #CC2936;
+  --color-red-100: #EBBAB9;
+  --color-red-200: #dfa1a1;
+  --color-red-400: #CC2936;
 
-    --color-blue-25: #f7fdff;
-    --color-blue-50: #e0fff3;
-    --color-blue-100: #B5FFE1;
-    --color-blue-200: #88F7D4;
-    --color-blue-300: #a1bcdf;
-    --color-blue-400: #388697;
-    --color-blue-800: #08415C;
+  --color-blue-25: #f7fdff;
+  --color-blue-50: #e0fff3;
+  --color-blue-100: #B5FFE1;
+  --color-blue-200: #88F7D4;
+  --color-blue-300: #a1bcdf;
+  --color-blue-400: #388697;
+  --color-blue-800: #08415C;
 
-    --color-purple-200: #cbb5ff;
-    --color-purple-400: #574d6e;
+  --color-purple-200: #cbb5ff;
+  --color-purple-400: #574d6e;
 
-    --color-grey-000: #ffffff;
-    --color-grey-150: #f0f0f0;
-    --color-grey-300: #e0e0e0;
-    --color-grey-400: #dfdfdf;
-    --color-grey-999: #000000;
+  --color-grey-000: #ffffff;
+  --color-grey-150: #f0f0f0;
+  --color-grey-300: #e0e0e0;
+  --color-grey-400: #dfdfdf;
+  --color-grey-999: #000000;
 }
 
 button {
-    background-color: var(--color-blue-50);
-    border-radius: 3px;
-    margin: 1px;
-    border-style: outset;
-    border-width: 1px;
+  background-color: var(--color-blue-50);
+  border-radius: 3px;
+  margin: 1px;
+  border-style: outset;
+  border-width: 1px;
 
-    &:hover {
-        background-color: var(--color-purple-200);
-    }
+  &:hover {
+    background-color: var(--color-purple-200);
+  }
 
-    &:active {
-        background-color: var(--color-purple-400);
-    }
+  &:active {
+    background-color: var(--color-purple-400);
+  }
 }
 
 .material-symbols-outlined {
-    font-family: 'Material Symbols Outlined';
-    font-weight: normal;
-    font-style: normal;
-    /*font-size: 24px;*/
-    display: inline-block;
-    line-height: 1;
-    text-transform: none;
-    letter-spacing: normal;
-    word-wrap: normal;
-    white-space: nowrap;
-    direction: ltr;
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  display: inline-block;
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: normal;
+  word-wrap: normal;
+  white-space: nowrap;
+  direction: ltr;
 
-    vertical-align: text-bottom;
+  vertical-align: text-bottom;
 }
 
 .noanchor {
-    overflow-anchor: none;
+  overflow-anchor: none;
 }
 
 .centered {
-    display: flex;
-    flex-direction: row;
-    justify-content: center;
-    align-items: center;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
 }
 
 .hidden {
-    visibility: hidden;
+  visibility: hidden;
 }
 
 .emoji {
-    max-width: 16px;
-    max-height: 16px;
+  max-width: 16px;
+  max-height: 16px;
 }
