@@ -268,13 +268,12 @@ export class MastStatus extends LitElement {
             </div>
           </span>
           <span>
-            <a href=${openTarget} target="_blank" class="openstatus">
-              <span class="timestamp" title="${createdTimeLabel}">${createdTime.fromNow()}</span>
-              <span class="material-symbols-outlined" title="Open status">open_in_new</span>
-            </a>
-            <a href=${s.url ?? ""} target="_blank" class="openremote">
-              <span class="material-symbols-outlined" title="Open status on original server">travel_explore</span>
-            </a>
+            <span class="timestamp" title="${createdTimeLabel}">${createdTime.fromNow()}</span>
+            <a href=${openTarget} target="_blank" class="headlink">
+              <span class="material-symbols-outlined" title="Open status">open_in_new</span></a>
+            <a href=${s.url ?? ""} target="_blank" class="headlink">
+              <span class="material-symbols-outlined" title="Open status on original server">travel_explore</span></a>
+
           </span>
         </div>
         ${!!filtered ? html`<div class="filtered">filtered by ${filtered}</div>` : contentHtml}
@@ -397,23 +396,21 @@ export class MastStatus extends LitElement {
       .count {
         font-size: 0.8rem;
         margin-left: 2px;
-        margin-right: 4px;
+        margin-right: 10px;
       }
 
       .timestamp {
         font-size: 0.8rem;
+        padding-left: 10px;
+        padding-right: 10px;
       }
 
-      .openstatus {
-        padding-top: 20px;
-        padding-bottom: 20px;
-      }
-
-      .openremote {
+      .headlink {
         padding-top: 20px;
         padding-bottom: 20px;
         padding-left: 10px;
         padding-right: 10px;
+        font-size: 1.2rem;
       }
 
       .previewcard-link {
