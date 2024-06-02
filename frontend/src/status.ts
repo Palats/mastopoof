@@ -122,6 +122,11 @@ export class MastStatus extends LitElement {
     common.backend.setLastRead(this.stid, this.item?.position - 1n);
   }
 
+  copyRaw(status: mastodon.Status) {
+    navigator.clipboard.writeText(JSON.stringify(status, null, "  "));
+    console.log("JSON status copied to clipboard.");
+  }
+
   render() {
     if (!this.item) {
       return html`
@@ -241,6 +246,9 @@ export class MastStatus extends LitElement {
         </button>
         <button @click="${() => { this.showRaw = !this.showRaw }}" title="Show raw status">
           <span class="material-symbols-outlined">${this.showRaw ? 'collapse_all' : 'expand_all'}</span>
+        </button>
+        <button @click="${() => this.copyRaw(this.item!.status)}" title="Copy raw status to clipboard">
+          <span class="material-symbols-outlined">copy_all</span>
         </button>
       </div>
     </div>
