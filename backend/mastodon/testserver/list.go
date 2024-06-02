@@ -38,6 +38,21 @@ type EntityList[T any] struct {
 	entities []*Entity[T]
 }
 
+// ByID returns the entity with that ID. Returns the default value
+// if not found.
+func (list *EntityList[T]) ByID(id string) (T, error) {
+	var v T
+
+	idx, err := list.idx(id)
+	if err != nil {
+		return v, err
+	}
+	if idx < 0 {
+		return v, nil
+	}
+	return list.entities[idx].Value, nil
+}
+
 func (list *EntityList[T]) idx(id string) (int, error) {
 	if id == "" {
 		return -1, nil
@@ -120,8 +135,8 @@ func (list *EntityList[T]) List(req *http.Request, linkPath string) ([]T, string
 		limit = int(l64)
 	}
 
-	firstIdx := 0                 // Included
-	lastIdx := len(list.entities) // Not included
+	firstIdx := 0   // Included
+	var lastIdx int // Not included
 	if minIDidx >= 0 {
 		firstIdx = minIDidx
 		if sinceIDidx >= 0 && sinceIDidx > firstIdx {

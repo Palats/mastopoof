@@ -10,7 +10,6 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
-	"sync"
 	"testing"
 
 	"github.com/Palats/mastopoof/backend/mastodon/testserver"
@@ -32,41 +31,6 @@ type WithError[T any] struct {
 
 func NewWithError[T any](value T, err error) WithError[T] {
 	return WithError[T]{value, err}
-}
-
-// LoggingHandler is an intercept http handler which writes http
-// traffic on the provided testing construct.
-type LoggingHandler struct {
-	T       testing.TB
-	Handler http.Handler
-
-	m   sync.Mutex
-	idx int64
-}
-
-func (h *LoggingHandler) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
-	h.m.Lock()
-	idx := h.idx
-	h.idx++
-	h.m.Unlock()
-
-	cookie, _ := req.Cookie("mastopoof")
-	h.T.Logf("HTTP Request %d: %s %s [cookie:%s]", idx, req.Host, req.URL, cookie)
-
-	// Do the actual request.
-	h.Handler.ServeHTTP(writer, req)
-
-	// And see the cookies that were sent back.
-	header := http.Header{}
-	header.Add("Cookie", writer.Header().Get("Set-Cookie"))
-	respCookie, err := (&http.Request{Header: header}).Cookie("mastopoof")
-	if err == nil {
-		h.T.Logf("HTTP Response %d: Set-Cookie:%v", idx, respCookie)
-	}
-
-	if link := writer.Header().Get("Link"); link != "" {
-		h.T.Logf("HTTP Response %d: Link: %v", idx, link)
-	}
 }
 
 func MustBody(t testing.TB, r *http.Response) string {
@@ -108,7 +72,7 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 	// Create Mastodon server.
 	env.mastodonServer = testserver.New()
 	for i := 0; i < int(env.StatusesCount); i++ {
-		if err := env.mastodonServer.AddFakeStatus(); err != nil {
+		if _, err := env.mastodonServer.AddFakeStatus(); err != nil {
 			env.t.Fatal(err)
 		}
 	}
@@ -123,7 +87,7 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 	mastopoof.RegisterOn(mux)
 
 	// Create the http server
-	env.httpServer = httptest.NewTLSServer(&LoggingHandler{T: env.t, Handler: mux})
+	env.httpServer = httptest.NewTLSServer(&testserver.LoggingHandler{T: env.t, Handler: mux})
 	env.addr = env.httpServer.URL
 	env.rpcAddr = env.httpServer.URL + "/_rpc/mastopoof.Mastopoof/"
 	mastopoof.client = *env.httpServer.Client()
@@ -376,7 +340,7 @@ func TestMultiFetch(t *testing.T) {
 
 	// Insert more statuses - enough to require multiple fetches.
 	for i := 0; i < 100; i++ {
-		if err := env.mastodonServer.AddFakeStatus(); err != nil {
+		if _, err := env.mastodonServer.AddFakeStatus(); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -534,7 +498,7 @@ func TestNotifs(t *testing.T) {
 
 	// Now, let's add a few statuses and see that we get them.
 	// It needs to have a status to notify about.
-	if err := env.mastodonServer.AddFakeStatus(); err != nil {
+	if _, err := env.mastodonServer.AddFakeStatus(); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 5; i++ {

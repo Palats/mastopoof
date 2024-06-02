@@ -116,7 +116,7 @@ func (s *Server) AddJSONStatuses(statusesFS fs.FS) error {
 	return nil
 }
 
-func (s *Server) AddFakeStatus() error {
+func (s *Server) AddFakeStatus() (*mastodon.Status, error) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
@@ -125,7 +125,7 @@ func (s *Server) AddFakeStatus() error {
 	s.fakeCounter += 1
 
 	status := NewFakeStatus(mastodon.ID(id), mastodon.ID(strconv.FormatInt(gen, 10)))
-	return s.statuses.Insert(status, string(status.ID))
+	return status, s.statuses.Insert(status, string(status.ID))
 }
 
 func (s *Server) AddFakeNotification() error {
@@ -155,6 +155,9 @@ func (s *Server) RegisterOn(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/filters", s.serveAPIFilters)
 	mux.HandleFunc("/api/v1/notifications", s.serveAPINotifications)
 	mux.HandleFunc("/api/v1/markers", s.serverAPIMarkers)
+	mux.HandleFunc("/api/v1/statuses/{id}", s.serverAPIStatus)
+	mux.HandleFunc("/api/v1/statuses/{id}/favourite", s.serverAPIStatusFavourite)
+	mux.HandleFunc("/api/v1/statuses/{id}/unfavourite", s.serverAPIStatusUnfavourite)
 }
 
 func (s *Server) returnJSON(w http.ResponseWriter, _ *http.Request, data any) {
@@ -344,4 +347,71 @@ func (s *Server) serverAPIMarkers(w http.ResponseWriter, req *http.Request) {
 	}
 
 	s.returnJSON(w, req, markers)
+}
+
+// https://docs.joinmastodon.org/methods/statuses/#get
+func (s *Server) serverAPIStatus(w http.ResponseWriter, req *http.Request) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	statusID := req.PathValue("id")
+	if statusID == "" {
+		http.Error(w, "missing status ID", http.StatusBadRequest)
+		return
+	}
+	status, err := s.statuses.ByID(statusID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid status %q: %v", statusID, err), http.StatusBadRequest)
+		return
+	}
+	if status == nil {
+		http.Error(w, fmt.Sprintf("status %q does not exists", statusID), http.StatusNotFound)
+		return
+	}
+	s.returnJSON(w, req, status)
+}
+
+// https://docs.joinmastodon.org/methods/statuses/#favourite
+func (s *Server) serverAPIStatusFavourite(w http.ResponseWriter, req *http.Request) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	statusID := req.PathValue("id")
+	if statusID == "" {
+		http.Error(w, "missing status ID", http.StatusBadRequest)
+		return
+	}
+	status, err := s.statuses.ByID(statusID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid status %q: %v", statusID, err), http.StatusBadRequest)
+		return
+	}
+	if status == nil {
+		http.Error(w, fmt.Sprintf("status %q does not exists", statusID), http.StatusNotFound)
+		return
+	}
+	status.Favourited = true
+	s.returnJSON(w, req, status)
+}
+
+// https://docs.joinmastodon.org/methods/statuses/#unfavourite
+func (s *Server) serverAPIStatusUnfavourite(w http.ResponseWriter, req *http.Request) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	statusID := req.PathValue("id")
+	if statusID == "" {
+		http.Error(w, "missing status ID", http.StatusBadRequest)
+		return
+	}
+	status, err := s.statuses.ByID(statusID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid status %q: %v", statusID, err), http.StatusBadRequest)
+	}
+	if status == nil {
+		http.Error(w, fmt.Sprintf("status %q does not exists", statusID), http.StatusNotFound)
+		return
+	}
+	status.Favourited = false
+	s.returnJSON(w, req, status)
 }
