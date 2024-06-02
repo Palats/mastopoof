@@ -16,6 +16,50 @@ import (
 	"github.com/mattn/go-mastodon"
 )
 
+type HTTPError struct {
+	status int
+	msg    string
+}
+
+func (e HTTPError) Error() string {
+	return e.msg
+}
+
+func NewHTTPErrorf(status int, format string, a ...any) error {
+	e := HTTPError{
+		status: status,
+		msg:    fmt.Sprintf(format, a...),
+	}
+	return e
+}
+
+func WriteError(w http.ResponseWriter, req *http.Request, err error) {
+	var e HTTPError
+	status := http.StatusInternalServerError
+	if errors.As(err, &e) {
+		status = e.status
+	}
+	http.Error(w, err.Error(), status)
+}
+
+type JSONHandler func(w http.ResponseWriter, req *http.Request) (any, error)
+
+func (h JSONHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	data, err := h(w, req)
+	if err == nil {
+		var raw []byte
+		raw, err = json.Marshal(data)
+		if err == nil {
+			w.Header().Add("Content-Type", "application/json")
+			_, err = w.Write(raw)
+		}
+	}
+
+	if err != nil {
+		WriteError(w, req, err)
+	}
+}
+
 func NewFakeAccount(accountID mastodon.ID, username string) mastodon.Account {
 	return mastodon.Account{
 		ID:             accountID,
@@ -148,62 +192,52 @@ func (s *Server) ClearNotifications() {
 }
 
 func (s *Server) RegisterOn(mux *http.ServeMux) {
-	mux.HandleFunc("/oauth/token", s.serveOAuthToken)
-	mux.HandleFunc("/api/v1/apps", s.serveAPIApps)
-	mux.HandleFunc("/api/v1/accounts/verify_credentials", s.serverAPIAccountsVerifyCredentials)
-	mux.HandleFunc("/api/v1/timelines/home", s.serveAPITimelinesHome)
-	mux.HandleFunc("/api/v1/filters", s.serveAPIFilters)
-	mux.HandleFunc("/api/v1/notifications", s.serveAPINotifications)
-	mux.HandleFunc("/api/v1/markers", s.serverAPIMarkers)
-	mux.HandleFunc("/api/v1/statuses/{id}", s.serverAPIStatus)
-	mux.HandleFunc("/api/v1/statuses/{id}/favourite", s.serverAPIStatusFavourite)
-	mux.HandleFunc("/api/v1/statuses/{id}/unfavourite", s.serverAPIStatusUnfavourite)
-}
-
-func (s *Server) returnJSON(w http.ResponseWriter, _ *http.Request, data any) {
-	raw, err := json.Marshal(data)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Add("Content-Type", "application/json")
-	w.Write(raw)
+	mux.Handle("/oauth/token", JSONHandler(s.serveOAuthToken))
+	mux.Handle("/api/v1/apps", JSONHandler(s.serveAPIApps))
+	mux.Handle("/api/v1/accounts/verify_credentials", JSONHandler(s.serverAPIAccountsVerifyCredentials))
+	mux.Handle("/api/v1/timelines/home", JSONHandler(s.serveAPITimelinesHome))
+	mux.Handle("/api/v1/filters", JSONHandler(s.serveAPIFilters))
+	mux.Handle("/api/v1/notifications", JSONHandler(s.serveAPINotifications))
+	mux.Handle("/api/v1/markers", JSONHandler(s.serverAPIMarkers))
+	mux.Handle("/api/v1/statuses/{id}", JSONHandler(s.serverAPIStatus))
+	mux.Handle("/api/v1/statuses/{id}/favourite", JSONHandler(s.serverAPIStatusFavourite))
+	mux.Handle("/api/v1/statuses/{id}/unfavourite", JSONHandler(s.serverAPIStatusUnfavourite))
 }
 
 // https://docs.joinmastodon.org/methods/oauth/#token
-func (s *Server) serveOAuthToken(w http.ResponseWriter, req *http.Request) {
+func (s *Server) serveOAuthToken(w http.ResponseWriter, req *http.Request) (any, error) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
-	s.returnJSON(w, req, map[string]any{
+	return map[string]any{
 		"access_token": "ZA-Yj3aBD8U8Cm7lKUp-lm9O9BmDgdhHzDeqsY8tlL0",
 		"token_type":   "Bearer",
 		"scope":        "read write follow push",
 		"created_at":   1573979017,
-	})
+	}, nil
 }
 
 // https://docs.joinmastodon.org/methods/apps/#create
-func (s *Server) serveAPIApps(w http.ResponseWriter, req *http.Request) {
+func (s *Server) serveAPIApps(w http.ResponseWriter, req *http.Request) (any, error) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
-	s.returnJSON(w, req, map[string]any{
+	return map[string]any{
 		"id":            "1234",
 		"name":          "test app",
 		"website":       "",
 		"redirect_uri":  "urn:ietf:wg:oauth:2.0:oob",
 		"client_id":     "TWhM-tNSuncnqN7DBJmoyeLnk6K3iJJ71KKXxgL1hPM",
 		"client_secret": "ZEaFUFmF0umgBX1qKJDjaU99Q31lDkOU8NutzTOoliw",
-	})
+	}, nil
 }
 
 // https://docs.joinmastodon.org/methods/accounts/#verify_credentials
-func (s *Server) serverAPIAccountsVerifyCredentials(w http.ResponseWriter, req *http.Request) {
+func (s *Server) serverAPIAccountsVerifyCredentials(w http.ResponseWriter, req *http.Request) (any, error) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
-	s.returnJSON(w, req, map[string]any{
+	return map[string]any{
 		"id":              "14715",
 		"username":        "testuser1",
 		"acct":            "testuser1",
@@ -221,14 +255,14 @@ func (s *Server) serverAPIAccountsVerifyCredentials(w http.ResponseWriter, req *
 		"following_count": 178,
 		"statuses_count":  33120,
 		"last_status_at":  "2019-11-24T15:49:42.251Z",
-	})
+	}, nil
 }
 
-func (s *Server) serveAPIFilters(w http.ResponseWriter, req *http.Request) {
+func (s *Server) serveAPIFilters(w http.ResponseWriter, req *http.Request) (any, error) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
-	filters := []map[string]any{
+	return []map[string]any{
 		{
 			"id":           "6191",
 			"phrase":       ":eurovision2019:",
@@ -249,13 +283,11 @@ func (s *Server) serveAPIFilters(w http.ResponseWriter, req *http.Request) {
 			"whole_word":   false,
 			"expires_at":   nil,
 			"irreversible": true,
-		}}
-
-	s.returnJSON(w, req, filters)
+		}}, nil
 }
 
 // https://docs.joinmastodon.org/methods/timelines/#home
-func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request) {
+func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request) (any, error) {
 	ctx := req.Context()
 
 	if s.TestBlockList != nil {
@@ -264,15 +296,13 @@ func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request)
 		select {
 		case s.TestBlockList <- blockCh:
 		case <-ctx.Done():
-			http.Error(w, "interrupted", http.StatusInternalServerError)
-			return
+			return nil, NewHTTPErrorf(http.StatusInternalServerError, "interrupted")
 		}
 		// And wait for test to unblock
 		select {
 		case <-blockCh:
 		case <-ctx.Done():
-			http.Error(w, "interrupted", http.StatusInternalServerError)
-			return
+			return nil, NewHTTPErrorf(http.StatusInternalServerError, "interrupted")
 		}
 	}
 
@@ -289,54 +319,49 @@ func (s *Server) serveAPITimelinesHome(w http.ResponseWriter, req *http.Request)
 
 	statuses, link, err := s.statuses.List(req, "/api/v1/timelines/home")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, err
 	}
 
 	if link != "" {
 		w.Header().Set("Link", link)
 	}
 
-	s.returnJSON(w, req, statuses)
+	return statuses, nil
 }
 
 // https://docs.joinmastodon.org/methods/notifications/#get
-func (s *Server) serveAPINotifications(w http.ResponseWriter, req *http.Request) {
+func (s *Server) serveAPINotifications(w http.ResponseWriter, req *http.Request) (any, error) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
 	notifs, link, err := s.notifications.List(req, "/api/v1/notifications")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, err
 	}
 	if link != "" {
 		w.Header().Set("Link", link)
 	}
 
-	s.returnJSON(w, req, notifs)
+	return notifs, nil
 }
 
 // https://docs.joinmastodon.org/methods/markers/#get
-func (s *Server) serverAPIMarkers(w http.ResponseWriter, req *http.Request) {
+func (s *Server) serverAPIMarkers(w http.ResponseWriter, req *http.Request) (any, error) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
 	markers := map[string]*mastodon.Marker{}
 	v, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("unable to parse query; got: %s", req.URL.RawQuery), http.StatusBadRequest)
-		return
+		return nil, NewHTTPErrorf(http.StatusBadRequest, "unable to parse query; got: %s", req.URL.RawQuery)
 	}
 	timelines := v["timeline[]"]
 	if len(timelines) == 0 {
-		http.Error(w, fmt.Sprintf("no timeline specified; request: %s", req.URL.String()), http.StatusBadRequest)
-		return
+		return nil, NewHTTPErrorf(http.StatusBadRequest, "no timeline specified; request: %s", req.URL.String())
 	}
 	for _, timeline := range timelines {
 		if timeline != "notifications" {
-			http.Error(w, fmt.Sprintf("unsupported timeline %q", timeline), http.StatusBadRequest)
-			return
+			return nil, NewHTTPErrorf(http.StatusBadRequest, "unsupported timeline %q", timeline)
 		}
 
 		markers[timeline] = &mastodon.Marker{
@@ -346,72 +371,64 @@ func (s *Server) serverAPIMarkers(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	s.returnJSON(w, req, markers)
+	return markers, nil
 }
 
 // https://docs.joinmastodon.org/methods/statuses/#get
-func (s *Server) serverAPIStatus(w http.ResponseWriter, req *http.Request) {
+func (s *Server) serverAPIStatus(w http.ResponseWriter, req *http.Request) (any, error) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
 	statusID := req.PathValue("id")
 	if statusID == "" {
-		http.Error(w, "missing status ID", http.StatusBadRequest)
-		return
+		return nil, NewHTTPErrorf(http.StatusBadRequest, "missing status ID")
 	}
 	status, err := s.statuses.ByID(statusID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("invalid status %q: %v", statusID, err), http.StatusBadRequest)
-		return
+		return nil, NewHTTPErrorf(http.StatusBadRequest, "invalid status %q: %v", statusID, err)
 	}
 	if status == nil {
-		http.Error(w, fmt.Sprintf("status %q does not exists", statusID), http.StatusNotFound)
-		return
+		return nil, NewHTTPErrorf(http.StatusNotFound, "status %q does not exists", statusID)
 	}
-	s.returnJSON(w, req, status)
+	return status, nil
 }
 
 // https://docs.joinmastodon.org/methods/statuses/#favourite
-func (s *Server) serverAPIStatusFavourite(w http.ResponseWriter, req *http.Request) {
+func (s *Server) serverAPIStatusFavourite(w http.ResponseWriter, req *http.Request) (any, error) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
 	statusID := req.PathValue("id")
 	if statusID == "" {
-		http.Error(w, "missing status ID", http.StatusBadRequest)
-		return
+		return nil, NewHTTPErrorf(http.StatusBadRequest, "missing status ID")
 	}
 	status, err := s.statuses.ByID(statusID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("invalid status %q: %v", statusID, err), http.StatusBadRequest)
-		return
+		return nil, NewHTTPErrorf(http.StatusBadRequest, "invalid status %q: %v", statusID, err)
 	}
 	if status == nil {
-		http.Error(w, fmt.Sprintf("status %q does not exists", statusID), http.StatusNotFound)
-		return
+		return nil, NewHTTPErrorf(http.StatusNotFound, "status %q does not exists", statusID)
 	}
 	status.Favourited = true
-	s.returnJSON(w, req, status)
+	return status, nil
 }
 
 // https://docs.joinmastodon.org/methods/statuses/#unfavourite
-func (s *Server) serverAPIStatusUnfavourite(w http.ResponseWriter, req *http.Request) {
+func (s *Server) serverAPIStatusUnfavourite(w http.ResponseWriter, req *http.Request) (any, error) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
 	statusID := req.PathValue("id")
 	if statusID == "" {
-		http.Error(w, "missing status ID", http.StatusBadRequest)
-		return
+		return nil, NewHTTPErrorf(http.StatusBadRequest, "missing status ID")
 	}
 	status, err := s.statuses.ByID(statusID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("invalid status %q: %v", statusID, err), http.StatusBadRequest)
+		return nil, NewHTTPErrorf(http.StatusBadRequest, "invalid status %q: %v", statusID, err)
 	}
 	if status == nil {
-		http.Error(w, fmt.Sprintf("status %q does not exists", statusID), http.StatusNotFound)
-		return
+		return nil, NewHTTPErrorf(http.StatusNotFound, "status %q does not exists", statusID)
 	}
 	status.Favourited = false
-	s.returnJSON(w, req, status)
+	return status, nil
 }
