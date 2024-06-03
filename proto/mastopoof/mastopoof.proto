@@ -240,17 +240,24 @@ message SearchResponse {
     repeated Item items = 1;
 }
 
-// Makes it possible to have an optional boolean.
-message Bool {
-  bool value = 1;
-}
-
 message SetStatusRequest {
   // The Mastodon status to update.
   string status_id = 1;
 
-  // If present, set/unset favourite bit.
-  Bool favourite = 2;
+  // What to do on the status.
+  enum Action {
+    UNKNOWN = 0;
+    // Set favourite, and refresh.
+    FAVOURITE = 1;
+    // Remove favourite, and refresh.
+    UNFAVOURITE = 2;
+    // Just refresh the status - i.e., load it again from the Mastodon server.
+    REFRESH = 3;
+  }
+  Action action = 3;
+
+  reserved 2;
+  reserved "favourite";
 }
 
 message SetStatusResponse {

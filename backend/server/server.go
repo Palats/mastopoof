@@ -700,16 +700,18 @@ func (s *Server) SetStatus(ctx context.Context, req *connect.Request[pb.SetStatu
 	})
 	client.Client = s.client
 
-	if req.Msg.Favourite == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("'favourite' field must be set"))
+	var status *mastodon.Status
+	switch action := req.Msg.GetAction(); action {
+	case pb.SetStatusRequest_FAVOURITE:
+		status, err = client.Favourite(ctx, mastodon.ID(req.Msg.StatusId))
+	case pb.SetStatusRequest_UNFAVOURITE:
+		status, err = client.Unfavourite(ctx, mastodon.ID(req.Msg.StatusId))
+	case pb.SetStatusRequest_REFRESH:
+		err = errors.New("unimplemented")
+	default:
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid action %v", action))
 	}
 
-	var status *mastodon.Status
-	if req.Msg.Favourite.Value {
-		status, err = client.Favourite(ctx, mastodon.ID(req.Msg.StatusId))
-	} else {
-		status, err = client.Unfavourite(ctx, mastodon.ID(req.Msg.StatusId))
-	}
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnknown, fmt.Errorf("unable to set favourite status for %s: %w", req.Msg.StatusId, err))
 	}

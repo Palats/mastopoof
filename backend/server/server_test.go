@@ -587,8 +587,8 @@ func TestFavourite(t *testing.T) {
 
 	// Set favourite
 	resp := MustCall[pb.SetStatusResponse](env, "SetStatus", &pb.SetStatusRequest{
-		StatusId:  string(refStatus.ID),
-		Favourite: &pb.Bool{Value: true},
+		StatusId: string(refStatus.ID),
+		Action:   pb.SetStatusRequest_FAVOURITE,
 	})
 	var gotStatus mastodon.Status
 	if err := json.Unmarshal([]byte(resp.GetStatus().GetContent()), &gotStatus); err != nil {
@@ -600,8 +600,8 @@ func TestFavourite(t *testing.T) {
 
 	// And unset
 	resp = MustCall[pb.SetStatusResponse](env, "SetStatus", &pb.SetStatusRequest{
-		StatusId:  string(refStatus.ID),
-		Favourite: &pb.Bool{Value: false},
+		StatusId: string(refStatus.ID),
+		Action:   pb.SetStatusRequest_UNFAVOURITE,
 	})
 	if err := json.Unmarshal([]byte(resp.GetStatus().GetContent()), &gotStatus); err != nil {
 		t.Fatal(err)
