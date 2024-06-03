@@ -707,7 +707,7 @@ func (s *Server) SetStatus(ctx context.Context, req *connect.Request[pb.SetStatu
 	case pb.SetStatusRequest_UNFAVOURITE:
 		status, err = client.Unfavourite(ctx, mastodon.ID(req.Msg.StatusId))
 	case pb.SetStatusRequest_REFRESH:
-		err = errors.New("unimplemented")
+		status, err = client.GetStatus(ctx, mastodon.ID(req.Msg.StatusId))
 	default:
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid action %v", action))
 	}
@@ -716,13 +716,23 @@ func (s *Server) SetStatus(ctx context.Context, req *connect.Request[pb.SetStatu
 		return nil, connect.NewError(connect.CodeUnknown, fmt.Errorf("unable to set favourite status for %s: %w", req.Msg.StatusId, err))
 	}
 
-	// TODO: update status in DB.
+	// Update status in DB.
+	filters, err := client.GetFilters(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get filters: %w", err)
+	}
+	err = s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
+		return s.st.UpdateStatus(ctx, txn, accountState.ASID, status, filters)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("unable to update status: %w", err)
+	}
 
+	// And return the new status.
 	raw, err := json.Marshal(status)
 	if err != nil {
 		return nil, err
 	}
-
 	resp := &pb.SetStatusResponse{
 		Status: &pb.MastodonStatus{Content: string(raw)},
 	}

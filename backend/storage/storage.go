@@ -1212,6 +1212,53 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid AS
 	return nil
 }
 
+// UpdateStatus replace the status in the statuses table with a new version.
+// TODO: have a race detection to avoid getting back some old status (though Mastodon
+// does not seem to have notion of a version)
+func (st *Storage) UpdateStatus(ctx context.Context, txn SQLReadWrite, asid ASID, status *mastodon.Status, filters []*mastodon.Filter) error {
+	// First, find the existing status.
+	// This is done separately from the UPDATE to guarantee that one and only row exists.
+	// TODO: do not rely on json parsing
+	rows, err := txn.QueryContext(ctx, `
+			SELECT sid FROM statuses WHERE asid = ? AND json_extract(status, '$.id') = ?;
+	`, asid, status.ID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	found := false
+	var sid int64
+	for rows.Next() {
+		if found {
+			return fmt.Errorf("multiple rows found for asid=%v, id=%v", asid, status.ID)
+		}
+		found = true
+		if err := rows.Scan(&sid); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if !found {
+		return fmt.Errorf("no row found for asid=%v, id=%v", asid, status.ID)
+	}
+
+	// We've found the row, now update it.
+
+	// TODO: make it only update the StatusState, not replace
+	statusState := computeState(status, filters)
+
+	stmt := `
+		UPDATE statuses SET status = ?, statusstate = ? WHERE sid = ?;	`
+	_, err = txn.ExecContext(ctx, stmt, &sqlStatus{*status}, &statusState, sid)
+	return err
+}
+
+// computeState calculate whether a status matches filters or not.
+
 func computeState(status *mastodon.Status, filters []*mastodon.Filter) StatusState {
 	var content string
 	var tags []mastodon.Tag

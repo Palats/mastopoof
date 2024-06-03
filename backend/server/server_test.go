@@ -35,6 +35,14 @@ func NewWithError[T any](value T, err error) WithError[T] {
 	return WithError[T]{value, err}
 }
 
+func MustUnmarshal[T any](t testing.TB, data []byte) T {
+	var value T
+	if err := json.Unmarshal(data, &value); err != nil {
+		t.Fatal(err)
+	}
+	return value
+}
+
 func MustBody(t testing.TB, r *http.Response) string {
 	t.Helper()
 	b, err := io.ReadAll(r.Body)
@@ -608,5 +616,70 @@ func TestFavourite(t *testing.T) {
 	}
 	if got, want := gotStatus.Favourited, false; got != want {
 		t.Errorf("got favourite %v, want %v", got, want)
+	}
+}
+
+func TestRefreshStatus(t *testing.T) {
+	ctx := context.Background()
+	env := (&TestEnv{
+		t: t,
+		// Add a few extra statuses - this way, that check that the right one is updated.
+		StatusesCount: 3,
+	}).Init(ctx)
+	defer env.Close()
+	userInfo := env.FullLogin()
+
+	// Create a status on the server.
+	refStatus, err := env.mastodonServer.AddFakeStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make sure it is fetched and init the stream.
+	MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
+		Stid: userInfo.DefaultStid,
+	})
+	listInitResp := MustCall[pb.ListResponse](env, "List", &pb.ListRequest{
+		Stid:      userInfo.DefaultStid,
+		Direction: pb.ListRequest_INITIAL,
+	})
+
+	// Now, change its content on Mastodon
+	newStatus := *refStatus
+	newStatus.Content = "newcontent1"
+	if err := env.mastodonServer.UpdateStatus(&newStatus); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test that Refresh status gets the new content
+	resp := MustCall[pb.SetStatusResponse](env, "SetStatus", &pb.SetStatusRequest{
+		StatusId: string(refStatus.ID),
+		Action:   pb.SetStatusRequest_REFRESH,
+	})
+	refreshStatus := MustUnmarshal[mastodon.Status](t, []byte(resp.GetStatus().GetContent()))
+	if got, want := refreshStatus.Content, "newcontent1"; got != want {
+		t.Errorf("Got status with content %q, wanted %q", got, want)
+	}
+
+	// And verify that the list also gives back the refreshed status.
+	// This means that the DB was updated.
+	listResp := MustCall[pb.ListResponse](env, "List", &pb.ListRequest{
+		Stid:      userInfo.DefaultStid,
+		Direction: pb.ListRequest_FORWARD,
+		Position:  listInitResp.ForwardPosition,
+	})
+	var listStatus *mastodon.Status
+	for _, item := range listResp.Items {
+		s := MustUnmarshal[mastodon.Status](t, []byte(item.Status.Content))
+		if s.ID == refStatus.ID {
+			listStatus = &s
+			break
+		}
+	}
+	if listStatus == nil {
+		t.Fatalf("unable to find status %q", refStatus.ID)
+	}
+	if got, want := listStatus.Content, "newcontent1"; got != want {
+		t.Errorf("Got status with content %q, wanted %q", got, want)
 	}
 }

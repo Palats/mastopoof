@@ -172,6 +172,13 @@ func (s *Server) AddFakeStatus() (*mastodon.Status, error) {
 	return status, s.statuses.Insert(status, string(status.ID))
 }
 
+func (s *Server) UpdateStatus(status *mastodon.Status) error {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	return s.statuses.Update(string(status.ID), status)
+}
+
 func (s *Server) AddFakeNotification() error {
 	s.m.Lock()
 	defer s.m.Unlock()

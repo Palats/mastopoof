@@ -53,6 +53,19 @@ func (list *EntityList[T]) ByID(id string) (T, error) {
 	return list.entities[idx].Value, nil
 }
 
+// Update changes in-place the value of an entity.
+func (list *EntityList[T]) Update(id string, t T) error {
+	idx, err := list.idx(id)
+	if err != nil {
+		return err
+	}
+	if idx < 0 {
+		return fmt.Errorf("cannot update: status %s not found", id)
+	}
+	list.entities[idx].Value = t
+	return nil
+}
+
 func (list *EntityList[T]) idx(id string) (int, error) {
 	if id == "" {
 		return -1, nil
