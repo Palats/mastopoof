@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/golang/glog"
@@ -272,7 +273,7 @@ func cmdTestServe() *cobra.Command {
 			return err
 		}
 
-		return cmds.CmdTestServe(ctx, st, mux, *port, *testData)
+		return cmds.NewTestServe(mux, *port, os.DirFS(*testData)).Run(ctx)
 	}
 	return c
 }
