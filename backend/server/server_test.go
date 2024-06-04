@@ -586,12 +586,16 @@ func TestFavourite(t *testing.T) {
 		t: t,
 	}).Init(ctx)
 	defer env.Close()
-	env.FullLogin()
+	userInfo := env.FullLogin()
 
 	refStatus, err := env.mastodonServer.AddFakeStatus()
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
+		Stid: userInfo.DefaultStid,
+	})
 
 	// Set favourite
 	resp := MustCall[pb.SetStatusResponse](env, "SetStatus", &pb.SetStatusRequest{
