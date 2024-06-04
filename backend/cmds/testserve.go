@@ -17,6 +17,7 @@ import (
 	"github.com/Palats/mastopoof/backend/mastodon/testserver"
 	"github.com/c-bata/go-prompt"
 	"github.com/golang/glog"
+	"github.com/mattn/go-mastodon"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
@@ -55,6 +56,8 @@ func NewTestServe(mux *http.ServeMux, port int, testData fs.FS) *TestServe {
 		{Text: "fake-notifications", Op: s.opFakeNotifications, Description: "Add notifications statuses; opt: number of notifications"},
 		{Text: "clear-notifications", Op: s.opClearNotifications, Description: "Clear all notifications"},
 		{Text: "set-list-delay", Op: s.opSetListDelay, Description: "Introduce delay when listing statuses from Mastodon"},
+		{Text: "set-status-favourite", Op: s.opSetStatusFavourite, Description: "Mark the status (by ID) as favourite"},
+		{Text: "set-status-unfavourite", Op: s.opSetStatusUnfavourite, Description: "Remove favourite from the status (by ID)"},
 		{Text: "exit", Op: s.opExit, Description: "Shutdown"},
 	}
 	for _, op := range ops {
@@ -91,7 +94,7 @@ func (s *TestServe) Run(ctx context.Context) error {
 	fmt.Println()
 	fmt.Println("<tab> to see command list")
 	p.Run()
-	return errors.New("prompt has exited")
+	return nil
 }
 
 func (s *TestServe) completer(d prompt.Document) []prompt.Suggest {
@@ -127,7 +130,7 @@ func (s *TestServe) executor(text string) {
 			opErr = desc.Op(args)
 		}
 		if opErr != nil {
-			fmt.Fprintf(os.Stderr, "failed: %v", opErr)
+			fmt.Fprintf(os.Stderr, "failed: %v\n", opErr)
 		}
 	}
 }
@@ -196,4 +199,18 @@ func (s *TestServe) opExit(args []string) error {
 	}
 	glog.Exit(0)
 	return nil
+}
+
+func (s *TestServe) opSetStatusFavourite(args []string) error {
+	if len(args) != 1 {
+		return errors.New("status ID required")
+	}
+	return s.mastodonServer.SetStatusFavourite(mastodon.ID(args[0]))
+}
+
+func (s *TestServe) opSetStatusUnfavourite(args []string) error {
+	if len(args) != 1 {
+		return errors.New("status ID required")
+	}
+	return s.mastodonServer.SetStatusUnfavourite(mastodon.ID(args[0]))
 }

@@ -179,6 +179,48 @@ func (s *Server) UpdateStatus(status *mastodon.Status) error {
 	return s.statuses.Update(string(status.ID), status)
 }
 
+func (s *Server) SetStatusFavourite(id mastodon.ID) error {
+	s.m.Lock()
+	defer s.m.Unlock()
+	status, err := s.statuses.ByID(string(id))
+	if err != nil {
+		return err
+	}
+	if status == nil {
+		return fmt.Errorf("status %q not found", id)
+	}
+	status.Favourited = true
+	return nil
+}
+
+func (s *Server) SetStatusUnfavourite(id mastodon.ID) error {
+	s.m.Lock()
+	defer s.m.Unlock()
+	status, err := s.statuses.ByID(string(id))
+	if err != nil {
+		return err
+	}
+	if status == nil {
+		return fmt.Errorf("status %q not found", id)
+	}
+	status.Favourited = false
+	return nil
+}
+
+func (s *Server) SetStatusContent(id mastodon.ID, content string) error {
+	s.m.Lock()
+	defer s.m.Unlock()
+	status, err := s.statuses.ByID(string(id))
+	if err != nil {
+		return err
+	}
+	if status == nil {
+		return fmt.Errorf("status %q not found", id)
+	}
+	status.Content = content
+	return nil
+}
+
 func (s *Server) AddFakeNotification() error {
 	s.m.Lock()
 	defer s.m.Unlock()
