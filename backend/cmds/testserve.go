@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -40,6 +41,8 @@ type TestServe struct {
 	mastodonServer *testserver.Server
 	suggest        []prompt.Suggest
 	ops            map[string]*OpDesc
+
+	plzExit bool
 }
 
 func NewTestServe(mux *http.ServeMux, port int, testData fs.FS) *TestServe {
@@ -81,13 +84,28 @@ func (s *TestServe) Run(ctx context.Context) error {
 		glog.Exit(err)
 	}()
 
+	// https://github.com/c-bata/go-prompt/issues/228
+	// Bug in go-prompt library prevents the terminal to come back
+	// to a usable state in some cases.
+	// This is a terrible workaround.
+	defer func() {
+		rawModeOff := exec.Command("/bin/stty", "-raw", "echo")
+		rawModeOff.Stdin = os.Stdin
+		_ = rawModeOff.Run()
+		rawModeOff.Wait()
+	}()
+
 	p := prompt.New(
 		s.executor,
 		s.completer,
 		prompt.OptionPrefix(">>> "),
 		prompt.OptionAddKeyBind(prompt.KeyBind{
 			Key: prompt.ControlC,
-			Fn:  func(b *prompt.Buffer) { os.Exit(0) },
+			Fn:  func(b *prompt.Buffer) { s.plzExit = true },
+		}),
+		// There is no good way of telling the prompt to exit, so do that indirectly.
+		prompt.OptionSetExitCheckerOnInput(func(in string, breakline bool) bool {
+			return s.plzExit
 		}),
 	)
 
@@ -197,7 +215,7 @@ func (s *TestServe) opExit(args []string) error {
 	if len(args) > 0 {
 		return errors.New("no parameters allowed")
 	}
-	glog.Exit(0)
+	s.plzExit = true
 	return nil
 }
 
