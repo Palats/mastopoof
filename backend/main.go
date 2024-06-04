@@ -22,8 +22,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-var ()
-
 func FlagPort(fs *pflag.FlagSet) *int {
 	return fs.Int("port", 8079, "Port to listen on for the 'serve' command")
 }
@@ -49,34 +47,6 @@ func FlagInviteCode(fs *pflag.FlagSet) *string {
 func FlagInsecure(fs *pflag.FlagSet) *bool {
 	return fs.Bool("insecure", false, "If true, mark cookies as insecure, allowing serving without https")
 }
-
-/*func FlagPort(af *AllFlags, fs *pflag.FlagSet) {
-	fs.IntVar(&af.port, "port", 8079, "Port to listen on for the 'serve' command")
-}
-
-func FlagDBFilename(af *AllFlags, fs *pflag.FlagSet) {
-	fs.StringVar(&af.dbFilename, "db", "", "SQLite file")
-}
-
-type DeclFlag func(*AllFlags, *pflag.FlagSet)
-
-type AllFlags struct {
-	port       int
-	dbFilename string
-}
-
-func (f *AllFlags) Register(fs *pflag.FlagSet, decls ...DeclFlag) {
-	for _, d := range decls {
-		d(f, fs)
-	}
-}
-
-var allFlags = AllFlags{}
-
-func NewCommand(flagDecls []DeclFlag, cmd *cobra.Command) *cobra.Command {
-	allFlags.Register(cmd.PersistentFlags(), flagDecls...)
-	return cmd
-}*/
 
 const appMastodonScopes = "read write push"
 
