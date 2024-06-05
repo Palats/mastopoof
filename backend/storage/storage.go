@@ -1112,9 +1112,10 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 		if isInitial {
 			// Load things after the last-read status.
 			refPosition = streamState.LastRead
-		}
-		if refPosition < streamState.FirstPosition || refPosition > streamState.LastPosition {
-			return fmt.Errorf("position %d does not exists", refPosition)
+		} else {
+			if refPosition < streamState.FirstPosition || refPosition > streamState.LastPosition {
+				return fmt.Errorf("position %d does not exists", refPosition)
+			}
 		}
 
 		maxCount := 10
