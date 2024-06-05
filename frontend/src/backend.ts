@@ -144,4 +144,8 @@ export class Backend {
   public async search(statusID: string): Promise<pb.SearchResponse> {
     return await this.client.search({ statusId: statusID });
   }
+
+  public async setStatus(statusID: string, action: pb.SetStatusRequest_Action): Promise<pb.SetStatusResponse> {
+    return await this.client.setStatus({ statusId: statusID, action: action });
+  }
 }

@@ -34,7 +34,7 @@ export class MastSearch extends LitElement {
     this.items = [];
     for (const item of resp.items) {
       const position = item.position;
-      const status = JSON.parse(item.status!.content) as mastodon.Status;
+      const status = common.parseStatus(item.status!);
       this.items.push({
         position: position,
         status: status,

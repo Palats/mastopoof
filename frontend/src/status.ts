@@ -119,7 +119,35 @@ export class MastStatus extends LitElement {
       throw new Error("missing stream id");
     }
     // Not sure if doing computation on "position" is fine, but... well.
-    common.backend.setLastRead(this.stid, this.item?.position - 1n);
+    common.backend.setLastRead(this.stid, this.item.position - 1n);
+  }
+
+  async runSetStatus(action: pb.SetStatusRequest_Action) {
+    if (!this.item) {
+      throw new Error("missing item");
+    }
+    const statusID = this.item.status.id;
+    console.log("updating status", statusID, "; action:", action);
+    const resp = await common.backend.setStatus(statusID, action);
+    if (!resp.status) {
+      throw new Error("no status was returned");
+    }
+    // TODO: This is probably wrong to modify the provided item in place without notifying
+    // anything.
+    this.item.status = common.parseStatus(resp.status);
+    this.requestUpdate();
+  }
+
+  refresh() {
+    this.runSetStatus(pb.SetStatusRequest_Action.REFRESH);
+  }
+
+  toggleFavourite() {
+    let action = pb.SetStatusRequest_Action.FAVOURITE;
+    if (this.item?.status.favourited) {
+      action = pb.SetStatusRequest_Action.UNFAVOURITE;
+    }
+    this.runSetStatus(action);
   }
 
   copyRaw(status: mastodon.Status) {
@@ -233,7 +261,7 @@ export class MastStatus extends LitElement {
     const toolsHtml = html`
     <div class="tools">
       <div>
-        <button disabled><span class="material-symbols-outlined" title="Favorite">star</span></button>
+        <button @click=${() => this.toggleFavourite()}><span class="material-symbols-outlined ${classMap({ "symbol-filled": !!this.item.status.favourited })}"  title="Favorite">star</span></button>
         <span class="count">${s.favourites_count}</span>
         <button disabled><span class="material-symbols-outlined" title="Boost">repeat</span></button>
         <span class="count">${s.reblogs_count}</span>
@@ -241,6 +269,9 @@ export class MastStatus extends LitElement {
         <span class="count">${s.replies_count}</span>
       </div>
       <div>
+        <button @click="${() => this.refresh()}" title="Get the last version of this status from Mastodon">
+          <span class="material-symbols-outlined">refresh</span>
+        </button>
         <button @click="${() => this.markUnread()}" title="Mark as unread and move read-marker above">
           <span class="material-symbols-outlined">mark_as_unread</span>
         </button>

@@ -50,15 +50,23 @@ button {
   font-family: 'Material Symbols Outlined';
   font-weight: normal;
   font-style: normal;
-  display: inline-block;
-  line-height: 1;
-  text-transform: none;
-  letter-spacing: normal;
-  word-wrap: normal;
-  white-space: nowrap;
-  direction: ltr;
 
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+
+  font-feature-settings: 'liga';
   vertical-align: text-bottom;
+}
+
+.symbol-filled {
+  font-variation-settings: 'FILL' 1;
 }
 
 .noanchor {

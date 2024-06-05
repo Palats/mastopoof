@@ -8,6 +8,7 @@ import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import { StreamUpdateEvent, fuzzy } from "./backend";
 import * as common from "./common";
 import * as mastodon from "./mastodon";
+import * as status from "./status";
 
 import "./time";
 import "./status";
@@ -23,7 +24,6 @@ interface StatusItem {
   account: pb.Account;
   statusstate: pb.StatusState;
 
-
   // HTML element used to represent this status.
   elt?: Element;
   // Is the status currently partially visible?
@@ -33,6 +33,10 @@ interface StatusItem {
   // Did the element moved from fully visible to completely invisible?
   disappeared: boolean;
 }
+
+// @ts-ignore
+// Ensure that StatusItem can act as status.StatusItem.
+function assertSubtype(): status.StatusItem { return {} as StatusItem; }
 
 // Page displaying the main mastodon stream.
 @customElement('mast-stream')
@@ -253,7 +257,7 @@ export class MastStream extends LitElement {
     for (let i = 0; i < resp.items.length; i++) {
       const item = resp.items[i];
       const position = item.position;
-      const status = JSON.parse(item.status!.content) as mastodon.Status;
+      const status = common.parseStatus(item.status!);
       newItems.push({
         status: status,
         position: position,
@@ -312,7 +316,7 @@ export class MastStream extends LitElement {
           console.error(`missing position; previous=${prevPosition}, item=${position}`);
         }
       }
-      const status = JSON.parse(item.status!.content) as mastodon.Status;
+      const status = common.parseStatus(item.status!);
       this.items.push({
         status: status,
         position: position,

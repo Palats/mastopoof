@@ -1,6 +1,8 @@
 import { unsafeCSS } from 'lit'
 
 import { Backend } from "./backend";
+import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
+import * as mastodon from "./mastodon";
 
 import normalizeCSSstr from "./normalize.css?inline";
 import baseCSSstr from "./base.css?inline";
@@ -22,3 +24,7 @@ console.log("Display timezone:", displayTimezone);
 export const backend = new Backend();
 
 export const sharedCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
+
+export function parseStatus(pbStatus: pb.MastodonStatus): mastodon.Status {
+  return JSON.parse(pbStatus.content) as mastodon.Status;
+}
