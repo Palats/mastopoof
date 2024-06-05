@@ -217,7 +217,9 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 	q.Set("client_id", appRegState.ClientID)
 	q.Set("redirect_uri", appRegState.RedirectURI)
 	q.Set("response_type", "code")
-	q.Set("scope", "read")
+	// TODO: narrow down scopes
+	// TODO: support changing scope (or at least detecting)
+	q.Set("scope", "read write")
 	authAddr.RawQuery = q.Encode()
 
 	return connect.NewResponse(&pb.AuthorizeResponse{
