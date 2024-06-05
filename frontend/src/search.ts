@@ -1,7 +1,6 @@
 import { LitElement, css, html } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { Ref, createRef, ref } from 'lit/directives/ref.js';
-import * as mastodon from "./mastodon";
 
 import * as statuslib from "./status";
 import * as common from "./common";
