@@ -1,0 +1,1 @@
+Add .json files in this directory to automatically have statuses when running `testserve`.

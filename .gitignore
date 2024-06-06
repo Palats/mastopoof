@@ -14,7 +14,9 @@ backend/*.db-wal
 # backend built binary
 backend/backend
 backend/localdata
-backend/localtestdata
+backend/localtestdata/*
+!backend/localtestdata/README.md
+!backend/localtestdata/post-minimal.json
 
 # IDEs
 .vscode/
