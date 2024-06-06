@@ -92,7 +92,7 @@ func cmdUsers() *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
-	c.MarkFlagRequired("db")
+	c.MarkPersistentFlagRequired("db")
 	selfURL := FlagSelfURL(c.PersistentFlags())
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
@@ -113,7 +113,7 @@ func cmdClearApp() *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
-	c.MarkFlagRequired("db")
+	c.MarkPersistentFlagRequired("db")
 	selfURL := FlagSelfURL(c.PersistentFlags())
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
@@ -134,7 +134,7 @@ func cmdClearStream() *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
-	c.MarkFlagRequired("db")
+	c.MarkPersistentFlagRequired("db")
 	selfURL := FlagSelfURL(c.PersistentFlags())
 	userID := FlagUserID(c.PersistentFlags())
 	streamID := FlagStreamID(c.PersistentFlags())
@@ -163,7 +163,7 @@ func cmdClearPoolStream() *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
-	c.MarkFlagRequired("db")
+	c.MarkPersistentFlagRequired("db")
 	selfURL := FlagSelfURL(c.PersistentFlags())
 	userID := FlagUserID(c.PersistentFlags())
 	c.RunE = func(cmd *cobra.Command, args []string) error {
@@ -186,7 +186,7 @@ func cmdMe() *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
-	c.MarkFlagRequired("db")
+	c.MarkPersistentFlagRequired("db")
 	selfURL := FlagSelfURL(c.PersistentFlags())
 	userID := FlagUserID(c.PersistentFlags())
 	showAccount := c.PersistentFlags().Bool("show_account", false, "Query and show account state from Mastodon server")
@@ -210,7 +210,7 @@ func cmdServe() *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
-	c.MarkFlagRequired("db")
+	c.MarkPersistentFlagRequired("db")
 	selfURL := FlagSelfURL(c.PersistentFlags())
 	port := FlagPort(c.PersistentFlags())
 	userID := FlagUserID(c.PersistentFlags())
@@ -285,7 +285,7 @@ func cmdPickNext() *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
-	c.MarkFlagRequired("db")
+	c.MarkPersistentFlagRequired("db")
 	selfURL := FlagSelfURL(c.PersistentFlags())
 	userID := FlagUserID(c.PersistentFlags())
 	streamID := FlagStreamID(c.PersistentFlags())
@@ -314,7 +314,7 @@ func cmdSetRead() *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
-	c.MarkFlagRequired("db")
+	c.MarkPersistentFlagRequired("db")
 	selfURL := FlagSelfURL(c.PersistentFlags())
 	userID := FlagUserID(c.PersistentFlags())
 	streamID := FlagStreamID(c.PersistentFlags())
@@ -351,7 +351,7 @@ func CmdCheckStreamState() *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
-	c.MarkFlagRequired("db")
+	c.MarkPersistentFlagRequired("db")
 	selfURL := FlagSelfURL(c.PersistentFlags())
 	userID := FlagUserID(c.PersistentFlags())
 	streamID := FlagStreamID(c.PersistentFlags())
@@ -384,6 +384,11 @@ func main() {
 		Use:   "mastopoof",
 		Short: "Mastopoof is a Mastodon client",
 		Long:  `More about Mastopoof`,
+		// Avoid writing usage for random errors not related to CLI mistakes.
+		// Unfortunately, it also prevents having usage for errors such as missing
+		// flags, but https://github.com/spf13/cobra/issues/340 does not give simple
+		// alternative.
+		SilenceUsage: true,
 	}
 
 	rootCmd.AddCommand(cmdUsers())
