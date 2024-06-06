@@ -261,12 +261,20 @@ export class MastStatus extends LitElement {
     const toolsHtml = html`
     <div class="tools">
       <div>
-        <button @click=${() => this.toggleFavourite()}><span class="material-symbols-outlined ${classMap({ "symbol-filled": !!this.item.status.favourited })}"  title="Favorite">star</span></button>
-        <span class="count">${s.favourites_count}</span>
-        <button disabled><span class="material-symbols-outlined" title="Boost">repeat</span></button>
-        <span class="count">${s.reblogs_count}</span>
-        <button disabled><span class="material-symbols-outlined" title="Reply...">reply</span></button>
-        <span class="count">${s.replies_count}</span>
+        <button @click=${() => this.toggleFavourite()}>
+          <span class="material-symbols-outlined ${classMap({ "symbol-filled": !!this.item.status.favourited })}"  title="Favorite">star</span>
+          <span class="count">${s.favourites_count}</span>
+        </button>
+
+        <button disabled>
+          <span class="material-symbols-outlined" title="Boost">repeat</span>
+          <span class="count">${s.favourites_count}</span>
+        </button>
+
+        <button disabled>
+          <span class="material-symbols-outlined" title="Reply...">reply</span>
+          <span class="count">${s.replies_count}</span>
+        </button>
       </div>
       <div>
         <button @click="${() => this.refresh()}" title="Get the last version of this status from Mastodon">
@@ -411,17 +419,19 @@ export class MastStatus extends LitElement {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 2px;
+        padding: 0 2px;
         margin-top: 2px;
-        background-color: var(--color-blue-400);
-        color: var(--color-grey-000);
+        /*background-color: var(--color-blue-400);*/
+        /*color: var(--color-grey-000);*/
 
         height: 40px;
       }
 
       .tools button {
-        height: 35px;
+        min-height: 35px;
         min-width: 40px;
+        padding: 0 2px;
+        margin: 0;
       }
 
       .count {
