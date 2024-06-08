@@ -667,6 +667,7 @@ func (s *Server) Search(ctx context.Context, req *connect.Request[pb.SearchReque
 			Status:   &pb.MastodonStatus{Content: string(raw)},
 			Position: item.Position,
 			Account:  accountStateProto,
+			State:    item.StatusState.ToStatusStateProto(),
 		})
 	}
 	return connect.NewResponse(resp), nil
