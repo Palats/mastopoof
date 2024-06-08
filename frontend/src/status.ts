@@ -110,6 +110,9 @@ export class MastStatus extends LitElement {
   @state()
   private accessor showRaw = false;
 
+  @state()
+  private showExtraTools = false;
+
   markUnread() {
     if (!this.item) {
       console.error("missing connection");
@@ -259,41 +262,71 @@ export class MastStatus extends LitElement {
     </div>`;
 
     const toolsHtml = html`
-    <div class="tools">
-      <div>
-        <button @click=${() => this.toggleFavourite()}>
-          <span class="material-symbols-outlined ${classMap({ "symbol-filled": !!this.item.status.favourited })}"  title="Favorite">star</span>
-          <span class="count">${s.favourites_count}</span>
-        </button>
+      <div class="tools">
+        <div style="flex-grow: 1; display: flex; justify-content: space-evenly;">
+          <div>
+            <button @click=${() => this.toggleFavourite()}>
+              <span class="material-symbols-outlined ${classMap({ "symbol-filled": !!this.item.status.favourited })}"  title="Favorite">star</span>
+            </button>
+            <span class="count">${s.favourites_count}</span>
+          </div>
 
-        <button disabled>
-          <span class="material-symbols-outlined" title="Boost">repeat</span>
-          <span class="count">${s.favourites_count}</span>
-        </button>
+          <div>
+            <button disabled>
+              <span class="material-symbols-outlined" title="Boost">repeat</span>
+            </button>
+            <span class="count">${s.favourites_count}</span>
+          </div>
 
-        <button disabled>
-          <span class="material-symbols-outlined" title="Reply...">reply</span>
-          <span class="count">${s.replies_count}</span>
+          <div>
+            <button disabled>
+              <span class="material-symbols-outlined" title="Reply...">reply</span>
+            </button>
+            <span class="count">${s.favourites_count}</span>
+          </div>
+        </div>
+
+        <button @click=${() => this.showExtraTools = !this.showExtraTools}>
+          ${this.showExtraTools ? html`
+          <span class="material-symbols-outlined" title="Hide extra options">more_vert</span>
+          `: html`
+          <span class="material-symbols-outlined" title="Show extra options">more_horiz</span>
+          `}
         </button>
       </div>
-      <div>
-        <button @click="${() => this.refresh()}" title="Get the last version of this status from Mastodon">
-          <span class="material-symbols-outlined">refresh</span>
-        </button>
-        <button @click="${() => this.markUnread()}" title="Mark as unread and move read-marker above">
-          <span class="material-symbols-outlined">mark_as_unread</span>
-        </button>
-        <button @click="${() => { this.showRaw = !this.showRaw }}" title="Show raw status">
-          <span class="material-symbols-outlined">${this.showRaw ? 'collapse_all' : 'expand_all'}</span>
-        </button>
-        <button @click="${() => this.copyRaw(this.item!.status)}" title="Copy raw status to clipboard">
-          <span class="material-symbols-outlined">copy_all</span>
-        </button>
-      </div>
-    </div>
-    ${this.showRaw ? html`
-      <pre class="rawcontent">${JSON.stringify(this.item.status, null, "  ")}</pre>` : nothing}
-    </div>
+
+      ${this.showExtraTools ? html`
+        <div class="tools" style="background-color: var(--color-grey-300);">
+          <div>
+            <button @click="${() => this.refresh()}" title="Get the last version of this status from Mastodon">
+              <span class="material-symbols-outlined">refresh</span>
+            </button>
+            <span class="count">Refresh</span>
+          </div>
+
+          <div>
+            <button @click="${() => this.markUnread()}" title="Mark as unread and move read-marker above">
+              <span class="material-symbols-outlined">mark_as_unread</span>
+            </button>
+            <span class="count">Unread</span>
+          </div>
+
+          <div>
+            <button @click="${() => { this.showRaw = !this.showRaw }}" title="Show raw status">
+              <span class="material-symbols-outlined">${this.showRaw ? 'collapse_all' : 'expand_all'}</span>
+            </button>
+            <span class="count">Raw</span>
+          </div>
+
+          <div>
+            <button @click="${() => this.copyRaw(this.item!.status)}" title="Copy raw status to clipboard">
+              <span class="material-symbols-outlined">copy_all</span>
+            </button>
+            <span class="count">Copy</span>
+          </div>
+        </div>
+      `: nothing}
+      ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(this.item.status, null, "  ")}</pre>` : nothing}
     `;
 
     return html`
@@ -418,12 +451,9 @@ export class MastStatus extends LitElement {
       .tools {
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        justify-content: space-evenly;
         padding: 0 2px;
         margin-top: 2px;
-        /*background-color: var(--color-blue-400);*/
-        /*color: var(--color-grey-000);*/
-
         height: 40px;
       }
 
