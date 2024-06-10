@@ -275,14 +275,14 @@ export class MastStatus extends LitElement {
             <button disabled>
               <span class="material-symbols-outlined" title="Boost">repeat</span>
             </button>
-            <span class="count">${s.favourites_count}</span>
+            <span class="count">${s.reblogs_count}</span>
           </div>
 
           <div>
             <button disabled>
               <span class="material-symbols-outlined" title="Reply...">reply</span>
             </button>
-            <span class="count">${s.favourites_count}</span>
+            <span class="count">${s.replies_count}</span>
           </div>
         </div>
 
