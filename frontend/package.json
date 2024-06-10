@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --clearScreen=false",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "web-test-runner \"**/*.test.js\" --node-resolve",
+    "test-watch": "web-test-runner \"**/*.test.js\" --node-resolve --watch"
   },
   "dependencies": {
     "@bufbuild/protobuf": "1.9.0",
@@ -18,6 +20,9 @@
     "mastopoof-proto": "file:../proto"
   },
   "devDependencies": {
+    "@esm-bundle/chai": "4.3.4-fix.0",
+    "@remcovaes/web-test-runner-vite-plugin": "1.2.1",
+    "@web/test-runner": "0.18.2",
     "typescript": "5.4.5",
     "vite": "5.2.11"
   }

@@ -28,3 +28,7 @@ export const sharedCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
 export function parseStatus(pbStatus: pb.MastodonStatus): mastodon.Status {
   return JSON.parse(pbStatus.content) as mastodon.Status;
 }
+
+export function testTest() {
+  return "plop42";
+}
