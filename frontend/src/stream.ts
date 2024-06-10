@@ -121,7 +121,7 @@ export class MastStream extends LitElement {
     while (true) {
       // Delay is from the last fetch - explicit fetch trigger fetch request disrupt the
       // delay-based fetching and resets the delay.
-      let delayTimeoutID: number | undefined;
+      let delayTimeoutID: ReturnType<typeof setTimeout> | undefined;
       let delay = new Promise<boolean>(resolve => {
         delayTimeoutID = setTimeout(resolve, fuzzy(60_000, 0.1), false);
       });
