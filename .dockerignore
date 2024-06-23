@@ -1,0 +1,26 @@
+secrets
+tmp/
+proto/gen/
+
+go.work
+go.work.sum
+
+# Frontend build output
+prod/
+# sqlite files
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+# backend built binary
+backend/backend
+backend/localdata
+backend/localtestdata/*
+!backend/localtestdata/README.md
+!backend/localtestdata/post-minimal.json
+
+# IDEs
+.vscode/
+
+proto/node_modules/
+frontend/node_modules/
+frontend/dist/
