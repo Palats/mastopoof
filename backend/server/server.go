@@ -742,6 +742,8 @@ func (s *Server) SetStatus(ctx context.Context, req *connect.Request[pb.SetStatu
 	return connect.NewResponse(resp), nil
 }
 
+const redirectPath = "/_redirect"
+
 func (s *Server) RedirectHandler(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 
@@ -772,11 +774,17 @@ func (s *Server) RedirectHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if s.selfURL == "" {
+	p, found := strings.CutSuffix(req.URL.Path, redirectPath)
+	if !found {
 		fmt.Fprintf(w, "Auth done, no redirect configured.")
-	} else {
-		http.Redirect(w, req, s.selfURL, http.StatusFound)
+		return
 	}
+
+	if p == "" {
+		p = "/"
+	}
+
+	http.Redirect(w, req, p, http.StatusFound)
 }
 
 func (s *Server) RegisterOn(mux *http.ServeMux) {
