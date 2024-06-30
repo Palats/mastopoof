@@ -45,18 +45,16 @@ type Server struct {
 	inviteCode     string
 	autoLogin      storage.UID
 	sessionManager *scs.SessionManager
-	selfURL        string
 	scopes         string
 	client         http.Client
 }
 
-func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode string, autoLogin storage.UID, selfURL string, scopes string) *Server {
+func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode string, autoLogin storage.UID, scopes string) *Server {
 	s := &Server{
 		st:             st,
 		sessionManager: sessionManager,
 		inviteCode:     inviteCode,
 		autoLogin:      autoLogin,
-		selfURL:        selfURL,
 		scopes:         scopes,
 	}
 	return s

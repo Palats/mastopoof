@@ -76,7 +76,6 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 	env.t.Helper()
 	mux := http.NewServeMux()
 
-	selfURL := ""
 	scopes := "read"
 
 	// Create Mastodon server.
@@ -89,11 +88,11 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 	env.mastodonServer.RegisterOn(mux)
 
 	// Creates mastopoof server.
-	st, err := storage.NewStorage(ctx, "file::memory:?cache=shared", selfURL, scopes)
+	st, err := storage.NewStorage(ctx, "file::memory:?cache=shared", "selfurl", scopes)
 	if err != nil {
 		env.t.Fatal(err)
 	}
-	mastopoof := New(st, NewSessionManager(st), "invite1", 0 /* autoLogin */, selfURL, scopes)
+	mastopoof := New(st, NewSessionManager(st), "invite1", 0 /* autoLogin */, scopes)
 	mastopoof.RegisterOn(mux)
 
 	// Create the http server

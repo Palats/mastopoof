@@ -65,7 +65,7 @@ func getStreamID(ctx context.Context, st *storage.Storage, streamID storage.StID
 	return 0, errors.New("no streamID / user ID specified")
 }
 
-func getMux(st *storage.Storage, autoLogin storage.UID, inviteCode string, insecure bool, selfURL string) (*http.ServeMux, error) {
+func getMux(st *storage.Storage, autoLogin storage.UID, inviteCode string, insecure bool) (*http.ServeMux, error) {
 	mux := http.NewServeMux()
 
 	// Serve frontend content (html, js, etc.).
@@ -80,7 +80,7 @@ func getMux(st *storage.Storage, autoLogin storage.UID, inviteCode string, insec
 	if insecure {
 		sessionManager.Cookie.Secure = false
 	}
-	s := server.New(st, sessionManager, inviteCode, autoLogin, selfURL, appMastodonScopes)
+	s := server.New(st, sessionManager, inviteCode, autoLogin, appMastodonScopes)
 	s.RegisterOn(mux)
 	return mux, nil
 }
@@ -225,7 +225,7 @@ func cmdServe() *cobra.Command {
 		}
 		defer st.Close()
 
-		mux, err := getMux(st, *userID, *inviteCode, *insecure, *selfURL)
+		mux, err := getMux(st, *userID, *inviteCode, *insecure)
 		if err != nil {
 			return err
 		}
@@ -268,7 +268,7 @@ func cmdTestServe() *cobra.Command {
 			return fmt.Errorf("unable to create testuser: %w", err)
 		}
 
-		mux, err := getMux(st, userState.UID, *inviteCode, *insecure, *selfURL)
+		mux, err := getMux(st, userState.UID, *inviteCode, *insecure)
 		if err != nil {
 			return err
 		}
