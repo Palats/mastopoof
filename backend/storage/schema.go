@@ -150,20 +150,43 @@ func (ss *StatusState) ToStatusStateProto() *pb.StatusState {
 	}
 }
 
+// AppRegInfo is what identify a given app registration on a Mastodon server.
+// It is used to identify which app registration is needed when interacting with a Mastodon server.
+// It is not serialized - see AppRegState for that. AppRegState is a strict superset.
+type AppRegInfo struct {
+	// Mastodon server address.
+	ServerAddr string `json:"server_addr"`
+	// Scopes used when registering the app.
+	Scopes string `json:"scopes"`
+	// Where the oauth should redirect - incl. /_redirect.
+	RedirectURI string `json:"redirect_uri"`
+}
+
+// Key computes a string key for that entry, for indexing.
+// It is unique for a given AppRegKey content.
+func (nfo *AppRegInfo) Key() string {
+	return nfo.ServerAddr + "--" + nfo.RedirectURI + "--" + nfo.Scopes
+}
+
 // AppRegState contains information about an app registration on a Mastodon server.
+// This state is kept in DB.
 type AppRegState struct {
 	// The storage key for this app registration.
 	// Redundant in storage, but convenient when manipulating the data around.
 	Key string `json:"key"`
 
+	// Following fields are an AppRegKey.
+	// Mastodon server address.
 	ServerAddr string `json:"server_addr"`
 	// Scopes used when registering the app.
 	Scopes string `json:"scopes"`
+	// Where the oauth should redirect - incl. /_redirect.
+	RedirectURI string `json:"redirect_uri"`
 
+	// App registration info not part of the key.
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
 	AuthURI      string `json:"auth_uri"`
-	RedirectURI  string `json:"redirect_uri"`
 }
 
 // Scan implements the [Scanner] interface.

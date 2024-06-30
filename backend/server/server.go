@@ -20,12 +20,36 @@ import (
 	"github.com/Palats/mastopoof/proto/gen/mastopoof/mastopoofconnect"
 )
 
+const AppMastodonScopes = "read write push"
+
 // validateAddress verifies that a Mastodon server adress is vaguely looking good.
 func validateAddress(addr string) error {
 	if !strings.HasPrefix(addr, "http://") && !strings.HasPrefix(addr, "https://") {
 		return fmt.Errorf("mastodon server address should start with https:// or http:// ; got: %s", addr)
 	}
 	return nil
+}
+
+// NewAppRegInfo finds suitable app registration key info based on the provided parsed self URL.
+func NewAppRegInfo(serverAddr string, selfURL *url.URL, scopes string) *storage.AppRegInfo {
+	redirectURI := "urn:ietf:wg:oauth:2.0:oob"
+
+	if selfURL != nil {
+		u := selfURL.JoinPath("_redirect")
+		// RedirectURI for auth must contain information about the mastodon server
+		// it is about. Otherwise, when getting a code back after auth, the server
+		// cannot know what it is about.
+		q := u.Query()
+		q.Set("host", serverAddr)
+		u.RawQuery = q.Encode()
+		redirectURI = u.String()
+	}
+
+	return &storage.AppRegInfo{
+		ServerAddr:  serverAddr,
+		RedirectURI: redirectURI,
+		Scopes:      scopes,
+	}
 }
 
 func NewSessionManager(st *storage.Storage) *scs.SessionManager {
@@ -46,16 +70,19 @@ type Server struct {
 	autoLogin      storage.UID
 	sessionManager *scs.SessionManager
 	scopes         string
-	client         http.Client
+	// URL needed for authentication redirections.
+	selfURL *url.URL
+	client  http.Client
 }
 
-func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode string, autoLogin storage.UID, scopes string) *Server {
+func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode string, autoLogin storage.UID, scopes string, selfURL *url.URL) *Server {
 	s := &Server{
 		st:             st,
 		sessionManager: sessionManager,
 		inviteCode:     inviteCode,
 		autoLogin:      autoLogin,
 		scopes:         scopes,
+		selfURL:        selfURL,
 	}
 	return s
 }
@@ -102,6 +129,10 @@ func (s *Server) verifyStID(ctx context.Context, stid storage.StID) (*storage.Us
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("stream access denied"))
 	}
 	return userState, nil
+}
+
+func (s *Server) getAppRegInfo(serverAddr string) *storage.AppRegInfo {
+	return NewAppRegInfo(serverAddr, s.selfURL, s.scopes)
 }
 
 func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest]) (*connect.Response[pb.LoginResponse], error) {
@@ -158,16 +189,17 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 	if err := validateAddress(serverAddr); err != nil {
 		return nil, err
 	}
+	appRegInfo := s.getAppRegInfo(serverAddr)
 
 	// TODO: split transactions to avoid remote requests in the middle.
 
 	var appRegState *storage.AppRegState
 	err := s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
 		var err error
-		appRegState, err = s.st.AppRegState(ctx, txn, serverAddr)
+		appRegState, err = s.st.AppRegState(ctx, txn, appRegInfo)
 		if errors.Is(err, storage.ErrNotFound) {
 			glog.Infof("Creating server state for %q", serverAddr)
-			appRegState, err = s.st.CreateAppRegState(ctx, txn, serverAddr)
+			appRegState, err = s.st.CreateAppRegState(ctx, txn, appRegInfo)
 			if err != nil {
 				return err
 			}
@@ -238,6 +270,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	if err := validateAddress(serverAddr); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unable to validate address %s: %w", serverAddr, err))
 	}
+	appRegInfo := s.getAppRegInfo(serverAddr)
 
 	authCode := req.Msg.AuthCode
 	if authCode == "" {
@@ -248,7 +281,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 
 	// TODO: split transactions to avoid remote requests in the middle.
 	err := s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
-		appRegState, err := s.st.AppRegState(ctx, txn, serverAddr)
+		appRegState, err := s.st.AppRegState(ctx, txn, appRegInfo)
 		if err != nil {
 			// Do not create the server - it should have been created on a previous step. If it is not there,
 			// it is odd, so error out.
@@ -471,8 +504,8 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		if err != nil {
 			return err
 		}
-
-		appRegState, err = s.st.AppRegState(ctx, txn, accountState.ServerAddr)
+		appRegInfo := s.getAppRegInfo(accountState.ServerAddr)
+		appRegState, err = s.st.AppRegState(ctx, txn, appRegInfo)
 		if err != nil {
 			return err
 		}
@@ -684,8 +717,9 @@ func (s *Server) SetStatus(ctx context.Context, req *connect.Request[pb.SetStatu
 		if err != nil {
 			return err
 		}
+		appRegInfo := s.getAppRegInfo(accountState.ServerAddr)
 
-		appRegState, err = s.st.AppRegState(ctx, txn, accountState.ServerAddr)
+		appRegState, err = s.st.AppRegState(ctx, txn, appRegInfo)
 		if err != nil {
 			return err
 		}

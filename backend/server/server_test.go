@@ -88,11 +88,11 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 	env.mastodonServer.RegisterOn(mux)
 
 	// Creates mastopoof server.
-	st, err := storage.NewStorage(ctx, "file::memory:?cache=shared", "selfurl", scopes)
+	st, err := storage.NewStorage(ctx, "file::memory:?cache=shared")
 	if err != nil {
 		env.t.Fatal(err)
 	}
-	mastopoof := New(st, NewSessionManager(st), "invite1", 0 /* autoLogin */, scopes)
+	mastopoof := New(st, NewSessionManager(st), "invite1", 0 /* autoLogin */, scopes, nil)
 	mastopoof.RegisterOn(mux)
 
 	// Create the http server

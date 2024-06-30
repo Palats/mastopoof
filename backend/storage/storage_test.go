@@ -142,7 +142,7 @@ func (env *DBTestEnv) Init(ctx context.Context, t testing.TB) *DBTestEnv {
 	// in-memory DB. In turns, it means that the connections must be properly closed
 	// with env.Close() at the end of the test - otherwise the content won't
 	// be empty for the next test.
-	env.st, err = newStorageNoInit(ctx, "file::memory:?cache=shared", "", "read")
+	env.st, err = newStorageNoInit(ctx, "file::memory:?cache=shared")
 	if err != nil {
 		t.Fatal(err)
 	}

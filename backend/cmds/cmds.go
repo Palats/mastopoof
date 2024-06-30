@@ -7,6 +7,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/mattn/go-mastodon"
 
+	"github.com/Palats/mastopoof/backend/server"
 	"github.com/Palats/mastopoof/backend/storage"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -46,7 +47,9 @@ func CmdMe(ctx context.Context, st *storage.Storage, uid storage.UID, showAccoun
 	fmt.Println("# Server address:", accountState.ServerAddr)
 	fmt.Println("# Last home status ID:", accountState.LastHomeStatusID)
 
-	appRegState, err := st.AppRegState(ctx, nil, accountState.ServerAddr)
+	appRefInfo := server.NewAppRegInfo(accountState.ServerAddr, nil, server.AppMastodonScopes)
+	// TODO: That should pick up the first available registration for that server, ignoring (most) scopes and redirection.
+	appRegState, err := st.AppRegState(ctx, nil, appRefInfo)
 	if err != nil {
 		return err
 	}

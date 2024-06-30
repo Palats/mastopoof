@@ -53,18 +53,12 @@ type Storage struct {
 	roDB *sql.DB
 	// Read-write access to the database.
 	rwDB *sql.DB
-
-	baseRedirectURL *url.URL
-	scopes          string
 }
 
 // NewStorage creates a new Mastopoof abstraction layer.
 // Parameters:
 //   - `dbURL`: the connection URLs to sqlite suitable for Go sql layer.
-//   - `selfURL`: the address under which the web UI will be known. Needed for
-//     Mastodon app registration purposes.
-//   - `scopes`: List of scopes that will be used, used for Mastodon App registration.
-func NewStorage(ctx context.Context, dbURL string, selfURL string, scopes string) (returnedSt *Storage, returnedErr error) {
+func NewStorage(ctx context.Context, dbURL string) (returnedSt *Storage, returnedErr error) {
 	// Make sure to cleanup everything in case of errors.
 	defer func() {
 		if returnedErr != nil {
@@ -72,14 +66,14 @@ func NewStorage(ctx context.Context, dbURL string, selfURL string, scopes string
 		}
 	}()
 
-	st, err := newStorageNoInit(ctx, dbURL, selfURL, scopes)
+	st, err := newStorageNoInit(ctx, dbURL)
 	if err != nil {
 		return nil, err
 	}
 	return st, st.initVersion(ctx, maxSchemaVersion)
 }
 
-func newStorageNoInit(ctx context.Context, dbURI string, selfURL string, scopes string) (returnedSt *Storage, returnedErr error) {
+func newStorageNoInit(ctx context.Context, dbURI string) (returnedSt *Storage, returnedErr error) {
 	// Make sure to cleanup everything in case of errors.
 	defer func() {
 		if returnedErr != nil {
@@ -87,9 +81,7 @@ func newStorageNoInit(ctx context.Context, dbURI string, selfURL string, scopes 
 		}
 	}()
 
-	st := &Storage{
-		scopes: scopes,
-	}
+	st := &Storage{}
 
 	if dbURI == ":memory:" {
 		// Just ':memory:' is not parseable as URI, so special case it.
@@ -169,16 +161,6 @@ func newStorageNoInit(ctx context.Context, dbURI string, selfURL string, scopes 
 		}
 	}
 
-	if selfURL != "" {
-		baseRedirectURL, err := url.Parse(selfURL)
-		if err != nil {
-			return nil, fmt.Errorf("unable to parse self URL %q: %w", selfURL, err)
-		}
-		baseRedirectURL = baseRedirectURL.JoinPath("_redirect")
-		glog.Infof("Using redirect URI %s", baseRedirectURL)
-		st.baseRedirectURL = baseRedirectURL
-	}
-
 	return st, nil
 }
 
@@ -208,20 +190,6 @@ func (st *Storage) NewSCSStore() *sqlite3store.SQLite3Store {
 	// the occasional writes. However, once that starts to be an actually issue,
 	// splitting SCS store into its own DB would probably make more sense.
 	return sqlite3store.New(st.rwDB)
-}
-
-func (st *Storage) redirectURI(serverAddr string) string {
-	if st.baseRedirectURL == nil {
-		return "urn:ietf:wg:oauth:2.0:oob"
-	}
-	// RedirectURI for auth must contain information about the mastodon server
-	// it is about. Otherwise, when getting a code back after auth, the server
-	// cannot know what it is about.
-	u := *st.baseRedirectURL // Make a copy to not modify the base URL.
-	q := u.Query()
-	q.Set("host", serverAddr)
-	u.RawQuery = q.Encode()
-	return u.String()
 }
 
 // ErrCleanAbortTxn signals that the transaction must not be committed, but that it
@@ -371,18 +339,13 @@ func (st *Storage) CreateUser(ctx context.Context, txn SQLReadWrite, serverAddr 
 	return userState, accountState, streamState, nil
 }
 
-func (st *Storage) appRegStateKey(serverAddr string) string {
-	return serverAddr + "--" + st.redirectURI(serverAddr) + "--" + st.scopes
-}
-
 // CreateAppRegState creates a server with the given address.
-func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLReadWrite, serverAddr string) (*AppRegState, error) {
-	key := st.appRegStateKey(serverAddr)
+func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLReadWrite, nfo *AppRegInfo) (*AppRegState, error) {
 	appRegState := &AppRegState{
-		Key:         key,
-		ServerAddr:  serverAddr,
-		Scopes:      st.scopes,
-		RedirectURI: st.redirectURI(serverAddr),
+		Key:         nfo.Key(),
+		ServerAddr:  nfo.ServerAddr,
+		Scopes:      nfo.Scopes,
+		RedirectURI: nfo.RedirectURI,
 	}
 
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
@@ -399,14 +362,14 @@ func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLReadWrite, serv
 
 // AppRegState returns the current AppRegState for a given, well, server.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) AppRegState(ctx context.Context, txn SQLReadOnly, serverAddr string) (*AppRegState, error) {
+func (st *Storage) AppRegState(ctx context.Context, txn SQLReadOnly, nfo *AppRegInfo) (*AppRegState, error) {
 	as := &AppRegState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
-		key := st.appRegStateKey(serverAddr)
+		key := nfo.Key()
 		err := txn.QueryRowContext(ctx,
 			"SELECT state FROM appregstate WHERE key=?", key).Scan(&as)
 		if err == sql.ErrNoRows {
-			return fmt.Errorf("no state for server_addr=%s, key=%s: %w", serverAddr, key, ErrNotFound)
+			return fmt.Errorf("no state for server_addr=%s, key=%s: %w", nfo.ServerAddr, key, ErrNotFound)
 		}
 		return err
 	})

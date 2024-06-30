@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 
@@ -49,8 +50,6 @@ func FlagInsecure(fs *pflag.FlagSet) *bool {
 	return fs.Bool("insecure", false, "If true, mark cookies as insecure, allowing serving without https")
 }
 
-const appMastodonScopes = "read write push"
-
 func getStreamID(ctx context.Context, st *storage.Storage, streamID storage.StID, userID storage.UID) (storage.StID, error) {
 	if streamID != 0 {
 		return streamID, nil
@@ -65,7 +64,7 @@ func getStreamID(ctx context.Context, st *storage.Storage, streamID storage.StID
 	return 0, errors.New("no streamID / user ID specified")
 }
 
-func getMux(st *storage.Storage, autoLogin storage.UID, inviteCode string, insecure bool) (*http.ServeMux, error) {
+func getMux(st *storage.Storage, autoLogin storage.UID, inviteCode string, insecure bool, selfURL string) (*http.ServeMux, error) {
 	mux := http.NewServeMux()
 
 	// Serve frontend content (html, js, etc.).
@@ -80,7 +79,13 @@ func getMux(st *storage.Storage, autoLogin storage.UID, inviteCode string, insec
 	if insecure {
 		sessionManager.Cookie.Secure = false
 	}
-	s := server.New(st, sessionManager, inviteCode, autoLogin, appMastodonScopes)
+
+	u, err := url.Parse(selfURL)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse self URL %q: %w", selfURL, err)
+	}
+
+	s := server.New(st, sessionManager, inviteCode, autoLogin, server.AppMastodonScopes, u)
 	s.RegisterOn(mux)
 	return mux, nil
 }
@@ -93,10 +98,9 @@ func cmdUsers() *cobra.Command {
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
 	c.MarkPersistentFlagRequired("db")
-	selfURL := FlagSelfURL(c.PersistentFlags())
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
-		st, err := storage.NewStorage(ctx, *dbFilename, *selfURL, appMastodonScopes)
+		st, err := storage.NewStorage(ctx, *dbFilename)
 		if err != nil {
 			return err
 		}
@@ -114,10 +118,9 @@ func cmdClearApp() *cobra.Command {
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
 	c.MarkPersistentFlagRequired("db")
-	selfURL := FlagSelfURL(c.PersistentFlags())
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
-		st, err := storage.NewStorage(ctx, *dbFilename, *selfURL, appMastodonScopes)
+		st, err := storage.NewStorage(ctx, *dbFilename)
 		if err != nil {
 			return err
 		}
@@ -135,12 +138,11 @@ func cmdClearStream() *cobra.Command {
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
 	c.MarkPersistentFlagRequired("db")
-	selfURL := FlagSelfURL(c.PersistentFlags())
 	userID := FlagUserID(c.PersistentFlags())
 	streamID := FlagStreamID(c.PersistentFlags())
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
-		st, err := storage.NewStorage(ctx, *dbFilename, *selfURL, appMastodonScopes)
+		st, err := storage.NewStorage(ctx, *dbFilename)
 		if err != nil {
 			return err
 		}
@@ -164,11 +166,10 @@ func cmdClearPoolStream() *cobra.Command {
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
 	c.MarkPersistentFlagRequired("db")
-	selfURL := FlagSelfURL(c.PersistentFlags())
 	userID := FlagUserID(c.PersistentFlags())
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
-		st, err := storage.NewStorage(ctx, *dbFilename, *selfURL, appMastodonScopes)
+		st, err := storage.NewStorage(ctx, *dbFilename)
 		if err != nil {
 			return err
 		}
@@ -187,12 +188,11 @@ func cmdMe() *cobra.Command {
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
 	c.MarkPersistentFlagRequired("db")
-	selfURL := FlagSelfURL(c.PersistentFlags())
 	userID := FlagUserID(c.PersistentFlags())
 	showAccount := c.PersistentFlags().Bool("show_account", false, "Query and show account state from Mastodon server")
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
-		st, err := storage.NewStorage(ctx, *dbFilename, *selfURL, appMastodonScopes)
+		st, err := storage.NewStorage(ctx, *dbFilename)
 		if err != nil {
 			return err
 		}
@@ -219,13 +219,13 @@ func cmdServe() *cobra.Command {
 
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
-		st, err := storage.NewStorage(ctx, *dbFilename, *selfURL, appMastodonScopes)
+		st, err := storage.NewStorage(ctx, *dbFilename)
 		if err != nil {
 			return err
 		}
 		defer st.Close()
 
-		mux, err := getMux(st, *userID, *inviteCode, *insecure)
+		mux, err := getMux(st, *userID, *inviteCode, *insecure, *selfURL)
 		if err != nil {
 			return err
 		}
@@ -250,15 +250,21 @@ func cmdTestServe() *cobra.Command {
 
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
-		st, err := storage.NewStorage(ctx, ":memory:", *selfURL, appMastodonScopes)
+
+		serverAddr := fmt.Sprintf("http://localhost:%d", *port)
+		parsedSelfURL, err := url.Parse(*selfURL)
+		if err != nil {
+			return fmt.Errorf("unable to parse self URL %q: %w", *selfURL, err)
+		}
+		appRefInfo := server.NewAppRegInfo(serverAddr, parsedSelfURL, server.AppMastodonScopes)
+
+		st, err := storage.NewStorage(ctx, ":memory:")
 		if err != nil {
 			return err
 		}
 		defer st.Close()
 
-		serverAddr := fmt.Sprintf("http://localhost:%d", *port)
-
-		_, err = st.CreateAppRegState(ctx, nil, serverAddr)
+		_, err = st.CreateAppRegState(ctx, nil, appRefInfo)
 		if err != nil {
 			return fmt.Errorf("unable to create server state: %w", err)
 		}
@@ -268,7 +274,7 @@ func cmdTestServe() *cobra.Command {
 			return fmt.Errorf("unable to create testuser: %w", err)
 		}
 
-		mux, err := getMux(st, userState.UID, *inviteCode, *insecure)
+		mux, err := getMux(st, userState.UID, *inviteCode, *insecure, *selfURL)
 		if err != nil {
 			return err
 		}
@@ -286,12 +292,11 @@ func cmdPickNext() *cobra.Command {
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
 	c.MarkPersistentFlagRequired("db")
-	selfURL := FlagSelfURL(c.PersistentFlags())
 	userID := FlagUserID(c.PersistentFlags())
 	streamID := FlagStreamID(c.PersistentFlags())
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
-		st, err := storage.NewStorage(ctx, *dbFilename, *selfURL, appMastodonScopes)
+		st, err := storage.NewStorage(ctx, *dbFilename)
 		if err != nil {
 			return err
 		}
@@ -315,13 +320,12 @@ func cmdSetRead() *cobra.Command {
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
 	c.MarkPersistentFlagRequired("db")
-	selfURL := FlagSelfURL(c.PersistentFlags())
 	userID := FlagUserID(c.PersistentFlags())
 	streamID := FlagStreamID(c.PersistentFlags())
 
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
-		st, err := storage.NewStorage(ctx, *dbFilename, *selfURL, appMastodonScopes)
+		st, err := storage.NewStorage(ctx, *dbFilename)
 		if err != nil {
 			return err
 		}
@@ -352,14 +356,13 @@ func CmdCheckStreamState() *cobra.Command {
 	}
 	dbFilename := FlagDBFilename(c.PersistentFlags())
 	c.MarkPersistentFlagRequired("db")
-	selfURL := FlagSelfURL(c.PersistentFlags())
 	userID := FlagUserID(c.PersistentFlags())
 	streamID := FlagStreamID(c.PersistentFlags())
 	doFix := c.PersistentFlags().Bool("fix", false, "If set, update streamstate based on computed value.")
 
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
-		st, err := storage.NewStorage(ctx, *dbFilename, *selfURL, appMastodonScopes)
+		st, err := storage.NewStorage(ctx, *dbFilename)
 		if err != nil {
 			return err
 		}
