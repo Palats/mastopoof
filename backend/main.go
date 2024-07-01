@@ -252,22 +252,12 @@ func cmdTestServe() *cobra.Command {
 		ctx := cmd.Context()
 
 		serverAddr := fmt.Sprintf("http://localhost:%d", *port)
-		parsedSelfURL, err := url.Parse(*selfURL)
-		if err != nil {
-			return fmt.Errorf("unable to parse self URL %q: %w", *selfURL, err)
-		}
-		appRefInfo := server.NewAppRegInfo(serverAddr, parsedSelfURL, server.AppMastodonScopes)
 
 		st, err := storage.NewStorage(ctx, ":memory:")
 		if err != nil {
 			return err
 		}
 		defer st.Close()
-
-		_, err = st.CreateAppRegState(ctx, nil, appRefInfo)
-		if err != nil {
-			return fmt.Errorf("unable to create server state: %w", err)
-		}
 
 		userState, _, _, err := st.CreateUser(ctx, nil, serverAddr, "1234", "testuser1")
 		if err != nil {

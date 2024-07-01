@@ -52,6 +52,41 @@ func NewAppRegInfo(serverAddr string, selfURL *url.URL, scopes string) *storage.
 	}
 }
 
+// RegisterApp register Mastopoof on the specified mastodon server, with the provided scopes and redirect URI.
+func RegisterApp(ctx context.Context, nfo *storage.AppRegInfo, client *http.Client) (*storage.AppRegState, error) {
+	// TODO: rate limiting to avoid abuse.
+	// TODO: garbage collection of unused ones.
+	// TODO: update redirect URIs as needed.
+
+	if client == nil {
+		client = http.DefaultClient
+	}
+	glog.Infof("Registering app on server %q", nfo.ServerAddr)
+	app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
+		// TODO: figure out if there is a way to have mastodon lib not require
+		// duplicate the client struct.
+		Client:       *client,
+		Server:       nfo.ServerAddr,
+		ClientName:   "mastopoof",
+		Scopes:       nfo.Scopes,
+		Website:      "https://github.com/Palats/mastopoof",
+		RedirectURIs: nfo.RedirectURI,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("unable to register app on server %s: %w", nfo.ServerAddr, err)
+	}
+
+	return &storage.AppRegState{
+		Key:          nfo.Key(),
+		ServerAddr:   nfo.ServerAddr,
+		Scopes:       nfo.Scopes,
+		RedirectURI:  nfo.RedirectURI,
+		ClientID:     app.ClientID,
+		ClientSecret: app.ClientSecret,
+		AuthURI:      app.AuthURI,
+	}, nil
+}
+
 func NewSessionManager(st *storage.Storage) *scs.SessionManager {
 	sessionManager := scs.New()
 	sessionManager.Store = st.NewSCSStore()
@@ -72,7 +107,7 @@ type Server struct {
 	scopes         string
 	// URL needed for authentication redirections.
 	selfURL *url.URL
-	client  http.Client
+	client  *http.Client
 }
 
 func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode string, autoLogin storage.UID, scopes string, selfURL *url.URL) *Server {
@@ -83,6 +118,7 @@ func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode str
 		autoLogin:      autoLogin,
 		scopes:         scopes,
 		selfURL:        selfURL,
+		client:         http.DefaultClient,
 	}
 	return s
 }
@@ -131,8 +167,42 @@ func (s *Server) verifyStID(ctx context.Context, stid storage.StID) (*storage.Us
 	return userState, nil
 }
 
-func (s *Server) getAppRegInfo(serverAddr string) *storage.AppRegInfo {
-	return NewAppRegInfo(serverAddr, s.selfURL, s.scopes)
+func (s *Server) newAppRegState(ctx context.Context, serverAddr string) (*storage.AppRegState, error) {
+	appRegInfo := NewAppRegInfo(serverAddr, s.selfURL, s.scopes)
+	var appRegState *storage.AppRegState
+	err := s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
+		var err error
+		appRegState, err = s.st.AppRegState(ctx, txn, appRegInfo)
+		if errors.Is(err, storage.ErrNotFound) {
+			glog.Infof("Creating server state for %q", appRegInfo.ServerAddr)
+			appRegState, err = RegisterApp(ctx, appRegInfo, s.client)
+			if err != nil {
+				return err
+			}
+			// RegisterApp does not persists it, don't forget to do it.
+			if err := s.st.CreateAppRegState(ctx, txn, appRegState); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+		return nil
+	})
+	return appRegState, err
+}
+
+func (s *Server) getMastodonClient(appRegState *storage.AppRegState, accessToken string) *mastodon.Client {
+	// TODO: Re-use mastodon clients.
+	client := mastodon.NewClient(&mastodon.Config{
+		Server:       appRegState.ServerAddr,
+		ClientID:     appRegState.ClientID,
+		ClientSecret: appRegState.ClientSecret,
+		AccessToken:  accessToken,
+	})
+	// TODO: figure out if there is a way to have mastodon lib not require
+	// duplicate the client struct.
+	client.Client = *s.client
+	return client
 }
 
 func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest]) (*connect.Response[pb.LoginResponse], error) {
@@ -189,51 +259,8 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 	if err := validateAddress(serverAddr); err != nil {
 		return nil, err
 	}
-	appRegInfo := s.getAppRegInfo(serverAddr)
 
-	// TODO: split transactions to avoid remote requests in the middle.
-
-	var appRegState *storage.AppRegState
-	err := s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
-		var err error
-		appRegState, err = s.st.AppRegState(ctx, txn, appRegInfo)
-		if errors.Is(err, storage.ErrNotFound) {
-			glog.Infof("Creating server state for %q", serverAddr)
-			appRegState, err = s.st.CreateAppRegState(ctx, txn, appRegInfo)
-			if err != nil {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
-
-		// If the server has no registration info, do it now.
-		if appRegState.AuthURI == "" {
-			// TODO: rate limiting to avoid abuse.
-			// TODO: garbage collection of unused ones.
-			// TODO: update redirect URIs as needed.
-			glog.Infof("Registering app on server %q", serverAddr)
-			app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
-				Client:       s.client,
-				Server:       appRegState.ServerAddr,
-				ClientName:   "mastopoof",
-				Scopes:       s.scopes,
-				Website:      "https://github.com/Palats/mastopoof",
-				RedirectURIs: appRegState.RedirectURI,
-			})
-			if err != nil {
-				return fmt.Errorf("unable to register app on server %s: %w", appRegState.ServerAddr, err)
-			}
-			appRegState.ClientID = app.ClientID
-			appRegState.ClientSecret = app.ClientSecret
-			appRegState.AuthURI = app.AuthURI
-
-			if err := s.st.SetAppRegState(ctx, txn, appRegState); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	appRegState, err := s.newAppRegState(ctx, serverAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -270,49 +297,40 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	if err := validateAddress(serverAddr); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unable to validate address %s: %w", serverAddr, err))
 	}
-	appRegInfo := s.getAppRegInfo(serverAddr)
 
 	authCode := req.Msg.AuthCode
 	if authCode == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("missing authcode"))
 	}
 
+	// This can write to the DB. However, this is just about mastodon client registration, which is independent
+	// from the rest of the state - so even if something else fail here afterward, it is fine to keep
+	// around a successfull App registration.
+	appRegState, err := s.newAppRegState(ctx, serverAddr)
+	if err != nil {
+		return nil, err
+	}
+	client := s.getMastodonClient(appRegState, "" /* accessToken */)
+
+	err = client.AuthenticateToken(ctx, authCode, appRegState.RedirectURI)
+	if err != nil {
+		return nil, fmt.Errorf("unable to authenticate on server %s: %w", appRegState.ServerAddr, err)
+	}
+
+	// Now get info about the mastodon mastodonAccount so we can match it
+	// to a local mastodonAccount.
+	mastodonAccount, err := client.GetAccountCurrentUser(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failure whena calling Mastodon AccountCurrentUser: %w", err)
+	}
+	accountID := mastodonAccount.ID
+	if accountID == "" {
+		return nil, errors.New("missing account ID")
+	}
+	username := mastodonAccount.Username
+
 	var userState *storage.UserState
-
-	// TODO: split transactions to avoid remote requests in the middle.
-	err := s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
-		appRegState, err := s.st.AppRegState(ctx, txn, appRegInfo)
-		if err != nil {
-			// Do not create the server - it should have been created on a previous step. If it is not there,
-			// it is odd, so error out.
-			return fmt.Errorf("unable to load server state for addr %s: %w", serverAddr, err)
-		}
-
-		// TODO: Re-use mastodon clients.
-		client := mastodon.NewClient(&mastodon.Config{
-			Server:       appRegState.ServerAddr,
-			ClientID:     appRegState.ClientID,
-			ClientSecret: appRegState.ClientSecret,
-		})
-		client.Client = s.client
-
-		err = client.AuthenticateToken(ctx, authCode, appRegState.RedirectURI)
-		if err != nil {
-			return fmt.Errorf("unable to authenticate on server %s: %w", appRegState.ServerAddr, err)
-		}
-
-		// Now get info about the mastodon mastodonAccount so we can match it
-		// to a local mastodonAccount.
-		mastodonAccount, err := client.GetAccountCurrentUser(ctx)
-		if err != nil {
-			return fmt.Errorf("failure whena calling Mastodon AccountCurrentUser: %w", err)
-		}
-		accountID := mastodonAccount.ID
-		if accountID == "" {
-			return errors.New("missing account ID")
-		}
-		username := mastodonAccount.Username
-
+	err = s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
 		// Find the account state (Mastodon).
 		accountState, err := s.st.AccountStateByAccountID(ctx, txn, serverAddr, accountID)
 		if errors.Is(err, storage.ErrNotFound) {
@@ -491,7 +509,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	// reference when trying to inject in the DB the statuses - while avoiding
 	// having a transaction opened while fetching.
 	var accountState *storage.AccountState
-	var appRegState *storage.AppRegState
+
 	err := s.st.InTxnRO(ctx, func(ctx context.Context, txn storage.SQLReadOnly) error {
 		streamState, err := s.st.StreamState(ctx, txn, stid)
 		if err != nil {
@@ -504,25 +522,18 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		if err != nil {
 			return err
 		}
-		appRegInfo := s.getAppRegInfo(accountState.ServerAddr)
-		appRegState, err = s.st.AppRegState(ctx, txn, appRegInfo)
-		if err != nil {
-			return err
-		}
+
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: Re-use mastodon clients.
-	client := mastodon.NewClient(&mastodon.Config{
-		Server:       appRegState.ServerAddr,
-		ClientID:     appRegState.ClientID,
-		ClientSecret: appRegState.ClientSecret,
-		AccessToken:  accountState.AccessToken,
-	})
-	client.Client = s.client
+	appRegState, err := s.newAppRegState(ctx, accountState.ServerAddr)
+	if err != nil {
+		return nil, err
+	}
+	client := s.getMastodonClient(appRegState, accountState.AccessToken)
 
 	// We've got what we wanted from the DB, now we can fetch from Mastodon outside
 	// a transaction.
@@ -711,29 +722,20 @@ func (s *Server) SetStatus(ctx context.Context, req *connect.Request[pb.SetStatu
 	}
 
 	var accountState *storage.AccountState
-	var appRegState *storage.AppRegState
 	err = s.st.InTxnRO(ctx, func(ctx context.Context, txn storage.SQLReadOnly) error {
 		accountState, err = s.st.FirstAccountStateByUID(ctx, txn, uid)
-		if err != nil {
-			return err
-		}
-		appRegInfo := s.getAppRegInfo(accountState.ServerAddr)
-
-		appRegState, err = s.st.AppRegState(ctx, txn, appRegInfo)
 		if err != nil {
 			return err
 		}
 		return nil
 	})
 
-	// TODO: Re-use mastodon clients.
-	client := mastodon.NewClient(&mastodon.Config{
-		Server:       appRegState.ServerAddr,
-		ClientID:     appRegState.ClientID,
-		ClientSecret: appRegState.ClientSecret,
-		AccessToken:  accountState.AccessToken,
-	})
-	client.Client = s.client
+	appRegState, err := s.newAppRegState(ctx, accountState.ServerAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	client := s.getMastodonClient(appRegState, accountState.AccessToken)
 
 	var status *mastodon.Status
 	switch action := req.Msg.GetAction(); action {

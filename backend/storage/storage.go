@@ -340,24 +340,22 @@ func (st *Storage) CreateUser(ctx context.Context, txn SQLReadWrite, serverAddr 
 }
 
 // CreateAppRegState creates a server with the given address.
-func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLReadWrite, nfo *AppRegInfo) (*AppRegState, error) {
-	appRegState := &AppRegState{
-		Key:         nfo.Key(),
-		ServerAddr:  nfo.ServerAddr,
-		Scopes:      nfo.Scopes,
-		RedirectURI: nfo.RedirectURI,
+func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLReadWrite, src *AppRegState) error {
+	if src.Key == "" {
+		// Sanity checking - if it fails, it means there is a coding error.
+		return fmt.Errorf("something's quite wrong: missing key on provided app registration info for server %q", src.ServerAddr)
 	}
 
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		// Do not use SetAppRegState(), as it will not fail if that already exists.
 		stmt := `INSERT INTO appregstate(key, state) VALUES(?, ?)`
-		_, err := txn.ExecContext(ctx, stmt, appRegState.Key, appRegState)
+		_, err := txn.ExecContext(ctx, stmt, src.Key, src)
 		return err
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return appRegState, nil
+	return nil
 }
 
 // AppRegState returns the current AppRegState for a given, well, server.
@@ -377,14 +375,6 @@ func (st *Storage) AppRegState(ctx context.Context, txn SQLReadOnly, nfo *AppReg
 		return nil, err
 	}
 	return as, nil
-}
-
-func (st *Storage) SetAppRegState(ctx context.Context, txn SQLReadWrite, ss *AppRegState) error {
-	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
-		stmt := `UPDATE appregstate SET state = ? WHERE key = ?`
-		_, err := txn.ExecContext(ctx, stmt, ss, ss.Key)
-		return err
-	})
 }
 
 // CreateAccountState creates a new account for the given UID and assign it an ASID.

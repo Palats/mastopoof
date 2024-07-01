@@ -99,7 +99,7 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 	env.httpServer = httptest.NewTLSServer(&testserver.LoggingHandler{T: env.t, Handler: mux})
 	env.addr = env.httpServer.URL
 	env.rpcAddr = env.httpServer.URL + "/_rpc/mastopoof.Mastopoof/"
-	mastopoof.client = *env.httpServer.Client()
+	mastopoof.client = env.httpServer.Client()
 
 	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
 	if err != nil {
