@@ -76,8 +76,6 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 	env.t.Helper()
 	mux := http.NewServeMux()
 
-	scopes := "read"
-
 	// Create Mastodon server.
 	env.mastodonServer = testserver.New()
 	for i := 0; i < int(env.StatusesCount); i++ {
@@ -87,19 +85,20 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 	}
 	env.mastodonServer.RegisterOn(mux)
 
+	// Create the http server
+	env.httpServer = httptest.NewTLSServer(&testserver.LoggingHandler{T: env.t, Handler: mux})
+	env.addr = env.httpServer.URL
+	env.rpcAddr = env.httpServer.URL + "/_rpc/mastopoof.Mastopoof/"
+
 	// Creates mastopoof server.
 	st, err := storage.NewStorage(ctx, "file::memory:?cache=shared")
 	if err != nil {
 		env.t.Fatal(err)
 	}
-	mastopoof := New(st, NewSessionManager(st), "invite1", 0 /* autoLogin */, scopes, nil)
+	appRegistry := NewAppRegistry(st)
+	appRegistry.client = env.httpServer.Client()
+	mastopoof := New(st, NewSessionManager(st), "invite1", 0 /* autoLogin */, nil, appRegistry)
 	mastopoof.RegisterOn(mux)
-
-	// Create the http server
-	env.httpServer = httptest.NewTLSServer(&testserver.LoggingHandler{T: env.t, Handler: mux})
-	env.addr = env.httpServer.URL
-	env.rpcAddr = env.httpServer.URL + "/_rpc/mastopoof.Mastopoof/"
-	mastopoof.client = env.httpServer.Client()
 
 	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
 	if err != nil {

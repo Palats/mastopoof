@@ -47,9 +47,10 @@ func CmdMe(ctx context.Context, st *storage.Storage, uid storage.UID, showAccoun
 	fmt.Println("# Server address:", accountState.ServerAddr)
 	fmt.Println("# Last home status ID:", accountState.LastHomeStatusID)
 
-	appRegInfo := server.NewAppRegInfo(accountState.ServerAddr, nil, server.AppMastodonScopes)
+	appRegistry := server.NewAppRegistry(st)
+
 	// TODO: That should pick up the first available registration for that server, ignoring (most) scopes and redirection.
-	appRegState, err := server.RegisterApp(ctx, appRegInfo, nil)
+	appRegState, err := appRegistry.Register(ctx, accountState.ServerAddr, nil)
 	if err != nil {
 		return err
 	}

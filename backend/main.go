@@ -85,7 +85,8 @@ func getMux(st *storage.Storage, autoLogin storage.UID, inviteCode string, insec
 		return nil, fmt.Errorf("unable to parse self URL %q: %w", selfURL, err)
 	}
 
-	s := server.New(st, sessionManager, inviteCode, autoLogin, server.AppMastodonScopes, u)
+	appRegistry := server.NewAppRegistry(st)
+	s := server.New(st, sessionManager, inviteCode, autoLogin, u, appRegistry)
 	s.RegisterOn(mux)
 	return mux, nil
 }

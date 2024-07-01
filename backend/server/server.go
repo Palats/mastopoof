@@ -30,8 +30,60 @@ func validateAddress(addr string) error {
 	return nil
 }
 
-// NewAppRegInfo finds suitable app registration key info based on the provided parsed self URL.
-func NewAppRegInfo(serverAddr string, selfURL *url.URL, scopes string) *storage.AppRegInfo {
+// AppRegistry manages app registration on Mastodon servers
+// mastodon clients.
+type AppRegistry struct {
+	st     *storage.Storage
+	client *http.Client
+}
+
+func NewAppRegistry(st *storage.Storage) *AppRegistry {
+	return &AppRegistry{
+		st:     st,
+		client: http.DefaultClient,
+	}
+}
+
+func (appreg *AppRegistry) Register(ctx context.Context, serverAddr string, selfURL *url.URL) (*storage.AppRegState, error) {
+	appRegInfo := appreg.appRegInfo(serverAddr, selfURL)
+
+	var appRegState *storage.AppRegState
+	err := appreg.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
+		var err error
+		appRegState, err = appreg.st.AppRegState(ctx, txn, appRegInfo)
+		if errors.Is(err, storage.ErrNotFound) {
+			glog.Infof("Creating server state for %q", appRegInfo.ServerAddr)
+			appRegState, err = appreg.callRegister(ctx, appRegInfo)
+			if err != nil {
+				return err
+			}
+			// RegisterApp does not persists it, don't forget to do it.
+			if err := appreg.st.CreateAppRegState(ctx, txn, appRegState); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+		return nil
+	})
+	return appRegState, err
+}
+
+func (appreg *AppRegistry) MastodonClient(appRegState *storage.AppRegState, accessToken string) *mastodon.Client {
+	// TODO: Re-use mastodon clients.
+	client := mastodon.NewClient(&mastodon.Config{
+		Server:       appRegState.ServerAddr,
+		ClientID:     appRegState.ClientID,
+		ClientSecret: appRegState.ClientSecret,
+		AccessToken:  accessToken,
+	})
+	// TODO: figure out if there is a way to have mastodon lib not require
+	// duplicate the client struct.
+	client.Client = *appreg.client
+	return client
+}
+
+func (appreg *AppRegistry) appRegInfo(serverAddr string, selfURL *url.URL) *storage.AppRegInfo {
 	redirectURI := "urn:ietf:wg:oauth:2.0:oob"
 
 	if selfURL != nil {
@@ -48,24 +100,21 @@ func NewAppRegInfo(serverAddr string, selfURL *url.URL, scopes string) *storage.
 	return &storage.AppRegInfo{
 		ServerAddr:  serverAddr,
 		RedirectURI: redirectURI,
-		Scopes:      scopes,
+		Scopes:      AppMastodonScopes,
 	}
 }
 
-// RegisterApp register Mastopoof on the specified mastodon server, with the provided scopes and redirect URI.
-func RegisterApp(ctx context.Context, nfo *storage.AppRegInfo, client *http.Client) (*storage.AppRegState, error) {
+// callRegister register Mastopoof on the specified mastodon server, with the provided scopes and redirect URI.
+func (appreg *AppRegistry) callRegister(ctx context.Context, nfo *storage.AppRegInfo) (*storage.AppRegState, error) {
 	// TODO: rate limiting to avoid abuse.
 	// TODO: garbage collection of unused ones.
 	// TODO: update redirect URIs as needed.
 
-	if client == nil {
-		client = http.DefaultClient
-	}
 	glog.Infof("Registering app on server %q", nfo.ServerAddr)
 	app, err := mastodon.RegisterApp(ctx, &mastodon.AppConfig{
 		// TODO: figure out if there is a way to have mastodon lib not require
 		// duplicate the client struct.
-		Client:       *client,
+		Client:       *appreg.client,
 		Server:       nfo.ServerAddr,
 		ClientName:   "mastopoof",
 		Scopes:       nfo.Scopes,
@@ -104,21 +153,18 @@ type Server struct {
 	inviteCode     string
 	autoLogin      storage.UID
 	sessionManager *scs.SessionManager
-	scopes         string
-	// URL needed for authentication redirections.
-	selfURL *url.URL
-	client  *http.Client
+	selfURL        *url.URL
+	appRegistry    *AppRegistry
 }
 
-func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode string, autoLogin storage.UID, scopes string, selfURL *url.URL) *Server {
+func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode string, autoLogin storage.UID, selfURL *url.URL, appRegistry *AppRegistry) *Server {
 	s := &Server{
 		st:             st,
 		sessionManager: sessionManager,
 		inviteCode:     inviteCode,
 		autoLogin:      autoLogin,
-		scopes:         scopes,
 		selfURL:        selfURL,
-		client:         http.DefaultClient,
+		appRegistry:    appRegistry,
 	}
 	return s
 }
@@ -165,44 +211,6 @@ func (s *Server) verifyStID(ctx context.Context, stid storage.StID) (*storage.Us
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("stream access denied"))
 	}
 	return userState, nil
-}
-
-func (s *Server) newAppRegState(ctx context.Context, serverAddr string) (*storage.AppRegState, error) {
-	appRegInfo := NewAppRegInfo(serverAddr, s.selfURL, s.scopes)
-	var appRegState *storage.AppRegState
-	err := s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
-		var err error
-		appRegState, err = s.st.AppRegState(ctx, txn, appRegInfo)
-		if errors.Is(err, storage.ErrNotFound) {
-			glog.Infof("Creating server state for %q", appRegInfo.ServerAddr)
-			appRegState, err = RegisterApp(ctx, appRegInfo, s.client)
-			if err != nil {
-				return err
-			}
-			// RegisterApp does not persists it, don't forget to do it.
-			if err := s.st.CreateAppRegState(ctx, txn, appRegState); err != nil {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
-		return nil
-	})
-	return appRegState, err
-}
-
-func (s *Server) getMastodonClient(appRegState *storage.AppRegState, accessToken string) *mastodon.Client {
-	// TODO: Re-use mastodon clients.
-	client := mastodon.NewClient(&mastodon.Config{
-		Server:       appRegState.ServerAddr,
-		ClientID:     appRegState.ClientID,
-		ClientSecret: appRegState.ClientSecret,
-		AccessToken:  accessToken,
-	})
-	// TODO: figure out if there is a way to have mastodon lib not require
-	// duplicate the client struct.
-	client.Client = *s.client
-	return client
 }
 
 func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest]) (*connect.Response[pb.LoginResponse], error) {
@@ -260,7 +268,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 		return nil, err
 	}
 
-	appRegState, err := s.newAppRegState(ctx, serverAddr)
+	appRegState, err := s.appRegistry.Register(ctx, serverAddr, s.selfURL)
 	if err != nil {
 		return nil, err
 	}
@@ -306,11 +314,11 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	// This can write to the DB. However, this is just about mastodon client registration, which is independent
 	// from the rest of the state - so even if something else fail here afterward, it is fine to keep
 	// around a successfull App registration.
-	appRegState, err := s.newAppRegState(ctx, serverAddr)
+	appRegState, err := s.appRegistry.Register(ctx, serverAddr, s.selfURL)
 	if err != nil {
 		return nil, err
 	}
-	client := s.getMastodonClient(appRegState, "" /* accessToken */)
+	client := s.appRegistry.MastodonClient(appRegState, "" /* accessToken */)
 
 	err = client.AuthenticateToken(ctx, authCode, appRegState.RedirectURI)
 	if err != nil {
@@ -529,11 +537,11 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		return nil, err
 	}
 
-	appRegState, err := s.newAppRegState(ctx, accountState.ServerAddr)
+	appRegState, err := s.appRegistry.Register(ctx, accountState.ServerAddr, s.selfURL)
 	if err != nil {
 		return nil, err
 	}
-	client := s.getMastodonClient(appRegState, accountState.AccessToken)
+	client := s.appRegistry.MastodonClient(appRegState, accountState.AccessToken)
 
 	// We've got what we wanted from the DB, now we can fetch from Mastodon outside
 	// a transaction.
@@ -730,12 +738,12 @@ func (s *Server) SetStatus(ctx context.Context, req *connect.Request[pb.SetStatu
 		return nil
 	})
 
-	appRegState, err := s.newAppRegState(ctx, accountState.ServerAddr)
+	appRegState, err := s.appRegistry.Register(ctx, accountState.ServerAddr, s.selfURL)
 	if err != nil {
 		return nil, err
 	}
 
-	client := s.getMastodonClient(appRegState, accountState.AccessToken)
+	client := s.appRegistry.MastodonClient(appRegState, accountState.AccessToken)
 
 	var status *mastodon.Status
 	switch action := req.Msg.GetAction(); action {
