@@ -127,8 +127,6 @@ use ../go-mastodon/
 
 ## Architecture & Notes
 
-TODO list: https://docs.google.com/document/d/1kZr_tJOGbRPnZA6SY0Qi90IKAWfBZL69N-KKmfTGpcs/edit?usp=sharing
-
 ### Terminology
 
 - User: usually a Mastopoof user, as opposed to a Mastodon user.
