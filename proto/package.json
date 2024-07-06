@@ -5,8 +5,8 @@
     "gen": "buf generate"
   },
   "dependencies": {
-    "@bufbuild/buf": "1.31.0",
-    "@bufbuild/protobuf": "1.9.0",
+    "@bufbuild/buf": "1.34.0",
+    "@bufbuild/protobuf": "1.10.0",
     "@connectrpc/connect": "1.4.0",
     "@connectrpc/connect-web": "1.4.0"
   }
