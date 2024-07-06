@@ -1,6 +1,6 @@
 module github.com/Palats/mastopoof/backend
 
-go 1.21.5
+go 1.22
 
 require (
 	connectrpc.com/connect v1.16.2
