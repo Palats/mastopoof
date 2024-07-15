@@ -1,6 +1,5 @@
 // Manages the connection from the browser to the Go server.
-import { ConnectError, createPromiseClient, PromiseClient, Code } from "@connectrpc/connect";
-import { createConnectTransport } from "@connectrpc/connect-web";
+import { ConnectError, createPromiseClient, PromiseClient, Code, Transport } from "@connectrpc/connect";
 import { Mastopoof } from "mastopoof-proto/gen/mastopoof/mastopoof_connect";
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import * as protobuf from "@bufbuild/protobuf";
@@ -41,11 +40,7 @@ export class Backend {
 
   private client: PromiseClient<typeof Mastopoof>;
 
-  constructor() {
-    const transport = createConnectTransport({
-      baseUrl: "/_rpc/",
-    });
-
+  constructor(transport: Transport) {
     this.client = createPromiseClient(Mastopoof, transport);
     this.onEvent = new EventTarget();
   }

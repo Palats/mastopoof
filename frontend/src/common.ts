@@ -3,6 +3,7 @@ import { unsafeCSS } from 'lit'
 import { Backend } from "./backend";
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import * as mastodon from "./mastodon";
+import { createConnectTransport } from "@connectrpc/connect-web";
 
 import normalizeCSSstr from "./normalize.css?inline";
 import baseCSSstr from "./base.css?inline";
@@ -21,7 +22,13 @@ console.log("Display timezone:", displayTimezone);
 
 // Create a global backend access.
 // TODO: use context https://lit.dev/docs/data/context/
-export const backend = new Backend();
+export let backend = new Backend(createConnectTransport({
+  baseUrl: "/_rpc/",
+}));
+
+export function setBackend(b: Backend) {
+  backend = b;
+}
 
 export const sharedCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
 

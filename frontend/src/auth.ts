@@ -42,12 +42,14 @@ export class MastLogin extends LitElement {
     if (!this.authURI) {
       return html`
         <div>
-          <label for="server-addr">Mastodon server address (must start with https)</label>
-          <input type="url" id="server-addr" ${ref(this.serverAddrRef)} value="https://mastodon.social" required autofocus></input>
-          <label for="invite-code">Invite code</label>
-          <input type="text" id="invite-code" ${ref(this.inviteCodeRef)} value=""></input>
-
-          <button @click=${this.startLogin}>Auth</button>
+          <label>
+            Mastodon server address (must start with https)
+            <input id="server-addr" type="url" ${ref(this.serverAddrRef)} value="https://mastodon.social" required autofocus></input>
+            </label>
+          <label>Invite code
+            <input type="text" ${ref(this.inviteCodeRef)} value=""></input>
+          </label>
+          <button id="do-auth" @click=${this.startLogin}>Auth</button>
         </div>
       `;
     }
