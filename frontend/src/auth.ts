@@ -47,7 +47,7 @@ export class MastLogin extends LitElement {
             <input id="server-addr" type="url" ${ref(this.serverAddrRef)} value="https://mastodon.social" required autofocus></input>
             </label>
           <label>Invite code
-            <input type="text" ${ref(this.inviteCodeRef)} value=""></input>
+            <input id="invite-code" type="text" ${ref(this.inviteCodeRef)} value=""></input>
           </label>
           <button id="do-auth" @click=${this.startLogin}>Auth</button>
         </div>
