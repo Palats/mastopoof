@@ -23,7 +23,12 @@ export class MastLogin extends LitElement {
       return;
     }
     const inviteCode = this.inviteCodeRef.value?.value;
-    this.authURI = await common.backend.authorize(serverAddr, inviteCode);
+    try {
+      this.authURI = await common.backend.authorize(serverAddr, inviteCode);
+    } catch (e) {
+      console.error("failed authorize:", e);
+      return;
+    }
     this.serverAddr = serverAddr;
     console.log("authURI", this.authURI);
   }

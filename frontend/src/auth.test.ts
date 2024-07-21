@@ -2,7 +2,7 @@ import { expect } from '@esm-bundle/chai';
 import { html, render } from 'lit';
 import './auth';
 import * as common from "./common";
-import { createRouterTransport } from '@connectrpc/connect';
+import { Code, ConnectError, createRouterTransport } from '@connectrpc/connect';
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import { Mastopoof } from "mastopoof-proto/gen/mastopoof/mastopoof_connect";
 import { Backend } from "./backend";
@@ -24,6 +24,7 @@ it('basic element construction test', async () => {
 type RPCReqInfo<ReqT, RespT> = {
   req: ReqT;
   respond: (resp: RespT) => void;
+  fail: (err: Error) => void;
 }
 
 class RPCIntercept<ReqT extends Message, RespT extends Message> {
@@ -36,13 +37,19 @@ class RPCIntercept<ReqT extends Message, RespT extends Message> {
   }
 
   async dispatch(req: ReqT) {
-    return await new Promise<RespT>(resolve => {
+    return await new Promise<RespT>((resolve, reject) => {
       if (!this.reqResolve) {
         const msg = `RPC request received, but nothing is expecting it; request=${req.toJsonString()}`;
         console.error(msg);
         throw new Error(msg);
       }
-      this.reqResolve({ req: req, respond: resolve });
+      this.reqResolve({
+        req: req,
+        respond: resolve,
+        fail: (err: Error) => {
+          reject(err);
+        },
+      });
     });
   }
 }
@@ -78,20 +85,38 @@ it('calls authorize', async () => {
   const root = document.body.querySelector("mast-login")!;
   const elt = root.shadowRoot!;
 
+  // Set the target server and invite code.
+  // First we start with an invalid invite code and change it afterward.
   elt.querySelector("#server-addr")!.setAttribute("value", "https://fakeserver1");
-  elt.querySelector("#invite-code")!.setAttribute("value", "invite1");
+  elt.querySelector("#invite-code")!.setAttribute("value", "invalid invite");
 
+  // Ask for authentication.
   const button = elt.querySelector("#do-auth")! as HTMLButtonElement;
   button.click();
 
-  // Check the authorize request
-  const authReq = await server.authorize.expect();
-  expect(authReq.req.serverAddr).to.eq("https://fakeserver1");
-  authReq.respond(new pb.AuthorizeResponse({
+  // Mimick a failed code response.
+  // The RPC returns a Permission Denied error.
+  const authReq1 = await server.authorize.expect();
+  expect(authReq1.req.serverAddr).to.eq("https://fakeserver1");
+  authReq1.fail(new ConnectError("nopnop", Code.PermissionDenied));
+
+  // Try again with correct invite code.
+  elt.querySelector("#invite-code")!.setAttribute("value", "invite1");
+  // Ask for authentication again.
+  button.click();
+
+  const auth2Req = await server.authorize.expect();
+  expect(auth2Req.req.serverAddr).to.eq("https://fakeserver1");
+  auth2Req.respond(new pb.AuthorizeResponse({
     authorizeAddr: "https://authaddr",
   }));
 
+  // UI should now display how to get to the Mastodon auth.
+  // Maybe it will be redirect at some point, but not for now.
   await waitFor(() => {
-    expect(elt.innerHTML).to.contain("Mastodon Auth");
-  })
+    expect(elt.innerHTML).to.contain("https://fakeserver1");
+  });
+
+  // At this point, user will go to the Mastodon oauth flow
+  // and be redirected to a backend URL - no visible from the UI.
 });
