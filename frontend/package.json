@@ -14,18 +14,17 @@
     "@bufbuild/protobuf": "1.10.0",
     "@connectrpc/connect": "1.4.0",
     "@connectrpc/connect-web": "1.4.0",
-    "@lit-labs/virtualizer": "2.0.13",
-    "dayjs": "1.11.11",
-    "lit": "3.1.4",
+    "dayjs": "1.11.13",
+    "lit": "3.2.0",
     "mastopoof-proto": "file:../proto"
   },
   "devDependencies": {
     "@esm-bundle/chai": "4.3.4-fix.0",
     "@remcovaes/web-test-runner-vite-plugin": "1.2.1",
-    "@testing-library/dom": "^10.3.1",
-    "@types/jest": "^29.5.12",
-    "@web/test-runner": "0.18.2",
-    "typescript": "5.5.3",
-    "vite": "5.3.3"
+    "@testing-library/dom": "10.4.0",
+    "@types/jest": "29.5.12",
+    "@web/test-runner": "0.18.3",
+    "typescript": "5.5.4",
+    "vite": "5.4.3"
   }
 }
