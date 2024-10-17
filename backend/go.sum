@@ -1,7 +1,7 @@
 connectrpc.com/connect v1.16.2 h1:ybd6y+ls7GOlb7Bh5C8+ghA6SvCBajHwxssO2CGFjqE=
 connectrpc.com/connect v1.16.2/go.mod h1:n2kgwskMHXC+lVqb18wngEpF95ldBHXjZYJussz5FRc=
-github.com/Palats/go-mastodon v0.0.0-20240526200154-30aa43ddb57b h1:HVgX9CgBKe0b4MulTzXl99gbdooseGxTgrwqI5wlo5M=
-github.com/Palats/go-mastodon v0.0.0-20240526200154-30aa43ddb57b/go.mod h1:8YkqetHoAVEktRkK15qeiv/aaIMfJ/Gc89etisPZtHU=
+github.com/Palats/go-mastodon v0.0.0-20241017212742-a122ab117df7 h1:znzoIO/Ds6LNgFwvDuv5TkT0QDVGgZnLCEbhQxQRjkI=
+github.com/Palats/go-mastodon v0.0.0-20241017212742-a122ab117df7/go.mod h1:8YkqetHoAVEktRkK15qeiv/aaIMfJ/Gc89etisPZtHU=
 github.com/alexedwards/scs/sqlite3store v0.0.0-20240316134038-7e11d57e8885 h1:+DCxWg/ojncqS+TGAuRUoV7OfG/S4doh0pcpAwEcow0=
 github.com/alexedwards/scs/sqlite3store v0.0.0-20240316134038-7e11d57e8885/go.mod h1:Iyk7S76cxGaiEX/mSYmTZzYehp4KfyylcLaV3OnToss=
 github.com/alexedwards/scs/v2 v2.8.0 h1:h31yUYoycPuL0zt14c0gd+oqxfRwIj6SOjHdKRZxhEw=
