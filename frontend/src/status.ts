@@ -38,7 +38,7 @@ function qualifiedAccount(account: mastodon.Account): string {
 
 function localStatusURL(item: StatusItem): string {
   const s = item.status.reblog ? item.status.reblog : item.status;
-  return `${item.account.serverAddr}/@${s.account.acct}/${item.status.id}`;
+  return `${item.account.serverAddr}/@${s.account.acct}/${s.id}`;
 }
 
 /**
