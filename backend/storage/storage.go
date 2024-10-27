@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/alexedwards/scs/sqlite3store"
 	"github.com/golang/glog"
@@ -19,11 +20,28 @@ import (
 )
 
 var (
-	txnProcessed = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "mastopoof_txn_processed",
+	txnCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mastopoof_txn_counter",
 		Help: "Storage transactions",
 	}, []string{"readonly"})
+
+	/*	actionCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mastopoof_storage_action_count",
+	}, []string{"action", "code"})*/
+
+	actionLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "mastopoof_storage_action_seconds",
+		Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+	}, []string{"action", "code"})
 )
+
+func recordAction(name string) func(error) {
+	start := time.Now()
+	return func(err error) {
+		d := time.Since(start)
+		actionLatency.With(prometheus.Labels{"action": name, "code": "-1"}).Observe(d.Seconds())
+	}
+}
 
 type SQLReadOnly interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
@@ -228,7 +246,7 @@ func (st *Storage) inTxnRO(ctx context.Context, txn SQLReadOnly, f func(ctx cont
 		return f(ctx, txn)
 	}
 
-	txnProcessed.With(prometheus.Labels{"readonly": "1"}).Inc()
+	txnCounter.With(prometheus.Labels{"readonly": "1"}).Inc()
 
 	localTxn, err := st.roDB.BeginTx(ctx, nil)
 	if err != nil {
@@ -253,7 +271,7 @@ func (st *Storage) inTxnRW(ctx context.Context, txn SQLReadWrite, f func(ctx con
 		return f(ctx, txn)
 	}
 
-	txnProcessed.With(prometheus.Labels{"readonly": "0"}).Inc()
+	txnCounter.With(prometheus.Labels{"readonly": "0"}).Inc()
 
 	localTxn, err := st.rwDB.BeginTx(ctx, nil)
 	if err != nil {
@@ -276,7 +294,8 @@ type ListUserEntry struct {
 	AccountState *AccountState
 }
 
-func (st *Storage) ListUsers(ctx context.Context) ([]*ListUserEntry, error) {
+func (st *Storage) ListUsers(ctx context.Context) (_ []*ListUserEntry, retErr error) {
+	defer recordAction("list-users")(retErr)
 	resp := []*ListUserEntry{}
 	err := st.InTxnRO(ctx, func(ctx context.Context, txn SQLReadOnly) error {
 		rows, err := txn.QueryContext(ctx, `
@@ -321,7 +340,8 @@ func (st *Storage) ListUsers(ctx context.Context) ([]*ListUserEntry, error) {
 }
 
 // CreateUser creates a new mastopoof user, with all the necessary bit and pieces.
-func (st *Storage) CreateUser(ctx context.Context, txn SQLReadWrite, serverAddr string, accountID mastodon.ID, username string) (*UserState, *AccountState, *StreamState, error) {
+func (st *Storage) CreateUser(ctx context.Context, txn SQLReadWrite, serverAddr string, accountID mastodon.ID, username string) (_ *UserState, _ *AccountState, _ *StreamState, retErr error) {
+	defer recordAction("creat-euser")(retErr)
 	var userState *UserState
 	var accountState *AccountState
 	var streamState *StreamState
@@ -353,7 +373,8 @@ func (st *Storage) CreateUser(ctx context.Context, txn SQLReadWrite, serverAddr 
 }
 
 // CreateAppRegState creates a server with the given address.
-func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLReadWrite, src *AppRegState) error {
+func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLReadWrite, src *AppRegState) (retErr error) {
+	defer recordAction("create-app-reg-state")(retErr)
 	if src.Key == "" {
 		// Sanity checking - if it fails, it means there is a coding error.
 		return fmt.Errorf("something's quite wrong: missing key on provided app registration info for server %q", src.ServerAddr)
@@ -373,7 +394,8 @@ func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLReadWrite, src 
 
 // AppRegState returns the current AppRegState for a given, well, server.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) AppRegState(ctx context.Context, txn SQLReadOnly, nfo *AppRegInfo) (*AppRegState, error) {
+func (st *Storage) AppRegState(ctx context.Context, txn SQLReadOnly, nfo *AppRegInfo) (retARS *AppRegState, retErr error) {
+	defer recordAction("app-reg-state")(retErr)
 	as := &AppRegState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		key := nfo.Key()
@@ -391,7 +413,8 @@ func (st *Storage) AppRegState(ctx context.Context, txn SQLReadOnly, nfo *AppReg
 }
 
 // CreateAccountState creates a new account for the given UID and assign it an ASID.
-func (st *Storage) CreateAccountState(ctx context.Context, txn SQLReadWrite, uid UID, serverAddr string, accountID mastodon.ID, username string) (*AccountState, error) {
+func (st *Storage) CreateAccountState(ctx context.Context, txn SQLReadWrite, uid UID, serverAddr string, accountID mastodon.ID, username string) (_ *AccountState, retErr error) {
+	defer recordAction("create-account-state")(retErr)
 	var as *AccountState
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		var asid sql.Null[ASID]
@@ -418,7 +441,8 @@ func (st *Storage) CreateAccountState(ctx context.Context, txn SQLReadWrite, uid
 
 // FirstAccountStateByUID gets a the mastodon account of a mastopoof user identified by its UID.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) FirstAccountStateByUID(ctx context.Context, txn SQLReadOnly, uid UID) (*AccountState, error) {
+func (st *Storage) FirstAccountStateByUID(ctx context.Context, txn SQLReadOnly, uid UID) (_ *AccountState, retErr error) {
+	defer recordAction("first-account-state-by-uid")(retErr)
 	as := &AccountState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		err := txn.QueryRowContext(ctx, "SELECT state FROM accountstate WHERE uid=?", uid).Scan(as)
@@ -434,7 +458,8 @@ func (st *Storage) FirstAccountStateByUID(ctx context.Context, txn SQLReadOnly, 
 }
 
 // AllAccountStateByUID returns all the Mastodon accounts of that one Mastopoof user.
-func (st *Storage) AllAccountStateByUID(ctx context.Context, txn SQLReadOnly, uid UID) ([]*AccountState, error) {
+func (st *Storage) AllAccountStateByUID(ctx context.Context, txn SQLReadOnly, uid UID) (_ []*AccountState, retErr error) {
+	defer recordAction("all-account-state-by-uid")(retErr)
 	var accountStates []*AccountState
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		rows, err := txn.QueryContext(ctx, `
@@ -470,7 +495,8 @@ func (st *Storage) AllAccountStateByUID(ctx context.Context, txn SQLReadOnly, ui
 
 // AccountStateByAccountID gets a the mastodon account based on server address and account ID on that server.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) AccountStateByAccountID(ctx context.Context, txn SQLReadOnly, serverAddr string, accountID mastodon.ID) (*AccountState, error) {
+func (st *Storage) AccountStateByAccountID(ctx context.Context, txn SQLReadOnly, serverAddr string, accountID mastodon.ID) (_ *AccountState, retErr error) {
+	defer recordAction("account-state-by-account-id")(retErr)
 	as := &AccountState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		err := txn.QueryRowContext(ctx, `
@@ -491,7 +517,8 @@ func (st *Storage) AccountStateByAccountID(ctx context.Context, txn SQLReadOnly,
 	return as, nil
 }
 
-func (st *Storage) SetAccountState(ctx context.Context, txn SQLReadWrite, as *AccountState) error {
+func (st *Storage) SetAccountState(ctx context.Context, txn SQLReadWrite, as *AccountState) (retErr error) {
+	defer recordAction("set-account-state")(retErr)
 	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		// TODO: make SetAccountState support only update and verify primary key existin for ON CONFLICT.
 		stmt := `INSERT INTO accountstate(asid, state, uid) VALUES(?, ?, ?) ON CONFLICT(asid) DO UPDATE SET state = excluded.state`
@@ -501,7 +528,8 @@ func (st *Storage) SetAccountState(ctx context.Context, txn SQLReadWrite, as *Ac
 }
 
 // CreateUserState creates a new account and assign it a UID.
-func (st *Storage) CreateUserState(ctx context.Context, txn SQLReadWrite) (*UserState, error) {
+func (st *Storage) CreateUserState(ctx context.Context, txn SQLReadWrite) (_ *UserState, retErr error) {
+	defer recordAction("create-user-state")(retErr)
 	userState := &UserState{}
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		var uid sql.Null[UID]
@@ -522,7 +550,8 @@ func (st *Storage) CreateUserState(ctx context.Context, txn SQLReadWrite) (*User
 
 // UserState returns information about a given mastopoof user.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) UserState(ctx context.Context, txn SQLReadOnly, uid UID) (*UserState, error) {
+func (st *Storage) UserState(ctx context.Context, txn SQLReadOnly, uid UID) (_ *UserState, retErr error) {
+	defer recordAction("user-state")(retErr)
 	userState := &UserState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		err := txn.QueryRowContext(ctx, "SELECT state FROM userstate WHERE uid = ?", uid).Scan(&userState)
@@ -537,7 +566,8 @@ func (st *Storage) UserState(ctx context.Context, txn SQLReadOnly, uid UID) (*Us
 	return userState, nil
 }
 
-func (st *Storage) SetUserState(ctx context.Context, txn SQLReadWrite, userState *UserState) error {
+func (st *Storage) SetUserState(ctx context.Context, txn SQLReadWrite, userState *UserState) (retErr error) {
+	defer recordAction("set-users-tate")(retErr)
 	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		stmt := `INSERT INTO userstate(uid, state) VALUES(?, ?) ON CONFLICT(uid) DO UPDATE SET state = excluded.state`
 		_, err := txn.ExecContext(ctx, stmt, userState.UID, userState)
@@ -546,7 +576,8 @@ func (st *Storage) SetUserState(ctx context.Context, txn SQLReadWrite, userState
 }
 
 // CreateStreamState creates a new stream for the given user and return the stream ID (stid).
-func (st *Storage) CreateStreamState(ctx context.Context, txn SQLReadWrite, uid UID) (*StreamState, error) {
+func (st *Storage) CreateStreamState(ctx context.Context, txn SQLReadWrite, uid UID) (_ *StreamState, retErr error) {
+	defer recordAction("create-stream-state")(retErr)
 	var streamState *StreamState
 
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
@@ -569,7 +600,8 @@ func (st *Storage) CreateStreamState(ctx context.Context, txn SQLReadWrite, uid 
 	return streamState, nil
 }
 
-func (st *Storage) StreamState(ctx context.Context, txn SQLReadOnly, stid StID) (*StreamState, error) {
+func (st *Storage) StreamState(ctx context.Context, txn SQLReadOnly, stid StID) (_ *StreamState, retErr error) {
+	defer recordAction("stream-state")(retErr)
 	streamState := &StreamState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		err := txn.QueryRowContext(ctx, "SELECT state FROM streamstate WHERE stid = ?", stid).Scan(streamState)
@@ -584,7 +616,8 @@ func (st *Storage) StreamState(ctx context.Context, txn SQLReadOnly, stid StID) 
 	return streamState, nil
 }
 
-func (st *Storage) SetStreamState(ctx context.Context, txn SQLReadWrite, streamState *StreamState) error {
+func (st *Storage) SetStreamState(ctx context.Context, txn SQLReadWrite, streamState *StreamState) (retErr error) {
+	defer recordAction("set-stream-state")(retErr)
 	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		stmt := `INSERT INTO streamstate(stid, state) VALUES(?, ?) ON CONFLICT(stid) DO UPDATE SET state = excluded.state`
 		_, err := txn.ExecContext(ctx, stmt, streamState.StID, streamState)
@@ -594,7 +627,8 @@ func (st *Storage) SetStreamState(ctx context.Context, txn SQLReadWrite, streamS
 
 // RecomputeStreamState recreates what it can about StreamState from
 // the state of the DB.
-func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLReadOnly, stid StID) (*StreamState, error) {
+func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLReadOnly, stid StID) (_ *StreamState, retErr error) {
+	defer recordAction("recompute-stream-state")(retErr)
 	if txn == nil {
 		return nil, errors.New("missing transaction")
 	}
@@ -651,7 +685,8 @@ func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLReadOnly, st
 
 // FixDuplicateStatuses look for statuses which have been inserted
 // twice in a given stream. It keeps only the oldest entry.
-func (st *Storage) FixDuplicateStatuses(ctx context.Context, txn SQLReadWrite, stid StID) error {
+func (st *Storage) FixDuplicateStatuses(ctx context.Context, txn SQLReadWrite, stid StID) (retErr error) {
+	defer recordAction("fix-duplicate-statuses")(retErr)
 	if txn == nil {
 		return errors.New("missing transaction")
 	}
@@ -713,7 +748,8 @@ func (st *Storage) FixDuplicateStatuses(ctx context.Context, txn SQLReadWrite, s
 
 // FixCrossStatuses looks for statuses coming from another user.
 // It removes all of them.
-func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLReadWrite, stid StID) error {
+func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLReadWrite, stid StID) (retErr error) {
+	defer recordAction("fix-cross-statuses")(retErr)
 	if txn == nil {
 		return errors.New("missing transaction")
 	}
@@ -768,7 +804,8 @@ func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLReadWrite, stid 
 	return nil
 }
 
-func (st *Storage) ClearApp(ctx context.Context) error {
+func (st *Storage) ClearApp(ctx context.Context) (retErr error) {
+	defer recordAction("clear-app")(retErr)
 	return st.InTxnRW(ctx, func(ctx context.Context, txn SQLReadWrite) error {
 		// Remove everything from the stream.
 		_, err := txn.ExecContext(ctx, `DELETE FROM appregstate`)
@@ -776,7 +813,8 @@ func (st *Storage) ClearApp(ctx context.Context) error {
 	})
 }
 
-func (st *Storage) ClearStream(ctx context.Context, stid StID) error {
+func (st *Storage) ClearStream(ctx context.Context, stid StID) (retErr error) {
+	defer recordAction("clear-stream")(retErr)
 	return st.InTxnRW(ctx, func(ctx context.Context, txn SQLReadWrite) error {
 		// Remove everything from the stream.
 		if _, err := txn.ExecContext(ctx, `DELETE FROM streamcontent WHERE stid = ?`, stid); err != nil {
@@ -795,7 +833,8 @@ func (st *Storage) ClearStream(ctx context.Context, stid StID) error {
 	})
 }
 
-func (st *Storage) ClearPoolAndStream(ctx context.Context, uid UID) error {
+func (st *Storage) ClearPoolAndStream(ctx context.Context, uid UID) (retErr error) {
+	defer recordAction("clear-pool-and-stream")(retErr)
 	return st.InTxnRW(ctx, func(ctx context.Context, txn SQLReadWrite) error {
 		userState, err := st.UserState(ctx, txn, uid)
 		if err != nil {
@@ -842,7 +881,8 @@ type Item struct {
 
 // PickNext
 // Return (nil, nil) if there is no next status.
-func (st *Storage) PickNext(ctx context.Context, stid StID) (*Item, error) {
+func (st *Storage) PickNext(ctx context.Context, stid StID) (_ *Item, retErr error) {
+	defer recordAction("pick-next")(retErr)
 	var item *Item
 	err := st.InTxnRW(ctx, func(ctx context.Context, txn SQLReadWrite) error {
 		streamState, err := st.StreamState(ctx, txn, stid)
@@ -971,7 +1011,8 @@ type ListResult struct {
 
 // ListBackward get statuses before the provided position.
 // refPosition must be strictly positive - i.e., refer to an actual position.
-func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int64) (*ListResult, error) {
+func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int64) (_ *ListResult, retErr error) {
+	defer recordAction("list-backward")(retErr)
 	if refPosition < 1 {
 		return nil, fmt.Errorf("invalid position %d", refPosition)
 	}
@@ -1050,7 +1091,8 @@ func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int6
 // ListForward get statuses after the provided position.
 // It can triage things in the stream if necessary.
 // If refPosition is 0, gives data around the provided position.
-func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64, isInitial bool) (*ListResult, error) {
+func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64, isInitial bool) (_ *ListResult, retErr error) {
+	defer recordAction("list-forward")(retErr)
 	if refPosition < 0 {
 		return nil, fmt.Errorf("invalid position %d", refPosition)
 	}
@@ -1153,7 +1195,8 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 
 // InsertStatuses add the given statuses to the user storage.
 // It updates `streamState` IN PLACE.
-func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid ASID, streamState *StreamState, statuses []*mastodon.Status, filters []*mastodon.Filter) error {
+func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid ASID, streamState *StreamState, statuses []*mastodon.Status, filters []*mastodon.Filter) (retErr error) {
+	defer recordAction("insert-statuses")(retErr)
 	for _, status := range statuses {
 		// TODO: batching
 
@@ -1182,7 +1225,9 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid AS
 // UpdateStatus replace the status in the statuses table with a new version.
 // TODO: have a race detection to avoid getting back some old status (though Mastodon
 // does not seem to have notion of a version)
-func (st *Storage) UpdateStatus(ctx context.Context, txn SQLReadWrite, asid ASID, status *mastodon.Status, filters []*mastodon.Filter) error {
+func (st *Storage) UpdateStatus(ctx context.Context, txn SQLReadWrite, asid ASID, status *mastodon.Status, filters []*mastodon.Filter) (retErr error) {
+	defer recordAction("update-status")(retErr)
+
 	// First, find the existing status.
 	// This is done separately from the UPDATE to guarantee that one and only row exists.
 	// TODO: do not rely on json parsing
@@ -1264,7 +1309,8 @@ func computeState(status *mastodon.Status, filters []*mastodon.Filter) StatusSta
 	return state
 }
 
-func (st *Storage) SearchByStatusID(ctx context.Context, txn SQLReadOnly, uid UID, statusID mastodon.ID) ([]*Item, error) {
+func (st *Storage) SearchByStatusID(ctx context.Context, txn SQLReadOnly, uid UID, statusID mastodon.ID) (_ []*Item, retErr error) {
+	defer recordAction("search-by-status-id")(retErr)
 	accountState, err := st.FirstAccountStateByUID(ctx, txn, uid)
 	if err != nil {
 		return nil, err
