@@ -12,8 +12,17 @@ import (
 	"github.com/alexedwards/scs/sqlite3store"
 	"github.com/golang/glog"
 	"github.com/mattn/go-mastodon"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	_ "github.com/mattn/go-sqlite3"
+)
+
+var (
+	txnProcessed = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "mastopoof_txn_processed",
+		Help: "Storage transactions",
+	}, []string{"readonly"})
 )
 
 type SQLReadOnly interface {
@@ -219,6 +228,8 @@ func (st *Storage) inTxnRO(ctx context.Context, txn SQLReadOnly, f func(ctx cont
 		return f(ctx, txn)
 	}
 
+	txnProcessed.With(prometheus.Labels{"readonly": "1"}).Inc()
+
 	localTxn, err := st.roDB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -241,6 +252,8 @@ func (st *Storage) inTxnRW(ctx context.Context, txn SQLReadWrite, f func(ctx con
 		// pseudo nested transactions.
 		return f(ctx, txn)
 	}
+
+	txnProcessed.With(prometheus.Labels{"readonly": "0"}).Inc()
 
 	localTxn, err := st.rwDB.BeginTx(ctx, nil)
 	if err != nil {

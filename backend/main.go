@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/golang/glog"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/net/http2"
@@ -66,6 +67,8 @@ func getStreamID(ctx context.Context, st *storage.Storage, streamID storage.StID
 
 func getMux(st *storage.Storage, autoLogin storage.UID, inviteCode string, insecure bool, selfURL string) (*http.ServeMux, error) {
 	mux := http.NewServeMux()
+
+	mux.Handle("/metrics", promhttp.Handler())
 
 	// Serve frontend content (html, js, etc.).
 	content, err := frontend.Content()
