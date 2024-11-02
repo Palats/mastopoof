@@ -75,7 +75,7 @@ func (sa sqlAdapter) QueryRow(ctx context.Context, name string, query string, ar
 	start := time.Now()
 	defer func() {
 		d := time.Since(start)
-		sqlLatency.With(prometheus.Labels{"op": "query-row", "stmt": "name", "code": errToCode(nil)}).Observe(d.Seconds())
+		sqlLatency.With(prometheus.Labels{"op": "query-row", "stmt": name, "code": errToCode(nil)}).Observe(d.Seconds())
 	}()
 	return sa.pseudoTxn.QueryRowContext(ctx, query, args...)
 }
@@ -84,7 +84,7 @@ func (sa sqlAdapter) Query(ctx context.Context, name string, query string, args 
 	start := time.Now()
 	defer func() {
 		d := time.Since(start)
-		sqlLatency.With(prometheus.Labels{"op": "query", "stmt": "name", "code": errToCode(retErr)}).Observe(d.Seconds())
+		sqlLatency.With(prometheus.Labels{"op": "query", "stmt": name, "code": errToCode(retErr)}).Observe(d.Seconds())
 	}()
 	return sa.pseudoTxn.QueryContext(ctx, query, args...)
 }
@@ -93,7 +93,7 @@ func (sa sqlAdapter) Exec(ctx context.Context, name string, query string, args .
 	start := time.Now()
 	defer func() {
 		d := time.Since(start)
-		sqlLatency.With(prometheus.Labels{"op": "exec", "stmt": "name", "code": errToCode(retErr)}).Observe(d.Seconds())
+		sqlLatency.With(prometheus.Labels{"op": "exec", "stmt": name, "code": errToCode(retErr)}).Observe(d.Seconds())
 	}()
 	return sa.pseudoTxn.ExecContext(ctx, query, args...)
 }
