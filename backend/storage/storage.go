@@ -29,13 +29,25 @@ var (
 		Name:    "mastopoof_storage_action_seconds",
 		Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
 	}, []string{"action", "code"})
+
+	sqlLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "mastopoof_sql_seconds",
+		Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+	}, []string{"op", "stmt", "code"})
 )
+
+func errToCode(err error) string {
+	if err == nil {
+		return "0"
+	}
+	return "-1"
+}
 
 func recordAction(name string) func(error) {
 	start := time.Now()
 	return func(err error) {
 		d := time.Since(start)
-		actionLatency.With(prometheus.Labels{"action": name, "code": "-1"}).Observe(d.Seconds())
+		actionLatency.With(prometheus.Labels{"action": name, "code": errToCode(err)}).Observe(d.Seconds())
 	}
 }
 
@@ -60,14 +72,29 @@ type sqlAdapter struct {
 }
 
 func (sa sqlAdapter) QueryRow(ctx context.Context, name string, query string, args ...any) *sql.Row {
+	start := time.Now()
+	defer func() {
+		d := time.Since(start)
+		sqlLatency.With(prometheus.Labels{"op": "query-row", "stmt": "name", "code": errToCode(nil)}).Observe(d.Seconds())
+	}()
 	return sa.pseudoTxn.QueryRowContext(ctx, query, args...)
 }
 
-func (sa sqlAdapter) Query(ctx context.Context, name string, query string, args ...any) (*sql.Rows, error) {
+func (sa sqlAdapter) Query(ctx context.Context, name string, query string, args ...any) (_ *sql.Rows, retErr error) {
+	start := time.Now()
+	defer func() {
+		d := time.Since(start)
+		sqlLatency.With(prometheus.Labels{"op": "query", "stmt": "name", "code": errToCode(retErr)}).Observe(d.Seconds())
+	}()
 	return sa.pseudoTxn.QueryContext(ctx, query, args...)
 }
 
-func (sa sqlAdapter) Exec(ctx context.Context, name string, query string, args ...any) (sql.Result, error) {
+func (sa sqlAdapter) Exec(ctx context.Context, name string, query string, args ...any) (_ sql.Result, retErr error) {
+	start := time.Now()
+	defer func() {
+		d := time.Since(start)
+		sqlLatency.With(prometheus.Labels{"op": "exec", "stmt": "name", "code": errToCode(retErr)}).Observe(d.Seconds())
+	}()
 	return sa.pseudoTxn.ExecContext(ctx, query, args...)
 }
 
