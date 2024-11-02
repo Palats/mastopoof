@@ -25,10 +25,6 @@ var (
 		Help: "Storage transactions",
 	}, []string{"readonly"})
 
-	/*	actionCounter = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "mastopoof_storage_action_count",
-	}, []string{"action", "code"})*/
-
 	actionLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "mastopoof_storage_action_seconds",
 		Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
@@ -44,13 +40,35 @@ func recordAction(name string) func(error) {
 }
 
 type SQLReadOnly interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRow(ctx context.Context, name string, query string, args ...any) *sql.Row
+	Query(ctx context.Context, name string, query string, args ...any) (*sql.Rows, error)
 }
 
 type SQLReadWrite interface {
 	SQLReadOnly
+	Exec(ctx context.Context, name string, query string, args ...any) (sql.Result, error)
+}
+
+type txnInterface interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+type sqlAdapter struct {
+	pseudoTxn txnInterface
+}
+
+func (sa sqlAdapter) QueryRow(ctx context.Context, name string, query string, args ...any) *sql.Row {
+	return sa.pseudoTxn.QueryRowContext(ctx, query, args...)
+}
+
+func (sa sqlAdapter) Query(ctx context.Context, name string, query string, args ...any) (*sql.Rows, error) {
+	return sa.pseudoTxn.QueryContext(ctx, query, args...)
+}
+
+func (sa sqlAdapter) Exec(ctx context.Context, name string, query string, args ...any) (sql.Result, error) {
+	return sa.pseudoTxn.ExecContext(ctx, query, args...)
 }
 
 var ErrNotFound = errors.New("not found")
@@ -254,7 +272,7 @@ func (st *Storage) inTxnRO(ctx context.Context, txn SQLReadOnly, f func(ctx cont
 	}
 	defer localTxn.Rollback()
 
-	err = f(ctx, localTxn)
+	err = f(ctx, sqlAdapter{localTxn})
 	if errors.Is(err, ErrCleanAbortTxn) {
 		return nil
 	}
@@ -279,7 +297,7 @@ func (st *Storage) inTxnRW(ctx context.Context, txn SQLReadWrite, f func(ctx con
 	}
 	defer localTxn.Rollback()
 
-	err = f(ctx, localTxn)
+	err = f(ctx, sqlAdapter{localTxn})
 	if errors.Is(err, ErrCleanAbortTxn) {
 		return nil
 	}
@@ -298,7 +316,7 @@ func (st *Storage) ListUsers(ctx context.Context) (_ []*ListUserEntry, retErr er
 	defer recordAction("list-users")(retErr)
 	resp := []*ListUserEntry{}
 	err := st.InTxnRO(ctx, func(ctx context.Context, txn SQLReadOnly) error {
-		rows, err := txn.QueryContext(ctx, `
+		rows, err := txn.Query(ctx, "read-userstate", `
 			SELECT
 				uid
 			FROM
@@ -383,7 +401,7 @@ func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLReadWrite, src 
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		// Do not use SetAppRegState(), as it will not fail if that already exists.
 		stmt := `INSERT INTO appregstate(key, state) VALUES(?, ?)`
-		_, err := txn.ExecContext(ctx, stmt, src.Key, src)
+		_, err := txn.Exec(ctx, "insert-appregstate", stmt, src.Key, src)
 		return err
 	})
 	if err != nil {
@@ -399,7 +417,7 @@ func (st *Storage) AppRegState(ctx context.Context, txn SQLReadOnly, nfo *AppReg
 	as := &AppRegState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		key := nfo.Key()
-		err := txn.QueryRowContext(ctx,
+		err := txn.QueryRow(ctx, "app-reg-state",
 			"SELECT state FROM appregstate WHERE key=?", key).Scan(&as)
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("no state for server_addr=%s, key=%s: %w", nfo.ServerAddr, key, ErrNotFound)
@@ -418,7 +436,7 @@ func (st *Storage) CreateAccountState(ctx context.Context, txn SQLReadWrite, uid
 	var as *AccountState
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		var asid sql.Null[ASID]
-		err := txn.QueryRowContext(ctx, "SELECT MAX(asid) FROM accountstate").Scan(&asid)
+		err := txn.QueryRow(ctx, "create-account-state-read", "SELECT MAX(asid) FROM accountstate").Scan(&asid)
 		if err != nil {
 			return err
 		}
@@ -445,7 +463,7 @@ func (st *Storage) FirstAccountStateByUID(ctx context.Context, txn SQLReadOnly, 
 	defer recordAction("first-account-state-by-uid")(retErr)
 	as := &AccountState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
-		err := txn.QueryRowContext(ctx, "SELECT state FROM accountstate WHERE uid=?", uid).Scan(as)
+		err := txn.QueryRow(ctx, "first-account-state-by-uid", "SELECT state FROM accountstate WHERE uid=?", uid).Scan(as)
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("no mastodon account for uid=%v: %w", uid, ErrNotFound)
 		}
@@ -462,7 +480,7 @@ func (st *Storage) AllAccountStateByUID(ctx context.Context, txn SQLReadOnly, ui
 	defer recordAction("all-account-state-by-uid")(retErr)
 	var accountStates []*AccountState
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
-		rows, err := txn.QueryContext(ctx, `
+		rows, err := txn.Query(ctx, "all-accountstate-by-uid", `
 			SELECT
 				state
 			FROM accountstate
@@ -499,7 +517,7 @@ func (st *Storage) AccountStateByAccountID(ctx context.Context, txn SQLReadOnly,
 	defer recordAction("account-state-by-account-id")(retErr)
 	as := &AccountState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
-		err := txn.QueryRowContext(ctx, `
+		err := txn.QueryRow(ctx, "account-state-by-account-id", `
 			SELECT state
 			FROM accountstate
 			WHERE
@@ -522,7 +540,7 @@ func (st *Storage) SetAccountState(ctx context.Context, txn SQLReadWrite, as *Ac
 	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		// TODO: make SetAccountState support only update and verify primary key existin for ON CONFLICT.
 		stmt := `INSERT INTO accountstate(asid, state, uid) VALUES(?, ?, ?) ON CONFLICT(asid) DO UPDATE SET state = excluded.state`
-		_, err := txn.ExecContext(ctx, stmt, as.ASID, as, as.UID)
+		_, err := txn.Exec(ctx, "set-account-state", stmt, as.ASID, as, as.UID)
 		return err
 	})
 }
@@ -534,7 +552,7 @@ func (st *Storage) CreateUserState(ctx context.Context, txn SQLReadWrite) (_ *Us
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		var uid sql.Null[UID]
 		// If there is no entry, a row is still returned, but with a NULL value.
-		err := txn.QueryRowContext(ctx, "SELECT MAX(uid) FROM userstate").Scan(&uid)
+		err := txn.QueryRow(ctx, "create-user-state-max", "SELECT MAX(uid) FROM userstate").Scan(&uid)
 		if err != nil {
 			return fmt.Errorf("unable to create new user: %w", err)
 		}
@@ -554,7 +572,7 @@ func (st *Storage) UserState(ctx context.Context, txn SQLReadOnly, uid UID) (_ *
 	defer recordAction("user-state")(retErr)
 	userState := &UserState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
-		err := txn.QueryRowContext(ctx, "SELECT state FROM userstate WHERE uid = ?", uid).Scan(&userState)
+		err := txn.QueryRow(ctx, "user-state-uid", "SELECT state FROM userstate WHERE uid = ?", uid).Scan(&userState)
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("no user for uid=%v: %w", uid, ErrNotFound)
 		}
@@ -570,7 +588,7 @@ func (st *Storage) SetUserState(ctx context.Context, txn SQLReadWrite, userState
 	defer recordAction("set-users-tate")(retErr)
 	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		stmt := `INSERT INTO userstate(uid, state) VALUES(?, ?) ON CONFLICT(uid) DO UPDATE SET state = excluded.state`
-		_, err := txn.ExecContext(ctx, stmt, userState.UID, userState)
+		_, err := txn.Exec(ctx, "set-user-state", stmt, userState.UID, userState)
 		return err
 	})
 }
@@ -582,7 +600,7 @@ func (st *Storage) CreateStreamState(ctx context.Context, txn SQLReadWrite, uid 
 
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		var stid sql.Null[StID]
-		err := txn.QueryRowContext(ctx, "SELECT MAX(stid) FROM streamstate").Scan(&stid)
+		err := txn.QueryRow(ctx, "create-stream-state-max", "SELECT MAX(stid) FROM streamstate").Scan(&stid)
 		if err != nil {
 			return err
 		}
@@ -604,7 +622,7 @@ func (st *Storage) StreamState(ctx context.Context, txn SQLReadOnly, stid StID) 
 	defer recordAction("stream-state")(retErr)
 	streamState := &StreamState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
-		err := txn.QueryRowContext(ctx, "SELECT state FROM streamstate WHERE stid = ?", stid).Scan(streamState)
+		err := txn.QueryRow(ctx, "stream-state", "SELECT state FROM streamstate WHERE stid = ?", stid).Scan(streamState)
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("stream with stid=%d not found", stid)
 		}
@@ -620,7 +638,7 @@ func (st *Storage) SetStreamState(ctx context.Context, txn SQLReadWrite, streamS
 	defer recordAction("set-stream-state")(retErr)
 	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		stmt := `INSERT INTO streamstate(stid, state) VALUES(?, ?) ON CONFLICT(stid) DO UPDATE SET state = excluded.state`
-		_, err := txn.ExecContext(ctx, stmt, streamState.StID, streamState)
+		_, err := txn.Exec(ctx, "set-stream-state", stmt, streamState.StID, streamState)
 		return err
 	})
 }
@@ -641,7 +659,7 @@ func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLReadOnly, st
 
 	// FirstPosition
 	var position sql.NullInt64
-	err = txn.QueryRowContext(ctx, "SELECT min(position) FROM streamcontent WHERE stid = ?", stid).Scan(&position)
+	err = txn.QueryRow(ctx, "recompute-stream-state-first", "SELECT min(position) FROM streamcontent WHERE stid = ?", stid).Scan(&position)
 	if err != nil {
 		return nil, err
 	}
@@ -651,7 +669,7 @@ func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLReadOnly, st
 	}
 
 	// LastPosition
-	err = txn.QueryRowContext(ctx, "SELECT max(position) FROM streamcontent WHERE stid = ?", stid).Scan(&position)
+	err = txn.QueryRow(ctx, "recompute-stream-state-last", "SELECT max(position) FROM streamcontent WHERE stid = ?", stid).Scan(&position)
 	if err != nil {
 		return nil, err
 	}
@@ -661,7 +679,7 @@ func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLReadOnly, st
 	}
 
 	// Remaining
-	err = txn.QueryRowContext(ctx, `
+	err = txn.QueryRow(ctx, "recompute-stream-state-remaining", `
 		SELECT
 			COUNT(*)
 		FROM
@@ -691,7 +709,7 @@ func (st *Storage) FixDuplicateStatuses(ctx context.Context, txn SQLReadWrite, s
 		return errors.New("missing transaction")
 	}
 
-	rows, err := txn.QueryContext(ctx, `
+	rows, err := txn.Query(ctx, "read-fix-duplicate-statuses", `
 		WITH counts AS (
 			SELECT
 				sid,
@@ -727,7 +745,7 @@ func (st *Storage) FixDuplicateStatuses(ctx context.Context, txn SQLReadWrite, s
 		}
 		fmt.Printf("Status sid=%d: %d dups\n", sid, count)
 
-		result, err := txn.ExecContext(ctx, `
+		result, err := txn.Exec(ctx, "fix-duplicate-statuses-delete", `
 			DELETE FROM streamcontent WHERE
 				stid = ?
 				AND sid = ?
@@ -762,7 +780,7 @@ func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLReadWrite, stid 
 		return err
 	}
 
-	rows, err := txn.QueryContext(ctx, `
+	rows, err := txn.Query(ctx, "fix-cross-statuses-read", `
 		SELECT
 			sid
 		FROM
@@ -787,7 +805,7 @@ func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLReadWrite, stid 
 		}
 		fmt.Printf("Status sid=%d is coming from another user\n", sid)
 
-		result, err := txn.ExecContext(ctx, `
+		result, err := txn.Exec(ctx, "fix-cross-statuses-delete", `
 			DELETE FROM streamcontent WHERE
 				stid = ?
 				AND sid = ?
@@ -808,7 +826,7 @@ func (st *Storage) ClearApp(ctx context.Context) (retErr error) {
 	defer recordAction("clear-app")(retErr)
 	return st.InTxnRW(ctx, func(ctx context.Context, txn SQLReadWrite) error {
 		// Remove everything from the stream.
-		_, err := txn.ExecContext(ctx, `DELETE FROM appregstate`)
+		_, err := txn.Exec(ctx, "clear-app", `DELETE FROM appregstate`)
 		return err
 	})
 }
@@ -817,7 +835,7 @@ func (st *Storage) ClearStream(ctx context.Context, stid StID) (retErr error) {
 	defer recordAction("clear-stream")(retErr)
 	return st.InTxnRW(ctx, func(ctx context.Context, txn SQLReadWrite) error {
 		// Remove everything from the stream.
-		if _, err := txn.ExecContext(ctx, `DELETE FROM streamcontent WHERE stid = ?`, stid); err != nil {
+		if _, err := txn.Exec(ctx, "clear-stream", `DELETE FROM streamcontent WHERE stid = ?`, stid); err != nil {
 			return err
 		}
 
@@ -852,12 +870,12 @@ func (st *Storage) ClearPoolAndStream(ctx context.Context, uid UID) (retErr erro
 		}
 
 		// Remove all statuses.
-		if _, err := txn.ExecContext(ctx, `DELETE FROM statuses WHERE asid = ?`, accountState.ASID); err != nil {
+		if _, err := txn.Exec(ctx, "delete-statuses", `DELETE FROM statuses WHERE asid = ?`, accountState.ASID); err != nil {
 			return err
 		}
 		// Remove everything from the stream.
 		stid := userState.DefaultStID
-		if _, err := txn.ExecContext(ctx, `DELETE FROM streamcontent WHERE stid = ?`, stid); err != nil {
+		if _, err := txn.Exec(ctx, "delete-stream", `DELETE FROM streamcontent WHERE stid = ?`, stid); err != nil {
 			return err
 		}
 		// Also reset last-read and other state keeping.
@@ -905,7 +923,7 @@ func (st *Storage) PickNext(ctx context.Context, stid StID) (_ *Item, retErr err
 // It updates streamState IN PLACE.
 func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamState *StreamState) (*Item, error) {
 	// List all statuses which are not listed yet in "streamcontent".
-	rows, err := txn.QueryContext(ctx, `
+	rows, err := txn.Query(ctx, "pick-next-statuses", `
 		SELECT
 			streamcontent.sid,
 			statuses.status,
@@ -992,7 +1010,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 
 	// Set the position for the stream.
 	stmt := `UPDATE streamcontent SET position = ? WHERE stid = ? AND sid = ?;`
-	_, err = txn.ExecContext(ctx, stmt, position, streamState.StID, selectedID)
+	_, err = txn.Exec(ctx, "pick-next-in-txn", stmt, position, streamState.StID, selectedID)
 	if err != nil {
 		return nil, err
 	}
@@ -1037,7 +1055,7 @@ func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int6
 		maxCount := 10
 
 		// Fetch what is currently available after refPosition
-		rows, err := txn.QueryContext(ctx, `
+		rows, err := txn.Query(ctx, "list-backward", `
 			SELECT
 				streamcontent.position,
 				statuses.status,
@@ -1129,7 +1147,7 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 		maxCount := 10
 
 		// Fetch what is currently available after refPosition
-		rows, err := txn.QueryContext(ctx, `
+		rows, err := txn.Query(ctx, "list-forward", `
 			SELECT
 				streamcontent.position,
 				statuses.status,
@@ -1208,7 +1226,7 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid AS
 
 		// TODO move filtering out of transaction
 		statusState := computeState(status, filters)
-		_, err := txn.ExecContext(ctx, stmt, asid, &sqlStatus{*status}, &statusState, streamState.StID)
+		_, err := txn.Exec(ctx, "insert-statuses", stmt, asid, &sqlStatus{*status}, &statusState, streamState.StID)
 		if err != nil {
 			return err
 		}
@@ -1231,7 +1249,7 @@ func (st *Storage) UpdateStatus(ctx context.Context, txn SQLReadWrite, asid ASID
 	// First, find the existing status.
 	// This is done separately from the UPDATE to guarantee that one and only row exists.
 	// TODO: do not rely on json parsing
-	rows, err := txn.QueryContext(ctx, `
+	rows, err := txn.Query(ctx, "update-status-find", `
 			SELECT sid FROM statuses WHERE asid = ? AND json_extract(status, '$.id') = ?;
 	`, asid, status.ID)
 	if err != nil {
@@ -1265,7 +1283,7 @@ func (st *Storage) UpdateStatus(ctx context.Context, txn SQLReadWrite, asid ASID
 
 	stmt := `
 		UPDATE statuses SET status = ?, statusstate = ? WHERE sid = ?;	`
-	_, err = txn.ExecContext(ctx, stmt, &sqlStatus{*status}, &statusState, sid)
+	_, err = txn.Exec(ctx, "update-status", stmt, &sqlStatus{*status}, &statusState, sid)
 	return err
 }
 
@@ -1316,7 +1334,7 @@ func (st *Storage) SearchByStatusID(ctx context.Context, txn SQLReadOnly, uid UI
 		return nil, err
 	}
 
-	rows, err := txn.QueryContext(ctx, `
+	rows, err := txn.Query(ctx, "search-by-status-id", `
 		SELECT
 			status
 		FROM
