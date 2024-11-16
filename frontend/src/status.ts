@@ -183,7 +183,9 @@ export class MastStatus extends LitElement {
       if (ma.type === "image") {
         // TODO: preview_url is probably wrong?
         attachments.push(html`
-          <img src=${ma.preview_url} alt=${ma.description || ""}></img>
+          <a href=${ma.url} target="_blank" rel="noopener noreferrer">
+            <img src=${ma.preview_url} alt=${ma.description || ""}></img>
+          </a>
         `);
       } else if (ma.type === "gifv") {
         attachments.push(html`
