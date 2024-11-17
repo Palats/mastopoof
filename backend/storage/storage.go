@@ -1,3 +1,5 @@
+// Package storage manages Mastopoof persistence.
+// This file is the abstraction between Mastopoof storage and its actual logic.
 package storage
 
 import (
