@@ -366,7 +366,7 @@ func TestV17ToV18(t *testing.T) {
 
 // TestV18ToV19 verifies serverstate conversion to strict
 // and renaming.
-func TestV18ToV18(t *testing.T) {
+func TestV18ToV19(t *testing.T) {
 	ctx := context.Background()
 
 	env := (&DBTestEnv{

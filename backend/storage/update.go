@@ -14,10 +14,6 @@ import (
 	_ "embed"
 )
 
-// maxSchemaVersion indicates up to which version the database schema was configured.
-// It is incremented everytime a change is made.
-const maxSchemaVersion = 20
-
 // refSchema is the database schema - see file comment for caveats.
 //
 //go:embed schema.sql
@@ -56,8 +52,62 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 
 	glog.Infof("updating database schema")
 
-	if version < 1 && targetVersion >= 1 {
-		sqlStmt := `
+	for i := version; i < targetVersion; i++ {
+		err := updateFunctions[i](ctx, txn)
+		if err != nil {
+			return fmt.Errorf("unable to update from version %d to version %d: %w", version, version+1, err)
+		}
+	}
+
+	if _, err := txn.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d;`, targetVersion)); err != nil {
+		return fmt.Errorf("unable to set user_version: %w", err)
+	}
+
+	// And commit the change.
+	if err := txn.Commit(); err != nil {
+		return fmt.Errorf("unable to update DB schema: %w", err)
+	}
+	return nil
+}
+
+type updateFunc func(context.Context, txnInterface) error
+
+// If adding anything, do not forget to increment the schema version.
+var updateFunctions = []updateFunc{
+	v0Tov1,
+	v1Tov2,
+	v2Tov3,
+	v3Tov4,
+	v4Tov5,
+	v5Tov6,
+	v6Tov7,
+	v7Tov8,
+	v8Tov9,
+	v9Tov10,
+	v10Tov11,
+	v11Tov12,
+	v12Tov13,
+	v13Tov14,
+	v14Tov15,
+	v15Tov16,
+	v16Tov17,
+	v17Tov18,
+	v18Tov19,
+	v19Tov20,
+}
+
+// maxSchemaVersion indicates up to which version the database schema was configured.
+// It is incremented everytime a change is made.
+const maxSchemaVersion = 20
+
+func init() {
+	if len(updateFunctions) != maxSchemaVersion {
+		panic(fmt.Sprintf("Got %d update functions for schema version %d", len(updateFunctions), maxSchemaVersion))
+	}
+}
+
+func v0Tov1(ctx context.Context, txn txnInterface) error {
+	sqlStmt := `
 			CREATE TABLE IF NOT EXISTS authinfo (
 				-- User ID, starts at 1
 				uid INTEGER PRIMARY KEY,
@@ -65,13 +115,14 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 				content TEXT NOT NULL
 			);
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v1: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
 
-	if version < 2 && targetVersion >= 2 {
-		sqlStmt := `
+func v1Tov2(ctx context.Context, txn txnInterface) error {
+	sqlStmt := `
 			CREATE TABLE IF NOT EXISTS userstate (
 				-- User ID
 				uid INTEGER PRIMARY KEY,
@@ -88,46 +139,48 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 				status TEXT NOT NULL
 			);
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v2: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
 
-	if version < 3 && targetVersion >= 3 {
-		// Do backfill of status key
-		sqlStmt := `
+func v2Tov3(ctx context.Context, txn txnInterface) error {
+	// Do backfill of status key
+	sqlStmt := `
 			ALTER TABLE statuses ADD COLUMN uri TEXT
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v3: unable to run %q: %w", sqlStmt, err)
-		}
-
-		rows, err := txn.QueryContext(ctx, `SELECT sid, status FROM statuses`)
-		if err != nil {
-			return fmt.Errorf("schema v3: unable to query status keys: %w", err)
-		}
-		for rows.Next() {
-			var jsonString string
-			var sid int64
-			if err := rows.Scan(&sid, &jsonString); err != nil {
-				return fmt.Errorf("schema v3: unable to scan status: %w", err)
-			}
-			var status mastodon.Status
-			if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
-				return fmt.Errorf("schema v3: unable to unmarshal status: %w", err)
-			}
-
-			stmt := `
-				UPDATE statuses SET uri = ? WHERE sid = ?;
-			`
-			if _, err := txn.ExecContext(ctx, stmt, status.URI, sid); err != nil {
-				return fmt.Errorf("schema v3: unable to backfil URI for sid %v: %v", sid, err)
-			}
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
 
-	if version < 4 && targetVersion >= 4 {
-		sqlStmt := `
+	rows, err := txn.QueryContext(ctx, `SELECT sid, status FROM statuses`)
+	if err != nil {
+		return fmt.Errorf("unable to query status keys: %w", err)
+	}
+	for rows.Next() {
+		var jsonString string
+		var sid int64
+		if err := rows.Scan(&sid, &jsonString); err != nil {
+			return fmt.Errorf("unable to scan status: %w", err)
+		}
+		var status mastodon.Status
+		if err := json.Unmarshal([]byte(jsonString), &status); err != nil {
+			return fmt.Errorf("unable to unmarshal status: %w", err)
+		}
+
+		stmt := `
+				UPDATE statuses SET uri = ? WHERE sid = ?;
+			`
+		if _, err := txn.ExecContext(ctx, stmt, status.URI, sid); err != nil {
+			return fmt.Errorf("unable to backfil URI for sid %v: %v", sid, err)
+		}
+	}
+	return nil
+}
+
+func v3Tov4(ctx context.Context, txn txnInterface) error {
+	sqlStmt := `
 			CREATE TABLE listingstate (
 				-- Listing ID. Starts at 1.
 				lid INTEGER PRIMARY KEY,
@@ -144,27 +197,29 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 				position INTEGER NOT NULL
 			);
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v4: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
 
-	if version < 5 && targetVersion >= 5 {
-		sqlStmt := `
+func v4Tov5(ctx context.Context, txn txnInterface) error {
+	sqlStmt := `
 			ALTER TABLE listingstate RENAME TO streamstate;
 			ALTER TABLE listingcontent RENAME TO streamcontent;
 
 			ALTER TABLE streamstate RENAME COLUMN lid TO stid;
 			ALTER TABLE streamcontent RENAME COLUMN lid TO stid;
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v5: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
 
-	if version < 6 && targetVersion >= 6 {
-		// Rename field 'lid' in JSON to 'stid'.
-		sqlStmt := `
+func v5Tov6(ctx context.Context, txn txnInterface) error {
+	// Rename field 'lid' in JSON to 'stid'.
+	sqlStmt := `
 			UPDATE streamstate SET state = json_set(
 				streamstate.state,
 				"$.stid",
@@ -175,15 +230,16 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 				"$.lid"
 			);
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v6: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
 
-	if version < 7 && targetVersion >= 7 {
-		// Rename 'authinfo' to 'accountstate'.
-		// Change key of accountstate to be an arbitrary key and backfill it.
-		sqlStmt := `
+func v6Tov7(ctx context.Context, txn txnInterface) error {
+	// Rename 'authinfo' to 'accountstate'.
+	// Change key of accountstate to be an arbitrary key and backfill it.
+	sqlStmt := `
 			ALTER TABLE authinfo RENAME TO accountstate;
 			ALTER TABLE accountstate RENAME COLUMN uid TO asid;
 			ALTER TABLE accountstate ADD COLUMN uid TEXT;
@@ -196,14 +252,15 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 				json_extract(accountstate.content, "$.uid")
 			);
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v7: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
 
-	if version < 8 && targetVersion >= 8 {
-		// Move last_home_status_id from userstate to accountstate;
-		sqlStmt := `
+func v7Tov8(ctx context.Context, txn txnInterface) error {
+	// Move last_home_status_id from userstate to accountstate;
+	sqlStmt := `
 			UPDATE accountstate SET content = json_set(
 				accountstate.content,
 				"$.last_home_status_id",
@@ -215,16 +272,17 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 				"$.last_home_status_id"
 			);
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v8: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
 
-	if version < 9 && targetVersion >= 9 {
-		// Split server info.
-		//  Add  serverstate (server_addr, {server_addr, client_id, client_secret, auth_uri, redirect_uri})
-		//  Delete accountstate  {client_id, client_secret, auth_uri, redirect_uri}
-		sqlStmt := `
+func v8Tov9(ctx context.Context, txn txnInterface) error {
+	// Split server info.
+	//  Add  serverstate (server_addr, {server_addr, client_id, client_secret, auth_uri, redirect_uri})
+	//  Delete accountstate  {client_id, client_secret, auth_uri, redirect_uri}
+	sqlStmt := `
 			CREATE TABLE serverstate (
 				-- server address
 				server_addr STRING NOT NULL,
@@ -253,14 +311,15 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 				"$.redirect_uri"
 			);
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v9: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
 
-	if version < 10 && targetVersion >= 10 {
-		// Add session persistence
-		sqlStmt := `
+func v9Tov10(ctx context.Context, txn txnInterface) error {
+	// Add session persistence
+	sqlStmt := `
 			CREATE TABLE sessions (
 				token TEXT PRIMARY KEY,
 				data BLOB NOT NULL,
@@ -269,40 +328,43 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 
 			CREATE INDEX sessions_expiry_idx ON sessions(expiry);
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v10: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
 
-	if version < 11 && targetVersion >= 11 {
-		// Change key for server state.
-		// Just drop all existing server registration - that will force a re-login.
-		sqlStmt := `
+func v10Tov11(ctx context.Context, txn txnInterface) error {
+	// Change key for server state.
+	// Just drop all existing server registration - that will force a re-login.
+	sqlStmt := `
 			DELETE FROM serverstate;
 			ALTER TABLE serverstate DROP COLUMN server_addr;
 			ALTER TABLE serverstate ADD COLUMN key TEXT;
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v11: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
 
-	if version < 12 && targetVersion >= 12 {
-		// Nuke session state - the update in serverstate warrants it.
-		sqlStmt := `
+func v11Tov12(ctx context.Context, txn txnInterface) error {
+	// Nuke session state - the update in serverstate warrants it.
+	sqlStmt := `
 			DELETE FROM sessions;
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v12: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
 
-	if version < 13 && targetVersion >= 13 {
-		// Recreate the accountstate table to:
-		//  - Rename content -> state
-		//  - Add "NOT NULL" on uid field
-		//  - Add STRICT
-		sqlStmt := `
+func v12Tov13(ctx context.Context, txn txnInterface) error {
+	// Recreate the accountstate table to:
+	//  - Rename content -> state
+	//  - Add "NOT NULL" on uid field
+	//  - Add STRICT
+	sqlStmt := `
 			ALTER TABLE accountstate RENAME TO accountstateold;
 
 			-- State of a Mastodon account.
@@ -322,14 +384,15 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 
 			DROP TABLE accountstateold;
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v13: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
 
-	if version < 14 && targetVersion >= 14 {
-		// Convert userstate to STRICT.
-		sqlStmt := `
+func v13Tov14(ctx context.Context, txn txnInterface) error {
+	// Convert userstate to STRICT.
+	sqlStmt := `
 			ALTER TABLE userstate RENAME TO userstateold;
 
 			-- Mastopoof user information.
@@ -345,24 +408,25 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 
 			DROP TABLE userstateold;
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v14: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+	}
+	return nil
+}
+
+func v14Tov15(ctx context.Context, txn txnInterface) error {
+	// Convert statuses to STRICT.
+	// Change uid -> asid.
+	// Remove uri.
+
+	// Verify that we're not losing statuses.
+	var beforeCount int64
+	err := txn.QueryRowContext(ctx, "SELECT COUNT(*) FROM statuses").Scan(&beforeCount)
+	if err != nil {
+		return err
 	}
 
-	if version < 15 && targetVersion >= 15 {
-		// Convert statuses to STRICT.
-		// Change uid -> asid.
-		// Remove uri.
-
-		// Verify that we're not losing statuses.
-		var beforeCount int64
-		err := txn.QueryRowContext(ctx, "SELECT COUNT(*) FROM statuses").Scan(&beforeCount)
-		if err != nil {
-			return err
-		}
-
-		sqlStmt := `
+	sqlStmt := `
 			ALTER TABLE statuses RENAME TO statusesold;
 
 			CREATE TABLE statuses (
@@ -385,24 +449,25 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 
 			DROP TABLE statusesold;
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v15: unable to run %q: %w", sqlStmt, err)
-		}
-
-		var afterCount int64
-		err = txn.QueryRowContext(ctx, "SELECT COUNT(*) FROM statuses").Scan(&afterCount)
-		if err != nil {
-			return err
-		}
-		if beforeCount != afterCount {
-			return fmt.Errorf("got %d statuses after update, %d before", afterCount, beforeCount)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
 
-	if version < 16 && targetVersion >= 16 {
-		// Convert streamcontent to STRICT and remove NOT NULL on `position`.
+	var afterCount int64
+	err = txn.QueryRowContext(ctx, "SELECT COUNT(*) FROM statuses").Scan(&afterCount)
+	if err != nil {
+		return err
+	}
+	if beforeCount != afterCount {
+		return fmt.Errorf("got %d statuses after update, %d before", afterCount, beforeCount)
+	}
+	return nil
+}
 
-		sqlStmt := `
+func v15Tov16(ctx context.Context, txn txnInterface) error {
+	// Convert streamcontent to STRICT and remove NOT NULL on `position`.
+
+	sqlStmt := `
 			ALTER TABLE streamcontent RENAME TO streamcontentold;
 
 			-- The actual content of a stream. In practice, this links position in the stream to a specific status.
@@ -417,14 +482,15 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 
 			DROP TABLE streamcontentold;
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v16: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
 
-	if version < 17 && targetVersion >= 17 {
-		// Change stream management - directly insert in streamcontent, but without position.
-		sqlStmt := `
+func v16Tov17(ctx context.Context, txn txnInterface) error {
+	// Change stream management - directly insert in streamcontent, but without position.
+	sqlStmt := `
 			INSERT INTO streamcontent (stid, sid)
 				SELECT
 					json_extract(userstate.state, "$.default_stid"),
@@ -438,14 +504,15 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 					streamcontent.sid IS NULL
 			;
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v17: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
 
-	if version < 18 && targetVersion >= 18 {
-		// Convert streamstate to STRICT.
-		sqlStmt := `
+func v17Tov18(ctx context.Context, txn txnInterface) error {
+	// Convert streamstate to STRICT.
+	sqlStmt := `
 			ALTER TABLE streamstate RENAME TO streamstateold;
 
 			-- Information about a stream.
@@ -464,16 +531,17 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 
 			DROP TABLE streamstateold;
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v18: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
 
-	if version < 19 && targetVersion >= 19 {
-		// Convert serverstate to STRICT.
-		// Rename it to appregstate
-		// Make key NOT NULL.
-		sqlStmt := `
+func v18Tov19(ctx context.Context, txn txnInterface) error {
+	// Convert serverstate to STRICT.
+	// Rename it to appregstate
+	// Make key NOT NULL.
+	sqlStmt := `
 			-- Info about app registration on Mastodon servers.
 			CREATE TABLE appregstate (
 				-- A unique key for the appregstate.
@@ -489,30 +557,19 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 
 			DROP TABLE serverstate;
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v19: unable to run %q: %w", sqlStmt, err)
-		}
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
 
-	if version < 20 && targetVersion >= 20 {
-		// add a "statusstate" column to status with default value {}
-		sqlStmt := `
+func v19Tov20(ctx context.Context, txn txnInterface) error {
+	// add a "statusstate" column to status with default value {}
+	sqlStmt := `
 			ALTER TABLE statuses ADD COLUMN statusstate TEXT NOT NULL DEFAULT "{}";
 		`
-		if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
-			return fmt.Errorf("schema v20: unable to run %q: %w", sqlStmt, err)
-		}
-	}
-
-	// If adding anything, do not forget to increment the schema version.
-
-	if _, err := txn.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d;`, targetVersion)); err != nil {
-		return fmt.Errorf("unable to set user_version: %w", err)
-	}
-
-	// And commit the change.
-	if err := txn.Commit(); err != nil {
-		return fmt.Errorf("unable to update DB schema: %w", err)
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
 	return nil
 }
