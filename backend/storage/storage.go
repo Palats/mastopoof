@@ -194,7 +194,7 @@ func newStorageNoInit(ctx context.Context, dbURI string) (returnedSt *Storage, r
 		PRAGMA synchronous = NORMAL;
 		-- Give space for around 1G of cache. Value in kibibytes.
 		PRAGMA cache_size = -1048576;
-		-- Enforce foreign keys. As of 2024-05-12, that is not used.
+		-- Enforce foreign keys.
 		PRAGMA foreign_keys = true;
 		-- Keep temporary table & indices just in memory. As of 2024-05-12, it is
 		-- not used.

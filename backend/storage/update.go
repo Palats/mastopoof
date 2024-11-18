@@ -67,6 +67,11 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 	if err := txn.Commit(); err != nil {
 		return fmt.Errorf("unable to update DB schema: %w", err)
 	}
+
+	// Some update can create a lot of old table, recover space.
+	if _, err := db.ExecContext(ctx, `VACUUM;`); err != nil {
+		return fmt.Errorf("unable to vacuum db: %w", err)
+	}
 	return nil
 }
 
@@ -94,11 +99,12 @@ var updateFunctions = []updateFunc{
 	v17Tov18,
 	v18Tov19,
 	v19Tov20,
+	v20Tov21,
 }
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const maxSchemaVersion = 20
+const maxSchemaVersion = 21
 
 func init() {
 	if len(updateFunctions) != maxSchemaVersion {
@@ -571,5 +577,87 @@ func v19Tov20(ctx context.Context, txn txnInterface) error {
 	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
+	return nil
+}
+
+func v20Tov21(ctx context.Context, txn txnInterface) error {
+	// Set foreign key on accountstate.
+	sqlStmt := `
+			ALTER TABLE accountstate RENAME TO accountstateold;
+
+			-- State of a Mastodon account.
+			CREATE TABLE accountstate (
+				-- Unique id.
+				asid INTEGER PRIMARY KEY,
+				-- Serialized JSON AccountState
+				state TEXT NOT NULL,
+				-- The user which owns this account.
+				-- Immutable - even if another user ends up configuring that account,
+				-- a new account state would be created.
+				uid TEXT NOT NULL,
+
+				FOREIGN KEY(uid) REFERENCES userstate(uid)
+			) STRICT;
+
+			INSERT INTO accountstate (asid, state, uid)
+				SELECT asid, state, uid FROM accountstateold;
+
+			DROP TABLE accountstateold;
+	`
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+	}
+
+	// Set foreign key on statuses.
+	sqlStmt = `
+			ALTER TABLE statuses RENAME TO statusesold;
+
+			-- Statuses which were obtained from Mastodon.
+			CREATE TABLE statuses (
+				-- A unique ID.
+				sid INTEGER PRIMARY KEY AUTOINCREMENT,
+				-- The Mastopoof account that got that status.
+				asid INTEGER NOT NULL,
+				-- The status, serialized as JSON.
+				status TEXT NOT NULL,
+				-- metadata/state about a status (e.g.: filters applied to it)
+				statusstate TEXT NOT NULL DEFAULT "{}",
+
+				FOREIGN KEY(asid) REFERENCES accountstate(asid)
+			) STRICT;
+
+			INSERT INTO statuses (sid, asid, status, statusstate)
+				SELECT sid, asid, status, statusstate FROM statusesold;
+
+			DROP TABLE statusesold;
+	`
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+	}
+
+	// Set primary key and foreign keys on streamcontent.
+	sqlStmt = `
+			ALTER TABLE streamcontent RENAME TO streamcontentold;
+
+			-- The actual content of a stream. In practice, this links position in the stream to a specific status.
+			CREATE TABLE "streamcontent" (
+				stid INTEGER NOT NULL,
+				sid INTEGER NOT NULL,
+				position INTEGER,
+
+				PRIMARY KEY (stid, sid),
+				FOREIGN KEY(stid) REFERENCES streamstate(stid),
+				FOREIGN KEY(sid) REFERENCES statuses(sid)
+			) STRICT;
+
+			INSERT INTO streamcontent (stid, sid, position)
+				SELECT stid, sid, position FROM streamcontentold;
+
+			DROP TABLE streamcontentold;
+	`
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+	}
+
 	return nil
 }

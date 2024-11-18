@@ -21,7 +21,9 @@ CREATE TABLE accountstate (
   -- The user which owns this account.
   -- Immutable - even if another user ends up configuring that account,
   -- a new account state would be created.
-  uid TEXT NOT NULL
+  uid TEXT NOT NULL,
+
+  FOREIGN KEY(uid) REFERENCES userstate(uid)
 ) STRICT;
 
 -- Info about app registration on Mastodon servers.
@@ -54,12 +56,18 @@ CREATE TABLE statuses (
   -- The status, serialized as JSON.
   status TEXT NOT NULL,
   -- metadata/state about a status (e.g.: filters applied to it)
-  statusstate TEXT NOT NULL DEFAULT "{}"
+  statusstate TEXT NOT NULL DEFAULT "{}",
+
+  FOREIGN KEY(asid) REFERENCES accountstate(asid)
 ) STRICT;
 
 -- The actual content of a stream. In practice, this links position in the stream to a specific status.
 CREATE TABLE "streamcontent" (
   stid INTEGER NOT NULL,
   sid INTEGER NOT NULL,
-  position INTEGER
+  position INTEGER,
+
+  PRIMARY KEY (stid, sid),
+  FOREIGN KEY(stid) REFERENCES streamstate(stid),
+  FOREIGN KEY(sid) REFERENCES statuses(sid)
 ) STRICT;

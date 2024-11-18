@@ -19,8 +19,13 @@ func (s *SchemaDB) Linear() string {
 	resp := ""
 	for _, table := range s.Tables {
 		for _, c := range table.Columns {
-			resp += fmt.Sprintf("table=%s, cid=%d, name=%s, type=%s, notnull=%v, dflt_value=(%t, %q), pk=%d\n",
+			resp += fmt.Sprintf("table=%s, column: cid=%d, name=%s, type=%s, notnull=%v, dflt_value=(%t, %q), pk=%d\n",
 				c.TableName, c.CID, c.Name, c.Type, c.NotNull, c.DefaultValue.Valid, c.DefaultValue.String, c.PrimaryKey,
+			)
+		}
+		for _, fk := range table.ForeignKeys {
+			resp += fmt.Sprintf("table=%s, foreign key: id=%d, seq=%d, table=%s, from=%s, to=%s, on_update=%s, on_delete=%s, match=%s\n",
+				fk.TableName, fk.ID, fk.Seq, fk.Table, fk.From, fk.To, fk.OnUpdate, fk.OnDelete, fk.Match,
 			)
 		}
 	}
@@ -28,8 +33,9 @@ func (s *SchemaDB) Linear() string {
 }
 
 type SchemaTable struct {
-	TableName string
-	Columns   []*SchemaColumn
+	TableName   string
+	Columns     []*SchemaColumn
+	ForeignKeys []*SchemaForeignKey
 }
 
 type SchemaColumn struct {
@@ -43,6 +49,19 @@ type SchemaColumn struct {
 	PrimaryKey   int64
 }
 
+type SchemaForeignKey struct {
+	TableName string // The child table
+
+	ID       int64
+	Seq      int64
+	Table    string // The parent table
+	From     string // The field in the child table
+	To       string // The field in the parent table
+	OnUpdate string
+	OnDelete string
+	Match    string
+}
+
 func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 	// Find all tables.
 	tablesRows, err := db.QueryContext(ctx, `
@@ -53,6 +72,7 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 		WHERE
 			type = "table"
 			AND name != "sqlite_sequence"
+			-- 'sessions' is coming from the HTTP session manager.
 			AND tbl_name != "sessions"
 		ORDER BY
 			name
@@ -73,9 +93,10 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 		return nil, fmt.Errorf("failed to list tables: %w", err)
 	}
 
-	// And for each tables, find all the columns.
+	// Look into the details of each table
 	schemaDB := &SchemaDB{}
 	for _, tableName := range tableNames {
+		// Look at the columns of the table
 		query := `
 			SELECT
 				cid,
@@ -113,6 +134,49 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 		if err := columnsRows.Err(); err != nil {
 			return nil, fmt.Errorf("failed to list columns for %s: %w", tableName, err)
 		}
+
+		// Look at the foreign keys of the table.
+		query = `
+			SELECT
+				id,
+				seq,
+				'table',
+				'from',
+				'to',
+				on_update,
+				on_delete,
+				'match'
+			FROM
+				pragma_foreign_key_list(?)
+			ORDER BY
+				'table', 'from', 'to'
+		`
+		foreignRows, err := db.QueryContext(ctx, query, tableName)
+		if err != nil {
+			return nil, fmt.Errorf("unable to get columns info for %s: %w", tableName, err)
+		}
+
+		// Go over the foreign key info of the table
+		for foreignRows.Next() {
+			schemaForeignKey := &SchemaForeignKey{
+				TableName: tableName,
+			}
+			schemaTable.ForeignKeys = append(schemaTable.ForeignKeys, schemaForeignKey)
+			if err := foreignRows.Scan(
+				&schemaForeignKey.ID,
+				&schemaForeignKey.Seq,
+				&schemaForeignKey.Table,
+				&schemaForeignKey.From,
+				&schemaForeignKey.To,
+				&schemaForeignKey.OnUpdate,
+				&schemaForeignKey.OnDelete,
+				&schemaForeignKey.Match); err != nil {
+				return nil, fmt.Errorf("unable to extract foreign key info in table %s: %w", tableName, err)
+			}
+		}
+		if err := foreignRows.Err(); err != nil {
+			return nil, fmt.Errorf("failed to list foreign keys for %s: %w", tableName, err)
+		}
 	}
 	return schemaDB, nil
 }
@@ -146,7 +210,7 @@ func TestDBCreate(t *testing.T) {
 
 	// And compare them.
 	if diff := cmp.Diff(refSch, sch); diff != "" {
-		t.Errorf("DB schema mismatch (-want +got):\n%s", diff)
+		t.Errorf("DB schema mismatch (-ref +got):\n%s", diff)
 	}
 }
 
@@ -171,7 +235,7 @@ func TestV12ToV13(t *testing.T) {
 	defer env.Close()
 
 	// Update to last version
-	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
+	if err := prepareDB(ctx, env.db, 13); err != nil {
 		t.Fatal(err)
 	}
 
@@ -213,7 +277,7 @@ func TestV13ToV14(t *testing.T) {
 	defer env.Close()
 
 	// Update to last version.
-	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
+	if err := prepareDB(ctx, env.db, 14); err != nil {
 		t.Fatal(err)
 	}
 
@@ -257,7 +321,7 @@ func TestV14ToV15(t *testing.T) {
 
 	// Try update to last version.
 	// There is no user defined, so it should fine to do the uid->asid conversion.
-	if got, want := prepareDB(ctx, env.db, maxSchemaVersion), "after update"; !strings.Contains(got.Error(), want) {
+	if got, want := prepareDB(ctx, env.db, 15), "after update"; !strings.Contains(got.Error(), want) {
 		t.Errorf("Got error '%v', but needed error about missing statuses", got)
 	}
 
@@ -266,7 +330,7 @@ func TestV14ToV15(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
+	if err := prepareDB(ctx, env.db, 15); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -289,7 +353,7 @@ func TestV15ToV16(t *testing.T) {
 	}).Init(ctx, t)
 	defer env.Close()
 
-	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
+	if err := prepareDB(ctx, env.db, 16); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -324,7 +388,7 @@ func TestV16ToV17(t *testing.T) {
 	}).Init(ctx, t)
 	defer env.Close()
 
-	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
+	if err := prepareDB(ctx, env.db, 17); err != nil {
 		t.Fatal(err)
 	}
 
@@ -413,7 +477,7 @@ func TestV19ToV20(t *testing.T) {
 	`}).Init(ctx, t)
 	defer env.Close()
 
-	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
+	if err := prepareDB(ctx, env.db, 20); err != nil {
 		t.Fatal(err)
 	}
 
@@ -425,5 +489,67 @@ func TestV19ToV20(t *testing.T) {
 	}
 	if num != 1 || got != "{}" {
 		t.Errorf("Got %d lines with %s as first result, expected single line containing '{}'", num, got)
+	}
+}
+
+func TestV20ToV21(t *testing.T) {
+	ctx := context.Background()
+
+	// Version 21 adds foreign references. It recreates accountstate, statuses and
+	// streamcontent. Verify that the data is properly copied around.
+
+	// Try without a valid userstate reference first - it should fail once
+	// the foreign keys are in place.
+	env := (&DBTestEnv{
+		targetVersion: 20,
+		sqlInit: `
+			INSERT INTO accountstate (asid, state, uid) VALUES (2, "", 1);
+			INSERT INTO streamstate (stid, state) VALUES (3, "");
+			INSERT INTO statuses (sid, asid, status) VALUES	(4, 2, "");
+			INSERT INTO streamcontent (stid, sid, position) VALUES (3, 4, 42);
+		`,
+	}).Init(ctx, t)
+	defer env.Close()
+
+	// Check that it fails as it is missing userstate reference.
+	if got, want := prepareDB(ctx, env.db, 21), "constraint failed"; !strings.Contains(got.Error(), want) {
+		t.Fatalf("DB update should have failed with %q; got: %v", want, got)
+	}
+
+	// Now, insert the proper userstate and try again.
+	stmt := `
+		INSERT INTO userstate (uid, state) VALUES (1, "");
+	`
+	if _, err := env.db.ExecContext(ctx, stmt); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareDB(ctx, env.db, 21); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that data got copied.
+	var got int64
+	err := env.db.QueryRowContext(ctx, `SELECT count(1) from accountstate`).Scan(&got)
+	if err == sql.ErrNoRows {
+		t.Fatal(err)
+	}
+	if want := int64(1); got != want {
+		t.Errorf("Got %d entries, expected %d", got, want)
+	}
+
+	err = env.db.QueryRowContext(ctx, `SELECT count(1) from statuses`).Scan(&got)
+	if err == sql.ErrNoRows {
+		t.Fatal(err)
+	}
+	if want := int64(1); got != want {
+		t.Errorf("Got %d entries, expected %d", got, want)
+	}
+
+	err = env.db.QueryRowContext(ctx, `SELECT count(1) from streamcontent`).Scan(&got)
+	if err == sql.ErrNoRows {
+		t.Fatal(err)
+	}
+	if want := int64(1); got != want {
+		t.Errorf("Got %d entries, expected %d", got, want)
 	}
 }
