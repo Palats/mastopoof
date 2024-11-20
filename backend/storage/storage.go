@@ -1284,9 +1284,8 @@ func (st *Storage) UpdateStatus(ctx context.Context, txn SQLReadWrite, asid ASID
 
 	// First, find the existing status.
 	// This is done separately from the UPDATE to guarantee that one and only row exists.
-	// TODO: do not rely on json parsing
 	rows, err := txn.Query(ctx, "update-status-find", `
-			SELECT sid FROM statuses WHERE asid = ? AND json_extract(status, '$.id') = ?;
+			SELECT sid FROM statuses WHERE asid = ? AND status_id = ?;
 	`, asid, status.ID)
 	if err != nil {
 		return err

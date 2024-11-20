@@ -65,6 +65,10 @@ CREATE TABLE statuses (
   FOREIGN KEY(asid) REFERENCES accountstate(asid)
 ) STRICT;
 
+-- Index to help UpdateStatus, which looks up based on account+ID of the status
+-- to update.
+CREATE INDEX statuses_asid_status_id ON statuses(asid, status_id);
+
 -- The actual content of a stream. In practice, this links position in the stream to a specific status.
 CREATE TABLE "streamcontent" (
   stid INTEGER NOT NULL,
