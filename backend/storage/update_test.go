@@ -11,7 +11,8 @@ import (
 )
 
 type SchemaDB struct {
-	Tables []*SchemaTable
+	Tables  []*SchemaTable
+	Indices []*SchemaIndex
 }
 
 // Linear produces a string version of the whole schema suitable for line-based diffing.
@@ -62,6 +63,19 @@ type SchemaForeignKey struct {
 	Match    string
 }
 
+type SchemaIndex struct {
+	IndexName string
+	TableName string
+
+	// List of table columns used by this index.
+	Columns []*SchemaIndexColumn
+}
+
+type SchemaIndexColumn struct {
+	CID  int64
+	Name string
+}
+
 func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 	schemaDB := &SchemaDB{}
 
@@ -92,26 +106,24 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 	// when using a connection to `:memory:` without further tuning, while
 	// the main connection (setting WAL and other things) does not seem to
 	// have the issue.
-	tableNames := []string{}
 	for tablesRows.Next() {
 		var tableName string
 		if err := tablesRows.Scan(&tableName); err != nil {
 			return nil, fmt.Errorf("unable to extract table name: %w", err)
 		}
-		tableNames = append(tableNames, tableName)
+		schemaTable := &SchemaTable{
+			TableName: tableName,
+		}
+		schemaDB.Tables = append(schemaDB.Tables, schemaTable)
 	}
 	if err := tablesRows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to list tables: %w", err)
 	}
 
 	// Look into the details of each table
-	for _, tableName := range tableNames {
+	for _, schemaTable := range schemaDB.Tables {
+		tableName := schemaTable.TableName
 		// Look at the columns of the table
-		schemaTable := &SchemaTable{
-			TableName: tableName,
-		}
-		schemaDB.Tables = append(schemaDB.Tables, schemaTable)
-
 		query := `
 			SELECT
 				cid,
@@ -189,6 +201,75 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 	}
 	if err := tablesRows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to list tables: %w", err)
+	}
+
+	// -- Find all indices.
+	indexRows, err := db.QueryContext(ctx, `
+			SELECT
+	      -- type: table|index|...
+				name,
+	      tbl_name  -- points to the actual table for indices.
+	      -- rootpage
+	      -- sql: the stanza that was used to create it.
+			FROM
+				sqlite_schema
+			WHERE
+	      type = "index"
+				AND name != "sqlite_sequence"
+				-- 'sessions' is coming from the HTTP session manager.
+				AND tbl_name != "sessions"
+			ORDER BY
+				name
+		;`)
+	if err != nil {
+		return nil, fmt.Errorf("unable to obtain schema info: %w", err)
+	}
+
+	for indexRows.Next() {
+		var indexName string
+		var tableName string
+		if err := indexRows.Scan(&indexName, &tableName); err != nil {
+			return nil, fmt.Errorf("unable to extract index name: %w", err)
+		}
+		schemaIndex := &SchemaIndex{
+			IndexName: indexName,
+			TableName: tableName,
+		}
+		schemaDB.Indices = append(schemaDB.Indices, schemaIndex)
+	}
+	if err := indexRows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to list tables: %w", err)
+	}
+
+	for _, schemaIndex := range schemaDB.Indices {
+		indexName := schemaIndex.IndexName
+		// Look at the keys of an index
+		query := `
+				SELECT
+          -- seqno
+          cid,  -- integer, ordering?
+          name  -- name of the column being indexed
+				FROM
+					pragma_index_info(?)
+				ORDER BY
+					name
+			`
+		columnRows, err := db.QueryContext(ctx, query, indexName)
+		if err != nil {
+			return nil, fmt.Errorf("unable to get index info for %s: %w", indexName, err)
+		}
+
+		for columnRows.Next() {
+			schemaIndexColumn := &SchemaIndexColumn{}
+			schemaIndex.Columns = append(schemaIndex.Columns, schemaIndexColumn)
+			if err := columnRows.Scan(&schemaIndexColumn.CID, &schemaIndexColumn.Name); err != nil {
+				return nil, fmt.Errorf("unable to extract index column info in index %s: %w", indexName, err)
+			}
+		}
+		if err := columnRows.Err(); err != nil {
+			return nil, fmt.Errorf("failed to list index columns for %s: %w", indexName, err)
+		}
+
 	}
 
 	return schemaDB, nil
