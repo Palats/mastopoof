@@ -22,8 +22,9 @@ type DBTestEnv struct {
 	sqlInit string
 
 	// -- Available after Init
-	db *sql.DB
-	st *Storage
+	rwDB *sql.DB
+	roDB *sql.DB
+	st   *Storage
 }
 
 func (env *DBTestEnv) Init(ctx context.Context, t testing.TB) *DBTestEnv {
@@ -37,7 +38,8 @@ func (env *DBTestEnv) Init(ctx context.Context, t testing.TB) *DBTestEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	env.db = env.st.rwDB
+	env.rwDB = env.st.rwDB
+	env.roDB = env.st.roDB
 
 	v := env.targetVersion
 	if v == 0 {
@@ -48,7 +50,7 @@ func (env *DBTestEnv) Init(ctx context.Context, t testing.TB) *DBTestEnv {
 	}
 
 	if env.sqlInit != "" {
-		if _, err := env.db.ExecContext(ctx, env.sqlInit); err != nil {
+		if _, err := env.rwDB.ExecContext(ctx, env.sqlInit); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -79,7 +81,7 @@ func TestNoCrossUserStatuses(t *testing.T) {
 	for i := int64(0); i < 10; i++ {
 		statuses = append(statuses, testserver.NewFakeStatus(mastodon.ID(strconv.FormatInt(i+10, 10)), "123"))
 	}
-	env.st.InsertStatuses(ctx, sqlAdapter{env.db}, accountState1.ASID, streamState1, statuses, []*mastodon.Filter{})
+	env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, accountState1.ASID, streamState1, statuses, []*mastodon.Filter{})
 
 	// Create a second user
 	_, _, streamState2, err := env.st.CreateUser(ctx, nil, "localhost", "456", "user2")
@@ -110,7 +112,7 @@ func TestPick(t *testing.T) {
 	for i := int64(0); i < 4; i++ {
 		statuses = append(statuses, testserver.NewFakeStatus(mastodon.ID(strconv.FormatInt(i+10, 10)), "123"))
 	}
-	env.st.InsertStatuses(ctx, sqlAdapter{env.db}, accountState1.ASID, streamState1, statuses, []*mastodon.Filter{})
+	env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, accountState1.ASID, streamState1, statuses, []*mastodon.Filter{})
 
 	// Make sure the statuses that were inserted are available.
 	foundIDs := map[mastodon.ID]int{}
@@ -186,7 +188,7 @@ func TestSearchStatusID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = env.st.InsertStatuses(ctx, sqlAdapter{env.db}, accountState1.ASID, streamState1, []*mastodon.Status{
+	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, accountState1.ASID, streamState1, []*mastodon.Status{
 		testserver.NewFakeStatus(mastodon.ID("100"), "123"),
 		testserver.NewFakeStatus(mastodon.ID("101"), "123"),
 		testserver.NewFakeStatus(mastodon.ID("102"), "123"),
@@ -199,7 +201,7 @@ func TestSearchStatusID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = env.st.InsertStatuses(ctx, sqlAdapter{env.db}, accountState2.ASID, streamState2, []*mastodon.Status{
+	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, accountState2.ASID, streamState2, []*mastodon.Status{
 		testserver.NewFakeStatus(mastodon.ID("200"), "456"),
 		testserver.NewFakeStatus(mastodon.ID("201"), "456"),
 	}, []*mastodon.Filter{})
@@ -257,7 +259,7 @@ func TestFilters(t *testing.T) {
 
 	f1 := mastodon.Filter{"123", "content", []string{"home"}, false, time.Unix(0, 0), true}
 	f2 := mastodon.Filter{"456", "smurf", []string{"home"}, false, time.Unix(0, 0), true}
-	err = env.st.InsertStatuses(ctx, sqlAdapter{env.db}, accountState1.ASID, streamState1, []*mastodon.Status{
+	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, accountState1.ASID, streamState1, []*mastodon.Status{
 		testserver.NewFakeStatus(mastodon.ID("100"), "123"),
 		testserver.NewFakeStatus(mastodon.ID("101"), "123"),
 		testserver.NewFakeStatus(mastodon.ID("102"), "123"),
@@ -268,7 +270,7 @@ func TestFilters(t *testing.T) {
 
 	var got string
 	var num uint64
-	err = env.db.QueryRowContext(ctx, `SELECT DISTINCT statusstate, count(DISTINCT statusstate) from statuses`).Scan(&got, &num)
+	err = env.roDB.QueryRowContext(ctx, `SELECT DISTINCT statusstate, count(DISTINCT statusstate) from statuses`).Scan(&got, &num)
 	if err == sql.ErrNoRows {
 		t.Fatal(err)
 	}

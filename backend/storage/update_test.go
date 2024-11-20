@@ -63,10 +63,16 @@ type SchemaForeignKey struct {
 }
 
 func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
-	// Find all tables.
+	schemaDB := &SchemaDB{}
+
+	// -- Find all tables.
 	tablesRows, err := db.QueryContext(ctx, `
 		SELECT
+			-- type: table|index|...
 			name
+			-- tbl_name: points to the actual table for indices.
+			-- rootpage
+			-- sql: the stanza that was used to create it.
 		FROM
 			sqlite_schema
 		WHERE
@@ -81,6 +87,11 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 		return nil, fmt.Errorf("unable to obtain schema info: %w", err)
 	}
 
+	// For reasons I did not managed to determine, it seems that sqlite
+	// returns an empty list for pragma_table_info; that seem to happen
+	// when using a connection to `:memory:` without further tuning, while
+	// the main connection (setting WAL and other things) does not seem to
+	// have the issue.
 	tableNames := []string{}
 	for tablesRows.Next() {
 		var tableName string
@@ -94,9 +105,13 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 	}
 
 	// Look into the details of each table
-	schemaDB := &SchemaDB{}
 	for _, tableName := range tableNames {
 		// Look at the columns of the table
+		schemaTable := &SchemaTable{
+			TableName: tableName,
+		}
+		schemaDB.Tables = append(schemaDB.Tables, schemaTable)
+
 		query := `
 			SELECT
 				cid,
@@ -115,11 +130,6 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 			return nil, fmt.Errorf("unable to get columns info for %s: %w", tableName, err)
 		}
 
-		schemaTable := &SchemaTable{
-			TableName: tableName,
-		}
-		schemaDB.Tables = append(schemaDB.Tables, schemaTable)
-
 		// Go over the columns of the table.
 		for columnsRows.Next() {
 			schemaColumn := &SchemaColumn{
@@ -129,7 +139,6 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 			if err := columnsRows.Scan(&schemaColumn.CID, &schemaColumn.Name, &schemaColumn.Type, &schemaColumn.NotNull, &schemaColumn.DefaultValue, &schemaColumn.PrimaryKey); err != nil {
 				return nil, fmt.Errorf("unable to extract column info in table %s: %w", tableName, err)
 			}
-
 		}
 		if err := columnsRows.Err(); err != nil {
 			return nil, fmt.Errorf("failed to list columns for %s: %w", tableName, err)
@@ -178,6 +187,10 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 			return nil, fmt.Errorf("failed to list foreign keys for %s: %w", tableName, err)
 		}
 	}
+	if err := tablesRows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to list tables: %w", err)
+	}
+
 	return schemaDB, nil
 }
 
@@ -203,7 +216,7 @@ func TestDBCreate(t *testing.T) {
 	env := (&DBTestEnv{}).Init(ctx, t)
 	defer env.Close()
 
-	sch, err := canonicalSchema(ctx, env.db)
+	sch, err := canonicalSchema(ctx, env.roDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +248,7 @@ func TestV12ToV13(t *testing.T) {
 	defer env.Close()
 
 	// Update to last version
-	if err := prepareDB(ctx, env.db, 13); err != nil {
+	if err := prepareDB(ctx, env.rwDB, 13); err != nil {
 		t.Fatal(err)
 	}
 
@@ -277,7 +290,7 @@ func TestV13ToV14(t *testing.T) {
 	defer env.Close()
 
 	// Update to last version.
-	if err := prepareDB(ctx, env.db, 14); err != nil {
+	if err := prepareDB(ctx, env.rwDB, 14); err != nil {
 		t.Fatal(err)
 	}
 
@@ -321,7 +334,7 @@ func TestV14ToV15(t *testing.T) {
 
 	// Try update to last version.
 	// There is no user defined, so it should fine to do the uid->asid conversion.
-	if got, want := prepareDB(ctx, env.db, 15), "after update"; !strings.Contains(got.Error(), want) {
+	if got, want := prepareDB(ctx, env.rwDB, 15), "after update"; !strings.Contains(got.Error(), want) {
 		t.Errorf("Got error '%v', but needed error about missing statuses", got)
 	}
 
@@ -330,7 +343,7 @@ func TestV14ToV15(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := prepareDB(ctx, env.db, 15); err != nil {
+	if err := prepareDB(ctx, env.rwDB, 15); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -353,7 +366,7 @@ func TestV15ToV16(t *testing.T) {
 	}).Init(ctx, t)
 	defer env.Close()
 
-	if err := prepareDB(ctx, env.db, 16); err != nil {
+	if err := prepareDB(ctx, env.rwDB, 16); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -388,12 +401,12 @@ func TestV16ToV17(t *testing.T) {
 	}).Init(ctx, t)
 	defer env.Close()
 
-	if err := prepareDB(ctx, env.db, 17); err != nil {
+	if err := prepareDB(ctx, env.rwDB, 17); err != nil {
 		t.Fatal(err)
 	}
 
 	var got int64
-	err := env.db.QueryRowContext(ctx,
+	err := env.roDB.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM streamcontent WHERE stid = 2`,
 	).Scan(&got)
 	if err == sql.ErrNoRows {
@@ -423,7 +436,7 @@ func TestV17ToV18(t *testing.T) {
 	}).Init(ctx, t)
 	defer env.Close()
 
-	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
+	if err := prepareDB(ctx, env.rwDB, maxSchemaVersion); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -447,13 +460,13 @@ func TestV18ToV19(t *testing.T) {
 	}).Init(ctx, t)
 	defer env.Close()
 
-	if err := prepareDB(ctx, env.db, maxSchemaVersion); err != nil {
+	if err := prepareDB(ctx, env.rwDB, maxSchemaVersion); err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify data under the new name.
 	var got int64
-	err := env.db.QueryRowContext(ctx,
+	err := env.roDB.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM appregstate`,
 	).Scan(&got)
 	if err == sql.ErrNoRows {
@@ -477,13 +490,13 @@ func TestV19ToV20(t *testing.T) {
 	`}).Init(ctx, t)
 	defer env.Close()
 
-	if err := prepareDB(ctx, env.db, 20); err != nil {
+	if err := prepareDB(ctx, env.rwDB, 20); err != nil {
 		t.Fatal(err)
 	}
 
 	var got string
 	var num uint64
-	err := env.db.QueryRowContext(ctx, `SELECT DISTINCT statusstate, count(DISTINCT statusstate) from statuses`).Scan(&got, &num)
+	err := env.roDB.QueryRowContext(ctx, `SELECT DISTINCT statusstate, count(DISTINCT statusstate) from statuses`).Scan(&got, &num)
 	if err == sql.ErrNoRows {
 		t.Fatal(err)
 	}
@@ -512,7 +525,7 @@ func TestV20ToV21(t *testing.T) {
 	defer env.Close()
 
 	// Check that it fails as it is missing userstate reference.
-	if got, want := prepareDB(ctx, env.db, 21), "constraint failed"; !strings.Contains(got.Error(), want) {
+	if got, want := prepareDB(ctx, env.rwDB, 21), "constraint failed"; !strings.Contains(got.Error(), want) {
 		t.Fatalf("DB update should have failed with %q; got: %v", want, got)
 	}
 
@@ -520,16 +533,16 @@ func TestV20ToV21(t *testing.T) {
 	stmt := `
 		INSERT INTO userstate (uid, state) VALUES (1, "");
 	`
-	if _, err := env.db.ExecContext(ctx, stmt); err != nil {
+	if _, err := env.rwDB.ExecContext(ctx, stmt); err != nil {
 		t.Fatal(err)
 	}
-	if err := prepareDB(ctx, env.db, 21); err != nil {
+	if err := prepareDB(ctx, env.rwDB, 21); err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify that data got copied.
 	var got int64
-	err := env.db.QueryRowContext(ctx, `SELECT count(1) from accountstate`).Scan(&got)
+	err := env.roDB.QueryRowContext(ctx, `SELECT count(1) from accountstate`).Scan(&got)
 	if err == sql.ErrNoRows {
 		t.Fatal(err)
 	}
@@ -537,7 +550,7 @@ func TestV20ToV21(t *testing.T) {
 		t.Errorf("Got %d entries, expected %d", got, want)
 	}
 
-	err = env.db.QueryRowContext(ctx, `SELECT count(1) from statuses`).Scan(&got)
+	err = env.roDB.QueryRowContext(ctx, `SELECT count(1) from statuses`).Scan(&got)
 	if err == sql.ErrNoRows {
 		t.Fatal(err)
 	}
@@ -545,7 +558,7 @@ func TestV20ToV21(t *testing.T) {
 		t.Errorf("Got %d entries, expected %d", got, want)
 	}
 
-	err = env.db.QueryRowContext(ctx, `SELECT count(1) from streamcontent`).Scan(&got)
+	err = env.roDB.QueryRowContext(ctx, `SELECT count(1) from streamcontent`).Scan(&got)
 	if err == sql.ErrNoRows {
 		t.Fatal(err)
 	}

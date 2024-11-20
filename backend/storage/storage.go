@@ -229,11 +229,18 @@ func newStorageNoInit(ctx context.Context, dbURI string) (returnedSt *Storage, r
 		if err != nil {
 			return nil, fmt.Errorf("unable to open storage %s: %w", dbURI, err)
 		}
-		st.roDB.SetMaxOpenConns(max(4, runtime.NumCPU()))
+
 		if _, err := st.roDB.ExecContext(ctx, defaultDBsetup); err != nil {
 			return nil, fmt.Errorf("unable to configure DB connection: %w", err)
 		}
 	}
+
+	// Always set max open conns on read only connections. When it is using a
+	// single connection for readonly+readwrite, it means that the readwrite
+	// connection (which is the same really) is also getting multiple connections.
+	// Note that MaxOpenConns determine max nesting for SQL queries - i.e., how
+	// many nested scan can be running.
+	st.roDB.SetMaxOpenConns(max(4, runtime.NumCPU()))
 
 	return st, nil
 }
