@@ -51,7 +51,7 @@ CREATE TABLE "streamstate" (
 CREATE TABLE statuses (
   -- A unique ID.
   sid INTEGER PRIMARY KEY AUTOINCREMENT,
-  -- The Mastopoof account that got that status.
+  -- The Mastodon account that got that status.
   asid INTEGER NOT NULL,
   -- The status, serialized as JSON.
   status TEXT NOT NULL,

@@ -232,6 +232,7 @@ message FetchResponse {
 
 message SearchRequest {
     // Search for a given status ID in the cached statuses of the account.
+    // TODO: lack multiple account support, as status ID is server specific.
     string status_id = 1;
 }
 
@@ -242,6 +243,7 @@ message SearchResponse {
 
 message SetStatusRequest {
   // The Mastodon status to update.
+  // TODO: lack multiple account support, as status ID is server specific.
   string status_id = 1;
 
   // What to do on the status.
