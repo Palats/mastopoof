@@ -20,8 +20,8 @@ func (s *SchemaDB) Linear() string {
 	resp := ""
 	for _, table := range s.Tables {
 		for _, c := range table.Columns {
-			resp += fmt.Sprintf("table=%s, column: cid=%d, name=%s, type=%s, notnull=%v, dflt_value=(%t, %q), pk=%d\n",
-				c.TableName, c.CID, c.Name, c.Type, c.NotNull, c.DefaultValue.Valid, c.DefaultValue.String, c.PrimaryKey,
+			resp += fmt.Sprintf("table=%s, column: name=%s, type=%s, notnull=%v, dflt_value=(%t, %q), pk=%d, hidden=%d\n",
+				c.TableName, c.Name, c.Type, c.NotNull, c.DefaultValue.Valid, c.DefaultValue.String, c.PrimaryKey, c.Hidden,
 			)
 		}
 		for _, fk := range table.ForeignKeys {
@@ -42,12 +42,12 @@ type SchemaTable struct {
 type SchemaColumn struct {
 	TableName string
 
-	CID          int64
 	Name         string
 	Type         string
 	NotNull      string
 	DefaultValue sql.NullString
 	PrimaryKey   int64
+	Hidden       int64
 }
 
 type SchemaForeignKey struct {
@@ -126,14 +126,16 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 		// Look at the columns of the table
 		query := `
 			SELECT
-				cid,
 				name,
 				type,
 				'notnull',
 				dflt_value,
-				pk
+				pk,     -- 1-base index within primary key, or zero.
+        hidden  -- a normal column (0), a dynamic or stored generated column (2 or 3), or a hidden column in a virtual table (1)
+        -- arg, -- the table it belongs to
+        -- schema, -- ??
 			FROM
-				pragma_table_info(?)
+				pragma_table_xinfo(?)
 			ORDER BY
 				name
 		`
@@ -148,7 +150,7 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 				TableName: tableName,
 			}
 			schemaTable.Columns = append(schemaTable.Columns, schemaColumn)
-			if err := columnsRows.Scan(&schemaColumn.CID, &schemaColumn.Name, &schemaColumn.Type, &schemaColumn.NotNull, &schemaColumn.DefaultValue, &schemaColumn.PrimaryKey); err != nil {
+			if err := columnsRows.Scan(&schemaColumn.Name, &schemaColumn.Type, &schemaColumn.NotNull, &schemaColumn.DefaultValue, &schemaColumn.PrimaryKey, &schemaColumn.Hidden); err != nil {
 				return nil, fmt.Errorf("unable to extract column info in table %s: %w", tableName, err)
 			}
 		}
