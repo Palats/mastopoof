@@ -71,3 +71,6 @@ CREATE TABLE "streamcontent" (
   FOREIGN KEY(stid) REFERENCES streamstate(stid),
   FOREIGN KEY(sid) REFERENCES statuses(sid)
 ) STRICT;
+
+CREATE INDEX streamcontent_stid ON streamcontent(stid);
+CREATE INDEX streamcontent_sid ON streamcontent(sid);

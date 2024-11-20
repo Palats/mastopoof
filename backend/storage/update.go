@@ -100,11 +100,12 @@ var updateFunctions = []updateFunc{
 	v18Tov19,
 	v19Tov20,
 	v20Tov21,
+	v21Tov22,
 }
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const maxSchemaVersion = 21
+const maxSchemaVersion = 22
 
 func init() {
 	if len(updateFunctions) != maxSchemaVersion {
@@ -659,5 +660,17 @@ func v20Tov21(ctx context.Context, txn txnInterface) error {
 		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
 	}
 
+	return nil
+}
+
+func v21Tov22(ctx context.Context, txn txnInterface) error {
+	// Add indices on streamcontent.
+	sqlStmt := `
+		CREATE INDEX streamcontent_stid ON streamcontent(stid);
+		CREATE INDEX streamcontent_sid ON streamcontent(sid);
+	`
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+	}
 	return nil
 }
