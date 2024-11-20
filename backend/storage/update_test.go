@@ -128,7 +128,7 @@ func canonicalSchema(ctx context.Context, db *sql.DB) (*SchemaDB, error) {
 			SELECT
 				name,
 				type,
-				'notnull',
+				"notnull",
 				dflt_value,
 				pk,     -- 1-base index within primary key, or zero.
         hidden  -- a normal column (0), a dynamic or stored generated column (2 or 3), or a hidden column in a virtual table (1)
@@ -647,5 +647,55 @@ func TestV20ToV21(t *testing.T) {
 	}
 	if want := int64(1); got != want {
 		t.Errorf("Got %d entries, expected %d", got, want)
+	}
+}
+
+func TestV22ToV23(t *testing.T) {
+	ctx := context.Background()
+
+	// Version 23 adds virtual columns, stored from json.
+
+	env := (&DBTestEnv{
+		targetVersion: 22,
+		sqlInit: `
+      INSERT INTO userstate (uid, state) VALUES (1, "");
+			INSERT INTO accountstate (asid, state, uid) VALUES (2, "", 1);
+			INSERT INTO streamstate (stid, state) VALUES (3, "");
+			INSERT INTO statuses (sid, asid, status) VALUES	(4, 2, "{id: 'a'}");
+      INSERT INTO statuses (sid, asid, status) VALUES	(5, 2, "{id: 'b', reblog: {id: 'c'}}");
+		`,
+	}).Init(ctx, t)
+	defer env.Close()
+
+	if err := prepareDB(ctx, env.rwDB, 23); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that data got copied.
+	type Row struct {
+		Sid            int64
+		StatusID       string
+		StatusReblogID sql.NullString
+	}
+
+	got := []*Row{}
+	rows, err := env.roDB.QueryContext(ctx, `SELECT sid, status_id, status_reblog_id FROM statuses ORDER BY sid;`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		row := &Row{}
+		if err := rows.Scan(&row.Sid, &row.StatusID, &row.StatusReblogID); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, row)
+	}
+
+	want := []*Row{
+		{Sid: 4, StatusID: "a"},
+		{Sid: 5, StatusID: "b", StatusReblogID: sql.NullString{String: "c", Valid: true}},
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("data mismatch (-want +got):\n%s", diff)
 	}
 }

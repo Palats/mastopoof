@@ -50,12 +50,12 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 		return nil
 	}
 
-	glog.Infof("updating database schema")
+	glog.Infof("updating database schema...")
 
 	for i := version; i < targetVersion; i++ {
 		err := updateFunctions[i](ctx, txn)
 		if err != nil {
-			return fmt.Errorf("unable to update from version %d to version %d: %w", version, version+1, err)
+			return fmt.Errorf("unable to update from version %d to version %d: %w", i, i+1, err)
 		}
 	}
 
@@ -72,6 +72,8 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 	if _, err := db.ExecContext(ctx, `VACUUM;`); err != nil {
 		return fmt.Errorf("unable to vacuum db: %w", err)
 	}
+
+	glog.Infof("update done.")
 	return nil
 }
 
@@ -101,11 +103,12 @@ var updateFunctions = []updateFunc{
 	v19Tov20,
 	v20Tov21,
 	v21Tov22,
+	v22Tov23,
 }
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const maxSchemaVersion = 22
+const maxSchemaVersion = 23
 
 func init() {
 	if len(updateFunctions) != maxSchemaVersion {
@@ -668,6 +671,69 @@ func v21Tov22(ctx context.Context, txn txnInterface) error {
 	sqlStmt := `
 		CREATE INDEX streamcontent_stid ON streamcontent(stid);
 		CREATE INDEX streamcontent_sid ON streamcontent(sid);
+	`
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+	}
+	return nil
+}
+
+func v22Tov23(ctx context.Context, txn txnInterface) error {
+	// Add virtual columns on statuses to hold status IDs.
+
+	// Foreign keys:
+	//  streamcontent -> statuses
+	//  streamcontent -> streamstate
+	//  statuses -> accountstate
+	//  accountstate -> userstate
+	sqlStmt := `
+		ALTER TABLE statuses RENAME TO statusesold;
+		ALTER TABLE streamcontent RENAME TO streamcontentold;
+
+		DROP INDEX streamcontent_sid;
+		DROP INDEX streamcontent_stid;
+
+		-- Statuses which were obtained from Mastodon.
+		CREATE TABLE statuses (
+			-- A unique ID.
+			sid INTEGER PRIMARY KEY AUTOINCREMENT,
+			-- The Mastodon account that got that status.
+			asid INTEGER NOT NULL,
+			-- The status, serialized as JSON.
+			status TEXT NOT NULL,
+			-- metadata/state about a status (e.g.: filters applied to it)
+			statusstate TEXT NOT NULL DEFAULT "{}",
+
+			-- Keep the status ID readily available to find the status again easily.
+			status_id TEXT NOT NULL GENERATED ALWAYS AS (json_extract(status, '$.id')) STORED,
+			status_reblog_id TEXT GENERATED ALWAYS AS (json_extract(status, '$.reblog.id')) STORED,
+
+			FOREIGN KEY(asid) REFERENCES accountstate(asid)
+		) STRICT;
+
+		-- The actual content of a stream. In practice, this links position in the stream to a specific status.
+		CREATE TABLE "streamcontent" (
+			stid INTEGER NOT NULL,
+			sid INTEGER NOT NULL,
+			position INTEGER,
+
+			PRIMARY KEY (stid, sid),
+			FOREIGN KEY(stid) REFERENCES streamstate(stid),
+			FOREIGN KEY(sid) REFERENCES statuses(sid)
+		) STRICT;
+
+		CREATE INDEX streamcontent_stid ON streamcontent(stid);
+		CREATE INDEX streamcontent_sid ON streamcontent(sid);
+
+
+		INSERT INTO statuses (sid, asid, status, statusstate)
+			SELECT sid, asid, status, statusstate FROM statusesold;
+
+		INSERT INTO streamcontent (stid, sid, position)
+			SELECT stid, sid, position FROM streamcontentold;
+
+		DROP TABLE streamcontentold;
+		DROP TABLE statusesold;
 	`
 	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
