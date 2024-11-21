@@ -72,6 +72,10 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 	if _, err := db.ExecContext(ctx, `VACUUM;`); err != nil {
 		return fmt.Errorf("unable to vacuum db: %w", err)
 	}
+	// And optimize.
+	if _, err := db.ExecContext(ctx, `PRAGMA optimize;`); err != nil {
+		return fmt.Errorf("unable to vacuum db: %w", err)
+	}
 
 	glog.Infof("update done.")
 	return nil
@@ -105,11 +109,12 @@ var updateFunctions = []updateFunc{
 	v21Tov22,
 	v22Tov23,
 	v23Tov24,
+	v24Tov25,
 }
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const maxSchemaVersion = 24
+const maxSchemaVersion = 25
 
 func init() {
 	if len(updateFunctions) != maxSchemaVersion {
@@ -746,6 +751,18 @@ func v23Tov24(ctx context.Context, txn txnInterface) error {
 	// Add index on statuses.
 	sqlStmt := `
 		CREATE INDEX statuses_asid_status_id ON statuses(asid, status_id);
+	`
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+	}
+	return nil
+}
+
+func v24Tov25(ctx context.Context, txn txnInterface) error {
+	// Change streamcontent indices.
+	sqlStmt := `
+		DROP INDEX streamcontent_stid;
+		CREATE INDEX streamcontent_position ON streamcontent(position);
 	`
 	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)

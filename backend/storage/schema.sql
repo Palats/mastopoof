@@ -80,5 +80,6 @@ CREATE TABLE "streamcontent" (
   FOREIGN KEY(sid) REFERENCES statuses(sid)
 ) STRICT;
 
-CREATE INDEX streamcontent_stid ON streamcontent(stid);
+-- No index on `stid`, as there are many entry for a single stid value.
 CREATE INDEX streamcontent_sid ON streamcontent(sid);
+CREATE INDEX streamcontent_position ON streamcontent(position);

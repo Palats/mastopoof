@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net/url"
 	"runtime"
 	"strings"
@@ -241,6 +242,26 @@ func newStorageNoInit(ctx context.Context, dbURI string) (returnedSt *Storage, r
 	// Note that MaxOpenConns determine max nesting for SQL queries - i.e., how
 	// many nested scan can be running.
 	st.roDB.SetMaxOpenConns(max(4, runtime.NumCPU()))
+
+	// Setup some regular optimization according to sqlite doc:
+	//  https://www.sqlite.org/lang_analyze.html
+	if _, err := st.rwDB.ExecContext(ctx, "PRAGMA optimize=0x10002;"); err != nil {
+		return nil, fmt.Errorf("unable set optimize pragma: %w", err)
+	}
+	// ... that includes background optimization.
+	go func() {
+		for {
+			select {
+			case <-time.After(time.Hour + time.Duration(rand.Int63n(5*60))*time.Second):
+				if _, err := st.rwDB.ExecContext(ctx, "PRAGMA optimize;"); err != nil {
+					glog.ErrorContextf(ctx, "failed to optimize DB: %v", err)
+				}
+			case <-ctx.Done():
+				glog.Infof("stopping background DB optimize, context: %v", ctx.Err())
+				return
+			}
+		}
+	}()
 
 	return st, nil
 }
