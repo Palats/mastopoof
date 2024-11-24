@@ -34,10 +34,8 @@ export class MastLogin extends LitElement {
   }
 
   async startLogin() {
-    const serverAddr = this.serverAddrRef.value?.value;
-    if (!serverAddr) {
-      return;
-    }
+    this.refreshInputServerAddr();
+    const serverAddr = this.inputServerAddr;
     const inviteCode = this.inviteCodeRef.value?.value;
     try {
       this.authURI = await common.backend.authorize(serverAddr, inviteCode);
@@ -68,37 +66,36 @@ export class MastLogin extends LitElement {
   render() {
     if (!this.authURI) {
       return html`
-        <div class="middlepane">
-          <div>
-            <div>
-              <label>
-                Mastodon server address
-                <input id="server-addr" type="url" ${ref(this.serverAddrRef)} value="mastodon.social" @input=${this.refreshInputServerAddr} required autofocus></input>
-              </label>
-              <br>
-              Using: ${this.inputServerAddr}
-            </div>
-            <div>
-              <label>Invite code
-                <input id="invite-code" type="text" ${ref(this.inviteCodeRef)} value=""></input>
-              </label>
-            </div>
-          </div>
-          <div>
-            <button id="do-auth" @click=${this.startLogin}>Auth</button>
-          </div>
+        <div class="authbox">
+          <h1>Sign into Mastodon</h1>
+
+          <label for="server-addr">
+            Mastodon server address
+          </label>
+          <input id="server-addr" type="url" ${ref(this.serverAddrRef)} value="mastodon.social" @input=${this.refreshInputServerAddr} required autofocus></input>
+
+          <div class="server-hint" >Using: ${this.inputServerAddr}</div>
+          <br>
+          <label for="invite-code">
+            Mastopoof invite code
+          </label>
+          <input id="invite-code" type="text" ${ref(this.inviteCodeRef)} value=""></input>
+          <br>
+          <button id="do-auth" @click=${this.startLogin}>Sign-in</button>
         </div>
       `;
     }
 
     return html`
-      <div>
-        <a href=${this.authURI}>Mastodon Auth</a>
-      </div>
-      <div>
-        <label for="auth-code">Authorization code</label>
-        <input type="text" id="auth-code" ${ref(this.authCodeRef)} required autofocus></input>
-        <button @click=${this.doLogin}>Auth</button>
+      <div class="authbox">
+        <div>
+          <a href=${this.authURI}>Mastodon Auth</a>
+        </div>
+        <div>
+          <label for="auth-code">Authorization code</label>
+          <input type="text" id="auth-code" ${ref(this.authCodeRef)} required autofocus></input>
+          <button @click=${this.doLogin}>Auth</button>
+        </div>
       </div>
     `;
   }
@@ -106,25 +103,39 @@ export class MastLogin extends LitElement {
   static styles = [common.sharedCSS, css`
     :host {
       display: flex;
-      flex-direction: column;
-      align-items: center;
       box-sizing: border-box;
       min-height: 100%;
-
       background-color: var(--color-grey-300);
+
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
 
-    .middlepane {
-      z-index: 0;
-      flex-grow: 1;
+    .authbox {
       min-width: var(--stream-min-width);
       width: 100%;
       max-width: var(--stream-max-width);
+
+      box-sizing: border-box;
+      padding: 10px;
 
       background-color: var(--color-grey-150);
 
       display: flex;
       flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .server-hint {
+      font-size: 80%;
+      font-style: italic;
+    }
+
+    button {
+      min-height: 35px;
+      min-width: 80px;
     }
   `];
 }
