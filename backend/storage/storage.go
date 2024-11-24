@@ -148,6 +148,23 @@ func NewStorage(ctx context.Context, dbURL string) (returnedSt *Storage, returne
 	return st, st.initVersion(ctx, maxSchemaVersion)
 }
 
+// Storage setup is largely inspired from https://kerkour.com/sqlite-for-servers
+const defaultDBsetup = `
+		-- Write-Ahead Log is modern sqlite.
+		PRAGMA journal_mode = WAL;
+		-- Give more chance to concurrent requests to go through (SQLITE_BUSY)
+		PRAGMA busy_timeout = 5000;
+		-- Do not sync to disk all the time, but still at moment safe with WAL.
+		PRAGMA synchronous = NORMAL;
+		-- Give space for around 1G of cache. Value in kibibytes.
+		PRAGMA cache_size = -1048576;
+		-- Enforce foreign keys.
+		PRAGMA foreign_keys = true;
+		-- Keep temporary table & indices just in memory. As of 2024-05-12, it is
+		-- not used.
+		PRAGMA temp_store = memory;
+`
+
 func newStorageNoInit(ctx context.Context, dbURI string) (returnedSt *Storage, returnedErr error) {
 	// Make sure to cleanup everything in case of errors.
 	defer func() {
@@ -168,13 +185,21 @@ func newStorageNoInit(ctx context.Context, dbURI string) (returnedSt *Storage, r
 		return nil, fmt.Errorf("unable to parse DB URI %q: %w", dbURI, err)
 	}
 
-	// When it is memory only, we want to open only a single connection.
-	singleConnection := u.Opaque == ":memory:" || u.Query().Get("mode") == "memory"
+	inMemory := u.Opaque == ":memory:" || u.Query().Get("mode") == "memory"
+	if inMemory {
+		q := u.Query()
+		// We must have shared cache for in-memory cases, as we get multiple SQL
+		// connections. Otherwise, each connection would end up having its own view
+		// of the world.
+		q.Set("cache", "shared")
+		u.RawQuery = q.Encode()
+	}
 
+	// -- Write access
 	rwURI := *u
 	q := rwURI.Query()
 	// Do not override mode=memory.
-	if q.Get("mode") == "" {
+	if !inMemory {
 		q.Set("mode", "rwc")
 	}
 	// Indicate that all transactions are immediate, thus considered as write-txn
@@ -184,23 +209,6 @@ func newStorageNoInit(ctx context.Context, dbURI string) (returnedSt *Storage, r
 	rwURI.RawQuery = q.Encode()
 
 	glog.Infof("Storage URI, read-write: %s", rwURI.String())
-
-	// Storage setup is largely inspired from https://kerkour.com/sqlite-for-servers
-	const defaultDBsetup = `
-		-- Write-Ahead Log is modern sqlite.
-		PRAGMA journal_mode = WAL;
-		-- Give more chance to concurrent requests to go through (SQLITE_BUSY)
-		PRAGMA busy_timeout = 5000;
-		-- Do not sync to disk all the time, but still at moment safe with WAL.
-		PRAGMA synchronous = NORMAL;
-		-- Give space for around 1G of cache. Value in kibibytes.
-		PRAGMA cache_size = -1048576;
-		-- Enforce foreign keys.
-		PRAGMA foreign_keys = true;
-		-- Keep temporary table & indices just in memory. As of 2024-05-12, it is
-		-- not used.
-		PRAGMA temp_store = memory;
-	`
 
 	// Start with read-write DB - otherwise, in-memory DB will be created
 	// readonly, preventing creation of a read-write connection.
@@ -213,32 +221,25 @@ func newStorageNoInit(ctx context.Context, dbURI string) (returnedSt *Storage, r
 		return nil, fmt.Errorf("unable to configure DB connection: %w", err)
 	}
 
-	if singleConnection {
-		glog.Infof("Using read-write connection for read-only access")
-		st.roDB = st.rwDB
-	} else {
-		roURI := *u
-		q = roURI.Query()
-		// Do not override mode=memory.
-		if q.Get("mode") == "" {
-			q.Set("mode", "ro")
-		}
-		roURI.RawQuery = q.Encode()
-		glog.Infof("Storage URI, read-only: %s", roURI.String())
+	// Read-only access
+	roURI := *u
+	q = roURI.Query()
+	// Do not override mode=memory.
+	if !inMemory {
+		q.Set("mode", "ro")
+	}
+	roURI.RawQuery = q.Encode()
+	glog.Infof("Storage URI, read-only: %s", roURI.String())
 
-		st.roDB, err = sql.Open("sqlite3", roURI.String())
-		if err != nil {
-			return nil, fmt.Errorf("unable to open storage %s: %w", dbURI, err)
-		}
-
-		if _, err := st.roDB.ExecContext(ctx, defaultDBsetup); err != nil {
-			return nil, fmt.Errorf("unable to configure DB connection: %w", err)
-		}
+	st.roDB, err = sql.Open("sqlite3", roURI.String())
+	if err != nil {
+		return nil, fmt.Errorf("unable to open storage %s: %w", dbURI, err)
 	}
 
-	// Always set max open conns on read only connections. When it is using a
-	// single connection for readonly+readwrite, it means that the readwrite
-	// connection (which is the same really) is also getting multiple connections.
+	if _, err := st.roDB.ExecContext(ctx, defaultDBsetup); err != nil {
+		return nil, fmt.Errorf("unable to configure DB connection: %w", err)
+	}
+
 	// Note that MaxOpenConns determine max nesting for SQL queries - i.e., how
 	// many nested scan can be running.
 	st.roDB.SetMaxOpenConns(max(4, runtime.NumCPU()))
