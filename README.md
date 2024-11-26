@@ -186,17 +186,36 @@ See `backend/storage/schema.go` for database schema information.
 
 ### Auth
 
- - On load: issue [Mastopoof.Login] to see if frontend is logged in (aka, cookie)
+ - On load: issue `Mastopoof.Login` to see if frontend is logged in (aka, cookie)
 
-#### Full login flow
- - FE gets mastodon server address
- - FE -> BE [Mastopoof.Authorize] ; server addr
- - BE: register app on server, gets auth URI
- - BE->FE: auth uri
- - FE: go on auth uri and get auth code
- - FE->BE [Mastopoof.Token] ; auth code
- - BE: get token from server, create user if needed.
- - BE->FE : Set cookie, send back user info (default stream ID)
+#### Login flow
+FE = Mastodon frontend, BE = Mastodon backend
+
+ - FE gets request initial request:
+    - Detects user not logged
+    - Shows Auth box asking for Mastodon server + Invite code
+    - User fills in Mastodon server + invite code, click Sign-in
+ - FE -> BE `Mastopoof.Authorize` ; server addr + invite code
+ - BE:
+    - register app on server (if necessary) ; `POST /api/v1/apps`
+    - Construct oauth URI locally (targeting `/oauth/authorize`)
+ - BE -> FE: Send back auth uri
+ - FE: Show second auth box
+ - If user follows Auth URI:
+    - User gets prompt from the Mastodon server, approve
+    - Mastodon redirects to the URI provided by Mastopoof when constructing the oauth URI
+    - BE: receive request on `/_redirect`
+    - BE: calls `Mastopoof.Token` on itself
+ - If using `urn:ietf:wg:oauth:2.0:oob` instead of redirect:
+    - User gets prompt from the Mastodon server, approve
+    - User gets a token
+    - User copy/paste token on FE auth box
+    - User validates, which calls `Mastopoof.Token` on BE
+ - BE got called on `Mastopoof.Token` with auth Token from Mastodon
+ - BE register App on Mastodon server if necessary (it should not be)
+ - BE authenticate against Mastodon server with the auth token (`AuthenticateToken`, `POST /oauth/token`)
+ - BE creates Mastopoof user, get identity info from Mastodon, etc.
+ - BE->FE : Set http cookie, send back user info (default stream ID)
 
 ### Links
 
