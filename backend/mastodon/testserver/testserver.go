@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -242,6 +243,7 @@ func (s *Server) ClearNotifications() {
 
 func (s *Server) RegisterOn(mux *http.ServeMux) {
 	mux.Handle("/oauth/token", JSONHandler(s.serveOAuthToken))
+	mux.Handle("/oauth/authorize", http.HandlerFunc(s.serveOAuthAuthorize))
 	mux.Handle("/api/v1/apps", JSONHandler(s.serveAPIApps))
 	mux.Handle("/api/v1/accounts/verify_credentials", JSONHandler(s.serverAPIAccountsVerifyCredentials))
 	mux.Handle("/api/v1/timelines/home", JSONHandler(s.serveAPITimelinesHome))
@@ -264,6 +266,18 @@ func (s *Server) serveOAuthToken(w http.ResponseWriter, req *http.Request) (any,
 		"scope":        "read write follow push",
 		"created_at":   1573979017,
 	}, nil
+}
+
+var oauthAuthorizeTmpl = template.Must(template.New("authorize").Parse(`
+	<html>
+	Test mastodon server authorize page.
+	</html>
+`))
+
+func (s *Server) serveOAuthAuthorize(w http.ResponseWriter, req *http.Request) {
+	if err := oauthAuthorizeTmpl.Execute(w, nil); err != nil {
+		WriteError(w, req, err)
+	}
 }
 
 // https://docs.joinmastodon.org/methods/apps/#create
