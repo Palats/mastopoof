@@ -32,7 +32,7 @@ func (env *TestEnv) Init(t testing.TB) *TestEnv {
 	env.mastodonServer.RegisterOn(mux)
 
 	// Create the http server
-	env.httpServer = httptest.NewTLSServer(&LoggingHandler{T: t, Handler: mux})
+	env.httpServer = httptest.NewTLSServer(&LoggingHandler{Logf: t.Logf, Handler: mux})
 	env.addr = env.httpServer.URL
 
 	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})

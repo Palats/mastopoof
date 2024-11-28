@@ -80,7 +80,11 @@ func (s *TestServe) Run(ctx context.Context) error {
 	addr := fmt.Sprintf(":%d", s.port)
 	fmt.Printf("Listening on %s...\n", addr)
 	go func() {
-		err := http.ListenAndServe(addr, h2c.NewHandler(s.mux, &http2.Server{}))
+		m := &testserver.LoggingHandler{
+			Logf:    glog.Infof,
+			Handler: s.mux,
+		}
+		err := http.ListenAndServe(addr, h2c.NewHandler(m, &http2.Server{}))
 		glog.Exit(err)
 	}()
 

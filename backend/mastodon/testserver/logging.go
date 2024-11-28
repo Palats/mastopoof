@@ -3,13 +3,12 @@ package testserver
 import (
 	"net/http"
 	"sync"
-	"testing"
 )
 
 // LoggingHandler is an intercept http handler which writes http
 // traffic on the provided testing construct.
 type LoggingHandler struct {
-	T       testing.TB
+	Logf    func(format string, args ...any)
 	Handler http.Handler
 
 	m   sync.Mutex
@@ -23,7 +22,7 @@ func (h *LoggingHandler) ServeHTTP(writer http.ResponseWriter, req *http.Request
 	h.m.Unlock()
 
 	cookie, _ := req.Cookie("mastopoof")
-	h.T.Logf("HTTP Request %d: %s %s [cookie:%s]", idx, req.Host, req.URL, cookie)
+	h.Logf("HTTP Request %d: %s %s [cookie:%s]", idx, req.Host, req.URL, cookie)
 
 	// Do the actual request.
 	h.Handler.ServeHTTP(writer, req)
@@ -33,10 +32,10 @@ func (h *LoggingHandler) ServeHTTP(writer http.ResponseWriter, req *http.Request
 	header.Add("Cookie", writer.Header().Get("Set-Cookie"))
 	respCookie, err := (&http.Request{Header: header}).Cookie("mastopoof")
 	if err == nil {
-		h.T.Logf("HTTP Response %d: Set-Cookie:%v", idx, respCookie)
+		h.Logf("HTTP Response %d: Set-Cookie:%v", idx, respCookie)
 	}
 
 	if link := writer.Header().Get("Link"); link != "" {
-		h.T.Logf("HTTP Response %d: Link: %v", idx, link)
+		h.Logf("HTTP Response %d: Link: %v", idx, link)
 	}
 }

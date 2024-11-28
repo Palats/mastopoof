@@ -86,7 +86,7 @@ func (env *TestEnv) Init(ctx context.Context) *TestEnv {
 	env.mastodonServer.RegisterOn(mux)
 
 	// Create the http server
-	env.httpServer = httptest.NewTLSServer(&testserver.LoggingHandler{T: env.t, Handler: mux})
+	env.httpServer = httptest.NewTLSServer(&testserver.LoggingHandler{Logf: env.t.Logf, Handler: mux})
 	env.addr = env.httpServer.URL
 	env.rpcAddr = env.httpServer.URL + "/_rpc/mastopoof.Mastopoof/"
 
