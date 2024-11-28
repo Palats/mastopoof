@@ -30,7 +30,7 @@ func FlagPort(fs *pflag.FlagSet) *int {
 }
 
 func FlagUserID(fs *pflag.FlagSet) *storage.UID {
-	return (*storage.UID)(fs.Int64("uid", 0, "User ID to use for commands. With 'serve', will auto login that user."))
+	return (*storage.UID)(fs.Int64("uid", 0, "User ID to use for commands. With 'serve' will auto login that user."))
 }
 
 func FlagStreamID(fs *pflag.FlagSet) *storage.StID {
@@ -248,6 +248,7 @@ func cmdTestServe() *cobra.Command {
 	}
 	selfURL := FlagSelfURL(c.PersistentFlags())
 	port := FlagPort(c.PersistentFlags())
+	autoLogin := c.PersistentFlags().Bool("autologin", true, "If true, bypass auth screen")
 	inviteCode := FlagInviteCode(c.PersistentFlags())
 	insecure := FlagInsecure(c.PersistentFlags())
 	testData := c.PersistentFlags().String("testdata", "localtestdata", "Directory with backend testdata, for testserve")
@@ -263,12 +264,16 @@ func cmdTestServe() *cobra.Command {
 		}
 		defer st.Close()
 
-		userState, _, _, err := st.CreateUser(ctx, nil, serverAddr, "1234", "testuser1")
-		if err != nil {
-			return fmt.Errorf("unable to create testuser: %w", err)
+		uid := storage.UID(0)
+		if *autoLogin {
+			userState, _, _, err := st.CreateUser(ctx, nil, serverAddr, "1234", "testuser1")
+			if err != nil {
+				return fmt.Errorf("unable to create testuser: %w", err)
+			}
+			uid = userState.UID
 		}
 
-		mux, err := getMux(st, userState.UID, *inviteCode, *insecure, *selfURL)
+		mux, err := getMux(st, uid, *inviteCode, *insecure, *selfURL)
 		if err != nil {
 			return err
 		}

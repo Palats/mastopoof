@@ -1,6 +1,7 @@
 package testserver
 
 import (
+	"fmt"
 	"net/http"
 	"sync"
 )
@@ -27,15 +28,18 @@ func (h *LoggingHandler) ServeHTTP(writer http.ResponseWriter, req *http.Request
 	// Do the actual request.
 	h.Handler.ServeHTTP(writer, req)
 
-	// And see the cookies that were sent back.
+	msg := fmt.Sprintf("HTTP Response %d:", idx)
+
+	// See the cookies that were sent back.
 	header := http.Header{}
 	header.Add("Cookie", writer.Header().Get("Set-Cookie"))
 	respCookie, err := (&http.Request{Header: header}).Cookie("mastopoof")
 	if err == nil {
-		h.Logf("HTTP Response %d: Set-Cookie:%v", idx, respCookie)
+		msg += fmt.Sprintf(" Set-Cookie:%v", respCookie)
 	}
 
 	if link := writer.Header().Get("Link"); link != "" {
-		h.Logf("HTTP Response %d: Link: %v", idx, link)
+		msg += fmt.Sprintf(" Link: %v", link)
 	}
+	h.Logf("%s", msg)
 }
