@@ -87,7 +87,7 @@ func (appreg *AppRegistry) appRegInfo(serverAddr string, selfURL *url.URL) *stor
 	redirectURI := "urn:ietf:wg:oauth:2.0:oob"
 
 	if selfURL != nil {
-		u := selfURL.JoinPath("_redirect")
+		u := selfURL.JoinPath(redirectPath)
 		// RedirectURI for auth must contain information about the mastodon server
 		// it is about. Otherwise, when getting a code back after auth, the server
 		// cannot know what it is about.
@@ -802,11 +802,17 @@ func (s *Server) RedirectHandler(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "invalid method", http.StatusBadRequest)
 		return
 	}
+
+	// Code is provided by the Mastodon server. This is what will allow
+	// to make authentified requests.
 	authCode := req.URL.Query().Get("code")
 	if authCode == "" {
 		http.Error(w, "missing code", http.StatusBadRequest)
 		return
 	}
+
+	// 'host' was provided as redirect_uri by mastopoof to the Mastodon server.
+	// This allows to know for which Mastodon server the signup was made.
 	serverAddr := req.URL.Query().Get("host")
 	if serverAddr == "" {
 		http.Error(w, "missing host", http.StatusBadRequest)
@@ -860,7 +866,7 @@ func (s *Server) RegisterOn(mux *http.ServeMux) {
 	api := http.NewServeMux()
 	api.Handle(mastopoofconnect.NewMastopoofHandler(s))
 	mux.Handle("/_rpc/", s.sessionManager.LoadAndSave(http.StripPrefix("/_rpc", api)))
-	mux.Handle("/_redirect", s.sessionManager.LoadAndSave(http.HandlerFunc(s.RedirectHandler)))
+	mux.Handle(redirectPath, s.sessionManager.LoadAndSave(http.HandlerFunc(s.RedirectHandler)))
 	mux.Handle("/_config", s.sessionManager.LoadAndSave(http.HandlerFunc(s.ConfigHandler)))
 }
 

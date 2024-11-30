@@ -270,12 +270,42 @@ func (s *Server) serveOAuthToken(w http.ResponseWriter, req *http.Request) (any,
 
 var oauthAuthorizeTmpl = template.Must(template.New("authorize").Parse(`
 	<html>
+	<body>
 	Test mastodon server authorize page.
+	<br/>
+	<table>
+		<tr><td>client_id</td><td>{{.clientID}}</td></tr>
+		<tr><td>redirect_uri</td><td>{{.redirectURI}}</td></tr>
+		<tr><td>response_type</td><td>{{.responseType}}</td></tr>
+		<tr><td>scope</td><td>{{.scope}}</td></tr>
+	</table>
+	<br/>
+	<a href="{{.targetRedirectURI}}">Go to redirect_uri with code</a>
+	</body>
 	</html>
 `))
 
 func (s *Server) serveOAuthAuthorize(w http.ResponseWriter, req *http.Request) {
-	if err := oauthAuthorizeTmpl.Execute(w, nil); err != nil {
+	q := req.URL.Query()
+
+	baseRedirectURI := q.Get("redirect_uri")
+	targetRedirectURI, err := url.Parse(baseRedirectURI)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("cannot parse redirect_uri %q: %v", baseRedirectURI, err), http.StatusBadRequest)
+		return
+	}
+	rq := targetRedirectURI.Query()
+	rq.Set("code", "sometestcode")
+	targetRedirectURI.RawQuery = rq.Encode()
+
+	data := map[string]string{
+		"clientID":          q.Get("client_id"),
+		"redirectURI":       baseRedirectURI,
+		"responseType":      q.Get("response_type"),
+		"scope":             q.Get("scope"),
+		"targetRedirectURI": targetRedirectURI.String(),
+	}
+	if err := oauthAuthorizeTmpl.Execute(w, data); err != nil {
 		WriteError(w, req, err)
 	}
 }
