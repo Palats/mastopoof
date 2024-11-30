@@ -166,6 +166,7 @@ func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode str
 		FrontendConfig: MastopoofConfig{
 			Src:       "server",
 			DefServer: "mastodon.social",
+			Invite:    inviteCode != "",
 		},
 		st:             st,
 		sessionManager: sessionManager,
@@ -868,4 +869,5 @@ func (s *Server) RegisterOn(mux *http.ServeMux) {
 type MastopoofConfig struct {
 	Src       string `json:"src"`
 	DefServer string `json:"defServer"`
+	Invite    bool   `json:"invite"`
 }

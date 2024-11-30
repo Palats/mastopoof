@@ -43,6 +43,8 @@ export type MastopoofConfig = {
   src: string;
   // Default Mastodon server address to use in login box.
   defServer: string;
+  // If true, an invite code is expected.
+  invite: boolean;
 };
 
 declare global {

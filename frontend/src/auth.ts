@@ -1,4 +1,4 @@
-import { LitElement, css, html } from 'lit'
+import { LitElement, css, html, nothing } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { Ref, createRef, ref } from 'lit/directives/ref.js';
 
@@ -75,11 +75,13 @@ export class MastLogin extends LitElement {
           <input id="server-addr" type="url" ${ref(this.serverAddrRef)} value="${mastopoofConfig.defServer}" @input=${this.refreshInputServerAddr} required autofocus></input>
 
           <div class="server-hint" >Using: ${this.inputServerAddr}</div>
-          <br>
-          <label for="invite-code">
-            Mastopoof invite code
-          </label>
-          <input id="invite-code" type="text" ${ref(this.inviteCodeRef)} value=""></input>
+          ${mastopoofConfig.invite ? html`
+            <br>
+            <label for="invite-code">
+              Mastopoof invite code
+            </label>
+            <input id="invite-code" type="text" ${ref(this.inviteCodeRef)} value=""></input>
+          `: nothing}
           <br>
           <button id="do-auth" @click=${this.startLogin}>Sign-in</button>
         </div>
