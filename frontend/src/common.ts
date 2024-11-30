@@ -41,6 +41,8 @@ export function parseStatus(pbStatus: pb.MastodonStatus): mastodon.Status {
 export type MastopoofConfig = {
   // A string indicating how the config was obtained. For debugging.
   src: string;
+  // Default Mastodon server address to use in login box.
+  defServer: string;
 };
 
 declare global {

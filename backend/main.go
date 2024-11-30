@@ -65,9 +65,8 @@ func getStreamID(ctx context.Context, st *storage.Storage, streamID storage.StID
 	return 0, errors.New("no streamID / user ID specified")
 }
 
-func getMux(st *storage.Storage, autoLogin storage.UID, inviteCode string, insecure bool, selfURL string) (*http.ServeMux, error) {
+func getMux(s *server.Server) (*http.ServeMux, error) {
 	mux := http.NewServeMux()
-
 	mux.Handle("/metrics", promhttp.Handler())
 
 	// Serve frontend content (html, js, etc.).
@@ -76,7 +75,11 @@ func getMux(st *storage.Storage, autoLogin storage.UID, inviteCode string, insec
 		return nil, err
 	}
 	mux.Handle("/", http.FileServer(http.FS(content)))
+	s.RegisterOn(mux)
+	return mux, nil
+}
 
+func getServer(st *storage.Storage, autoLogin storage.UID, inviteCode string, insecure bool, selfURL string) (*server.Server, error) {
 	// Run the backend RPC server.
 	sessionManager := server.NewSessionManager(st)
 	if insecure {
@@ -89,9 +92,7 @@ func getMux(st *storage.Storage, autoLogin storage.UID, inviteCode string, insec
 	}
 
 	appRegistry := server.NewAppRegistry(st)
-	s := server.New(st, sessionManager, inviteCode, autoLogin, u, appRegistry)
-	s.RegisterOn(mux)
-	return mux, nil
+	return server.New(st, sessionManager, inviteCode, autoLogin, u, appRegistry), nil
 }
 
 func cmdUsers() *cobra.Command {
@@ -229,7 +230,11 @@ func cmdServe() *cobra.Command {
 		}
 		defer st.Close()
 
-		mux, err := getMux(st, *userID, *inviteCode, *insecure, *selfURL)
+		s, err := getServer(st, *userID, *inviteCode, *insecure, *selfURL)
+		if err != nil {
+			return err
+		}
+		mux, err := getMux(s)
 		if err != nil {
 			return err
 		}
@@ -273,7 +278,15 @@ func cmdTestServe() *cobra.Command {
 			uid = userState.UID
 		}
 
-		mux, err := getMux(st, uid, *inviteCode, *insecure, *selfURL)
+		s, err := getServer(st, uid, *inviteCode, *insecure, *selfURL)
+		if err != nil {
+			return err
+		}
+
+		s.FrontendConfig.Src = "testserve"
+		s.FrontendConfig.DefServer = "http://localhost:8079"
+
+		mux, err := getMux(s)
 		if err != nil {
 			return err
 		}

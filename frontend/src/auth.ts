@@ -72,7 +72,7 @@ export class MastLogin extends LitElement {
           <label for="server-addr">
             Mastodon server address
           </label>
-          <input id="server-addr" type="url" ${ref(this.serverAddrRef)} value="mastodon.social" @input=${this.refreshInputServerAddr} required autofocus></input>
+          <input id="server-addr" type="url" ${ref(this.serverAddrRef)} value="${mastopoofConfig.defServer}" @input=${this.refreshInputServerAddr} required autofocus></input>
 
           <div class="server-hint" >Using: ${this.inputServerAddr}</div>
           <br>

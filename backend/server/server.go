@@ -149,6 +149,10 @@ func NewSessionManager(st *storage.Storage) *scs.SessionManager {
 }
 
 type Server struct {
+	// Config to send to the frontend.
+	// Do not modify once it is serving.
+	FrontendConfig MastopoofConfig
+
 	st             *storage.Storage
 	inviteCode     string
 	autoLogin      storage.UID
@@ -159,6 +163,10 @@ type Server struct {
 
 func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode string, autoLogin storage.UID, selfURL *url.URL, appRegistry *AppRegistry) *Server {
 	s := &Server{
+		FrontendConfig: MastopoofConfig{
+			Src:       "server",
+			DefServer: "mastodon.social",
+		},
 		st:             st,
 		sessionManager: sessionManager,
 		inviteCode:     inviteCode,
@@ -830,10 +838,7 @@ func (s *Server) RedirectHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s *Server) ConfigHandler(w http.ResponseWriter, req *http.Request) {
-	var cfg MastopoofConfig
-	cfg.Src = "backend"
-
-	encodedCfg, err := json.Marshal(cfg)
+	encodedCfg, err := json.Marshal(s.FrontendConfig)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("unable to encode config: %v", err), http.StatusInternalServerError)
 		return
@@ -858,6 +863,9 @@ func (s *Server) RegisterOn(mux *http.ServeMux) {
 	mux.Handle("/_config", s.sessionManager.LoadAndSave(http.HandlerFunc(s.ConfigHandler)))
 }
 
+// MastopoofConfig is data that is being sent upfront to the frontend.
+// See common.ts for more details.
 type MastopoofConfig struct {
-	Src string `json:"src"`
+	Src       string `json:"src"`
+	DefServer string `json:"defServer"`
 }
