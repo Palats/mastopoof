@@ -65,7 +65,14 @@ export class MastLogin extends LitElement {
 
   render() {
     if (!this.authURI) {
-      return html`
+      return this.renderServerChoice();
+    }
+    return this.renderAuthCode();
+  }
+
+  // Render the box for choosing the Mastodon server to connect to.
+  renderServerChoice() {
+    return html`
         <div class="authbox">
           <h1>Sign into Mastodon</h1>
 
@@ -86,18 +93,19 @@ export class MastLogin extends LitElement {
           <button id="do-auth" @click=${this.startLogin}>Sign-in</button>
         </div>
       `;
-    }
+  }
 
+  // Render the box used to copy/paste the access code when required.
+  renderAuthCode() {
     return html`
       <div class="authbox">
-        <div>
-          <a href=${this.authURI}>Mastodon Auth</a>
-        </div>
-        <div>
-          <label for="auth-code">Authorization code</label>
-          <input type="text" id="auth-code" ${ref(this.authCodeRef)} required autofocus></input>
-          <button @click=${this.doLogin}>Auth</button>
-        </div>
+        <h1>Authorization</h1>
+        <a href=${this.authURI} target="_blank">Authorize on Mastodon server...<span class="material-symbols-outlined" title="Open Mastodon auth page">open_in_new</span></a>
+        <br/>
+        <label for="auth-code">Authorization code</label>
+        <input type="text" id="auth-code" ${ref(this.authCodeRef)} required autofocus></input>
+        <br/>
+        <button @click=${this.doLogin}>Auth</button>
       </div>
     `;
   }
