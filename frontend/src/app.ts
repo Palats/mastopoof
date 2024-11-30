@@ -8,6 +8,7 @@ import "./auth";
 import "./stream";
 import "./search";
 
+console.log("Config:", globalThis.mastopoofConfig.src);
 
 @customElement('app-root')
 export class AppRoot extends LitElement {

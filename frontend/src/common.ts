@@ -35,3 +35,14 @@ export const sharedCSS = [unsafeCSS(normalizeCSSstr), unsafeCSS(baseCSSstr)];
 export function parseStatus(pbStatus: pb.MastodonStatus): mastodon.Status {
   return JSON.parse(pbStatus.content) as mastodon.Status;
 }
+
+// This is the data that is provided before typescript main codebase is executed.
+// This is also declared in server.go.
+export type MastopoofConfig = {
+  // A string indicating how the config was obtained. For debugging.
+  src: string;
+};
+
+declare global {
+  var mastopoofConfig: MastopoofConfig;
+}

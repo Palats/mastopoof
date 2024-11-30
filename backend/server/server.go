@@ -829,9 +829,35 @@ func (s *Server) RedirectHandler(w http.ResponseWriter, req *http.Request) {
 	http.Redirect(w, req, p, http.StatusFound)
 }
 
+func (s *Server) ConfigHandler(w http.ResponseWriter, req *http.Request) {
+	var cfg MastopoofConfig
+	cfg.Src = "backend"
+
+	encodedCfg, err := json.Marshal(cfg)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("unable to encode config: %v", err), http.StatusInternalServerError)
+		return
+	}
+	// This is loaded as a script to have priority over the main typescript codebase.
+	// This way, this is loaded first, and typescript code is sure that some
+	// config data is available.
+	content := fmt.Sprintf("mastopoofConfig = %s;", string(encodedCfg))
+	w.Header().Add("Content-Type", "text/javascript")
+	_, err = w.Write([]byte(content))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("unable to write config: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
 func (s *Server) RegisterOn(mux *http.ServeMux) {
 	api := http.NewServeMux()
 	api.Handle(mastopoofconnect.NewMastopoofHandler(s))
 	mux.Handle("/_rpc/", s.sessionManager.LoadAndSave(http.StripPrefix("/_rpc", api)))
 	mux.Handle("/_redirect", s.sessionManager.LoadAndSave(http.HandlerFunc(s.RedirectHandler)))
+	mux.Handle("/_config", s.sessionManager.LoadAndSave(http.HandlerFunc(s.ConfigHandler)))
+}
+
+type MastopoofConfig struct {
+	Src string `json:"src"`
 }
