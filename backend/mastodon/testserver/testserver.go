@@ -271,7 +271,9 @@ func (s *Server) serveOAuthToken(w http.ResponseWriter, req *http.Request) (any,
 var oauthAuthorizeTmpl = template.Must(template.New("authorize").Parse(`
 	<html>
 	<body>
+	<div>
 	Test mastodon server authorize page.
+	</div>
 	<br/>
 	<table>
 		<tr><td>client_id</td><td>{{.clientID}}</td></tr>
@@ -280,12 +282,16 @@ var oauthAuthorizeTmpl = template.Must(template.New("authorize").Parse(`
 		<tr><td>scope</td><td>{{.scope}}</td></tr>
 	</table>
 	<br/>
+	Auth code: {{.authCode}}
+	<br/>
 	<a href="{{.targetRedirectURI}}">Go to redirect_uri with code</a>
 	</body>
 	</html>
 `))
 
 func (s *Server) serveOAuthAuthorize(w http.ResponseWriter, req *http.Request) {
+	authCode := "sometestcode"
+
 	q := req.URL.Query()
 
 	baseRedirectURI := q.Get("redirect_uri")
@@ -295,7 +301,7 @@ func (s *Server) serveOAuthAuthorize(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	rq := targetRedirectURI.Query()
-	rq.Set("code", "sometestcode")
+	rq.Set("code", authCode)
 	targetRedirectURI.RawQuery = rq.Encode()
 
 	data := map[string]string{
@@ -304,6 +310,7 @@ func (s *Server) serveOAuthAuthorize(w http.ResponseWriter, req *http.Request) {
 		"responseType":      q.Get("response_type"),
 		"scope":             q.Get("scope"),
 		"targetRedirectURI": targetRedirectURI.String(),
+		"authCode":          authCode,
 	}
 	if err := oauthAuthorizeTmpl.Execute(w, data); err != nil {
 		WriteError(w, req, err)

@@ -86,9 +86,13 @@ func getServer(st *storage.Storage, autoLogin storage.UID, inviteCode string, in
 		sessionManager.Cookie.Secure = false
 	}
 
-	u, err := url.Parse(selfURL)
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse self URL %q: %w", selfURL, err)
+	var u *url.URL
+	if selfURL != "" {
+		var err error
+		u, err = url.Parse(selfURL)
+		if err != nil {
+			return nil, fmt.Errorf("unable to parse self URL %q: %w", selfURL, err)
+		}
 	}
 
 	appRegistry := server.NewAppRegistry(st)
