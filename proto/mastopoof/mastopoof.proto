@@ -90,6 +90,10 @@ message AuthorizeResponse {
     // The address for asking the user authorization.
     // That's the `/oauth/authorize` end point to use on the mastodon server.
     string authorize_addr = 1;
+    // Authorization is done out-of-band (aka, urn:ietf:wg:oauth:2.0:oob).
+    // This means that the Mastopoof auth UI must be used to provide
+    // the auth code.
+    bool out_of_band = 2;
 }
 
 message TokenRequest {

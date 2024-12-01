@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
 import { Ref, createRef, ref } from 'lit/directives/ref.js';
+import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 
 import * as common from "./common";
 
@@ -37,15 +38,22 @@ export class MastLogin extends LitElement {
     this.refreshInputServerAddr();
     const serverAddr = this.inputServerAddr;
     const inviteCode = this.inviteCodeRef.value?.value;
+    var resp: pb.AuthorizeResponse;
     try {
-      this.authURI = await common.backend.authorize(serverAddr, inviteCode);
+      resp = await common.backend.authorize(serverAddr, inviteCode);
     } catch (e) {
       console.error("failed authorize:", e);
       return;
     }
+    this.authURI = resp.authorizeAddr;
     this.refreshInputServerAddr();
     this.serverAddr = this.inputServerAddr;
+
     console.log("authURI", this.authURI);
+
+    if (!resp.outOfBand) {
+      window.location.href = this.authURI;
+    }
   }
 
   async doLogin() {

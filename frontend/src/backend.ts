@@ -112,9 +112,9 @@ export class Backend {
     this.onEvent.dispatchEvent(evt);
   }
 
-  public async authorize(serverAddr: string, inviteCode?: string): Promise<string> {
+  public async authorize(serverAddr: string, inviteCode?: string): Promise<pb.AuthorizeResponse> {
     const resp = await this.client.authorize({ serverAddr: serverAddr, inviteCode: inviteCode });
-    return resp.authorizeAddr;
+    return resp;
   }
 
   public async token(serverAddr: string, authCode: string) {

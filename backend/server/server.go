@@ -22,6 +22,10 @@ import (
 
 const AppMastodonScopes = "read write push"
 
+// URI to use in oauth to indicate that no redirection should happen but instead
+// the user should copy/paste the auth code explictly.
+const OutOfBandURI = "urn:ietf:wg:oauth:2.0:oob"
+
 // validateAddress verifies that a Mastodon server adress is vaguely looking good.
 func validateAddress(addr string) error {
 	if !strings.HasPrefix(addr, "http://") && !strings.HasPrefix(addr, "https://") {
@@ -84,7 +88,7 @@ func (appreg *AppRegistry) MastodonClient(appRegState *storage.AppRegState, acce
 }
 
 func (appreg *AppRegistry) appRegInfo(serverAddr string, selfURL *url.URL) *storage.AppRegInfo {
-	redirectURI := "urn:ietf:wg:oauth:2.0:oob"
+	redirectURI := OutOfBandURI
 
 	if selfURL != nil {
 		u := selfURL.JoinPath(redirectPath)
@@ -298,6 +302,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 
 	return connect.NewResponse(&pb.AuthorizeResponse{
 		AuthorizeAddr: authAddr.String(),
+		OutOfBand:     appRegState.RedirectURI == OutOfBandURI,
 	}), nil
 }
 
