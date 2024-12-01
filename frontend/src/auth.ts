@@ -108,12 +108,12 @@ export class MastLogin extends LitElement {
     return html`
       <div class="authbox">
         <h1>Authorization</h1>
-        <a href=${this.authURI} target="_blank">Authorize on Mastodon server...<span class="material-symbols-outlined" title="Open Mastodon auth page">open_in_new</span></a>
+        <a href=${this.authURI} target="_blank">Get authorization on Mastodon server...<span class="material-symbols-outlined" title="Open Mastodon auth page">open_in_new</span></a>
         <br/>
         <label for="auth-code">Authorization code</label>
         <input type="text" id="auth-code" ${ref(this.authCodeRef)} required autofocus></input>
         <br/>
-        <button @click=${this.doLogin}>Auth</button>
+        <button @click=${this.doLogin}>Authorize</button>
       </div>
     `;
   }
