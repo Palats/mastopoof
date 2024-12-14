@@ -21,8 +21,9 @@ export class MastMainView extends LitElement {
   // Count the number of reasons why the loading bar should be shown.
   // This allows to have multiple things loading, while avoiding having
   // the first one finishing removing the loading bar.
-
   @property({ attribute: false }) loadingBarUsers = 0;
+
+  @property() selectedView = "stream";
 
   @state() private showMenu = false;
 
@@ -56,11 +57,15 @@ export class MastMainView extends LitElement {
         </div>
         ${this.showMenu ? html`
           <div class="menucontent">
-            <div class="menuentry"><a href="?v=stream" @click=${(e: Event) => this.switchView(e, "stream")}>Stream</a></div>
-            <div class="menuentry"><a href="?v=search" @click=${(e: Event) => this.switchView(e, "search")}>Search</a></div>
+            <div class=${classMap({ "menuentry": true, "menuselected": this.selectedView === "stream" })}>
+              <a href="?v=stream" @click=${(e: Event) => this.switchView(e, "stream")}>Stream</a>
+            </div>
+            <div class=${classMap({ "menuentry": true, "menuselected": this.selectedView === "search" })}>
+              <a href="?v=search" @click=${(e: Event) => this.switchView(e, "search")}>Search</a>
+            </div>
             <slot name="menu"></slot>
-            <div>
-              <button @click=${() => common.backend.logout()}>Logout</button>
+            <div class="menuentry">
+              <div><button @click=${() => common.backend.logout()}>Logout</button></div>
             </div>
           </div>` : nothing}
       </div>
@@ -150,6 +155,13 @@ export class MastMainView extends LitElement {
     .menuentry > * {
       flex-grow: 1;
       padding: 8px;
+    }
+
+    .menuselected {
+      font-weight: bold;
+      font-style: italic;
+
+      background-color: var(--color-grey-300);
     }
 
     .footer {

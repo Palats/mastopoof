@@ -409,7 +409,7 @@ export class MastStream extends LitElement {
     const notifAddr = `${this.userInfo.accounts[0].serverAddr}/notifications`;
 
     return html`
-      <mast-main-view .loadingBarUsers=${this.loadingBarUsers}>
+      <mast-main-view .loadingBarUsers=${this.loadingBarUsers} selectedView="stream">
         <div slot="header" class="header">
           <div class="title">Stream</div>
           <div class=${classMap({ "notifs": true, "notifs-alert": notifsAlert })}>

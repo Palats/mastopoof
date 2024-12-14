@@ -46,7 +46,7 @@ export class MastSearch extends LitElement {
 
   render() {
     return html`
-      <mast-main-view .loadingBarUsers=${this.loadingBarUsers}>
+      <mast-main-view .loadingBarUsers=${this.loadingBarUsers} selectedView="search">
         <span slot="header">Search</span>
         <div slot="list">
           <div class="search-form">
