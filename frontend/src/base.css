@@ -3,7 +3,8 @@
 /* Shadow dom does not fallback to :root, so piggy
  back on :host instead. */
 :host {
-  font-size: 16px;
+  font-size: 15px;
+  font-family: sans-serif;
 
   --stream-min-width: 100px;
   --stream-max-width: 640px;
