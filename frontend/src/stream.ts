@@ -416,11 +416,6 @@ export class MastStream extends LitElement {
             <a href=${notifAddr}>${notifs}</a>
           </div>
         </div>
-        <div slot="menu">
-          <div>
-            <button @click=${this.triggerFetch}>Fetch now</button>
-          </div>
-        </div>
         <div slot="list">
           ${this.renderStreamContent()}
         </div>
@@ -432,8 +427,13 @@ export class MastStream extends LitElement {
               <span class="material-symbols-outlined">arrow_downward</span>
             </span>
           </div>
-          <div class="fetchtime">${this.isFetching ? html`Checking...`
-        : html`Last check: <time-since .unix=${this.streamInfo?.lastFetchSecs}></time-since>`}</div>
+          <div class="fetchtime">
+            ${this.isFetching ? html`Checking...` : html`
+              <button class="refresh" @click=${this.triggerFetch} title="Check Mastodon for new statuses">
+                <span class="material-symbols-outlined">refresh</span>
+              </button>
+            `}
+          </div>
         </div>
       </mast-main-view>
     `;
@@ -555,6 +555,10 @@ export class MastStream extends LitElement {
       padding-top: 4px;
       padding-bottom: 4px;
       height: 40px;
+    }
+
+    .refresh {
+      height: 16px;
     }
   `];
 }
