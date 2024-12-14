@@ -56,8 +56,8 @@ export class MastMainView extends LitElement {
         </div>
         ${this.showMenu ? html`
           <div class="menucontent">
-            <div><a href="?v=stream" @click=${(e: Event) => this.switchView(e, "stream")}>Stream</a></div>
-            <div><a href="?v=search" @click=${(e: Event) => this.switchView(e, "search")}>Search</a></div>
+            <div class="menuentry"><a href="?v=stream" @click=${(e: Event) => this.switchView(e, "stream")}>Stream</a></div>
+            <div class="menuentry"><a href="?v=search" @click=${(e: Event) => this.switchView(e, "search")}>Search</a></div>
             <slot name="menu"></slot>
             <div>
               <button @click=${() => common.backend.logout()}>Logout</button>
@@ -132,9 +132,24 @@ export class MastMainView extends LitElement {
 
     .menucontent {
       grid-column: 2;
-      padding: 8px;
+      padding: 0;
       background-color: var(--color-blue-25);
       box-shadow: rgb(0 0 0 / 80%) 0px 16px 12px;
+    }
+
+    .menuentry {
+      background-color: var(--color-grey-150);
+      height: 40px;
+      display: flex;
+      align-items: center;
+
+      margin-bottom: 2px;
+      padding: 0px 0px 0px 8px;
+    }
+
+    .menuentry > * {
+      flex-grow: 1;
+      padding: 8px;
     }
 
     .footer {

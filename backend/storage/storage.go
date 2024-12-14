@@ -417,7 +417,7 @@ func (st *Storage) ListUsers(ctx context.Context) (_ []*ListUserEntry, retErr er
 
 // CreateUser creates a new mastopoof user, with all the necessary bit and pieces.
 func (st *Storage) CreateUser(ctx context.Context, txn SQLReadWrite, serverAddr string, accountID mastodon.ID, username string) (_ *UserState, _ *AccountState, _ *StreamState, retErr error) {
-	defer recordAction("creat-euser")(retErr)
+	defer recordAction("create-user")(retErr)
 	var userState *UserState
 	var accountState *AccountState
 	var streamState *StreamState
