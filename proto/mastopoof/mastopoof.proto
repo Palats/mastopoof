@@ -5,8 +5,10 @@ package mastopoof;
 service Mastopoof {
     // Check if the user is already authenticated.
     rpc Login(LoginRequest) returns (LoginResponse);
-
+    // Well, log out the user.
     rpc Logout(LogoutRequest) returns (LogoutResponse);
+    // Change user settings.
+    rpc UpdateSettings(UpdateSettingsRequest) returns (UpdateSettingsResponse);
 
     // Support for Mastodon oauth flow.
     rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
@@ -37,6 +39,17 @@ message UserInfo {
     // List of mastodon accounts attached to that user.
     // At least one will be available.
     repeated Account accounts = 2;
+
+    Settings settings = 3;
+    // Default values for the settings when a field is set to 0.
+    // TODO: build that into the javascript or something.
+    Settings default_settings = 4;
+}
+
+message Settings {
+    // Number of statuses to list by default when user click button.
+    // Set to 0 to use the default.
+    int64 default_list_count = 3;
 }
 
 // Information about the state of the stream.
@@ -77,6 +90,13 @@ message LoginResponse {
 
 message LogoutRequest{}
 message LogoutResponse{}
+
+message UpdateSettingsRequest {
+  // TODO: have some race condition detection (e.g., generation ID).
+  Settings settings = 1;
+}
+
+message UpdateSettingsResponse {}
 
 message AuthorizeRequest {
     // The mastodon server address the user wants to use.

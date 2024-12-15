@@ -255,6 +255,78 @@ func TestBasic(t *testing.T) {
 	}
 }
 
+func TestListWithCustomMaxCount(t *testing.T) {
+	ctx := context.Background()
+	env := (&TestEnv{
+		t:             t,
+		StatusesCount: 20,
+	}).Init(ctx)
+	defer env.Close()
+	userInfo := env.FullLogin()
+
+	// Fetch the initial statuses. Note that Mastodon behavior is to give just the
+	// recent statuses - so even if there was hundreds of statuses in the Mastodon
+	// stream, only a few of them would be available, and the older one ignored.
+	// This is why more statuses must be inserted afterward, so many of them can
+	// actually be fetched in the tests below.
+	MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
+		Stid: userInfo.DefaultStid,
+	})
+	for i := 0; i < int(100); i++ {
+		if _, err := env.mastodonServer.AddFakeStatus(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for {
+		r := MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
+			Stid: userInfo.DefaultStid,
+		})
+		if r.Status != pb.FetchResponse_MORE {
+			break
+		}
+	}
+
+	// Should get the default number of statuses for now.
+	listResp := MustCall[pb.ListResponse](env, "List", &pb.ListRequest{
+		Stid:      userInfo.DefaultStid,
+		Direction: pb.ListRequest_FORWARD,
+	})
+	if got, want := int64(len(listResp.Items)), storage.DefaultSettings.DefaultListCount; got != want {
+		t.Errorf("Got %d statuses, wanted %d", got, want)
+	}
+
+	// Let's set the default number of status to get for the user.
+	// But first verify that bad values are rejected.
+	req := &pb.UpdateSettingsRequest{Settings: &pb.Settings{
+		DefaultListCount: -1,
+	}}
+	if resp, want := MustRequest(env, "UpdateSettings", req), http.StatusBadRequest; resp.StatusCode != want {
+		t.Errorf("Got status code %v, wanted %v", resp.StatusCode, want)
+	}
+	req = &pb.UpdateSettingsRequest{Settings: &pb.Settings{
+		DefaultListCount: 210,
+	}}
+	if resp, want := MustRequest(env, "UpdateSettings", req), http.StatusBadRequest; resp.StatusCode != want {
+		t.Errorf("Got status code %v, wanted %v", resp.StatusCode, want)
+	}
+
+	// Now set it to a higher but valid value.
+	req = &pb.UpdateSettingsRequest{Settings: &pb.Settings{
+		DefaultListCount: 20,
+	}}
+	MustCall[pb.UpdateSettingsResponse](env, "UpdateSettings", req)
+
+	// And verify that more statuses are obtained.
+	listResp = MustCall[pb.ListResponse](env, "List", &pb.ListRequest{
+		Stid:      userInfo.DefaultStid,
+		Direction: pb.ListRequest_FORWARD,
+		Position:  listResp.ForwardPosition,
+	})
+	if got, want := int64(len(listResp.Items)), int64(20); got != want {
+		t.Errorf("Got %d statuses, wanted %d", got, want)
+	}
+}
+
 func TestSetRead(t *testing.T) {
 	ctx := context.Background()
 	env := (&TestEnv{

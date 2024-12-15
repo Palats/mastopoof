@@ -196,8 +196,12 @@ func (s *Server) isLogged(ctx context.Context) (storage.UID, error) {
 	return userID, nil
 }
 
+// getUserInfo builds a UserInfo proto suitable for the UI.
 func (s *Server) getUserInfo(ctx context.Context, userState *storage.UserState) (*pb.UserInfo, error) {
-	userInfo := &pb.UserInfo{DefaultStid: int64(userState.DefaultStID)}
+	userInfo := &pb.UserInfo{
+		DefaultStid:     int64(userState.DefaultStID),
+		DefaultSettings: storage.DefaultSettings,
+	}
 
 	accountStates, err := s.st.AllAccountStateByUID(ctx, nil, userState.UID)
 	if err != nil {
@@ -206,7 +210,21 @@ func (s *Server) getUserInfo(ctx context.Context, userState *storage.UserState) 
 	for _, accountState := range accountStates {
 		userInfo.Accounts = append(userInfo.Accounts, accountState.ToAccountProto())
 	}
+
+	userInfo.Settings, err = s.getSettings(ctx, userState)
+	if err != nil {
+		return nil, err
+	}
+
 	return userInfo, nil
+}
+
+// getSettings builds a Settings proto suitable for the UI.
+func (s *Server) getSettings(_ context.Context, userState *storage.UserState) (*pb.Settings, error) {
+	settings := &pb.Settings{
+		DefaultListCount: userState.DefaultListCount,
+	}
+	return settings, nil
 }
 
 // verifyStdID checks that the logged in user is allowed access to that
@@ -265,6 +283,36 @@ func (s *Server) Logout(ctx context.Context, req *connect.Request[pb.LogoutReque
 		return nil, fmt.Errorf("unable to renew token: %w", err)
 	}
 	return connect.NewResponse(&pb.LogoutResponse{}), nil
+}
+
+func (s *Server) UpdateSettings(ctx context.Context, req *connect.Request[pb.UpdateSettingsRequest]) (*connect.Response[pb.UpdateSettingsResponse], error) {
+	userID, err := s.isLogged(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if v := req.Msg.GetSettings().DefaultListCount; v < 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("DefaultListCount must be 0 or positive; got: %d", v))
+	}
+	if v, max := req.Msg.GetSettings().DefaultListCount, int64(200); v > max {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("DefaultListCount must be lower then %d; got: %d", max, v))
+	}
+
+	err = s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
+		userState, err := s.st.UserState(ctx, txn, userID)
+		if err != nil {
+			return err
+		}
+
+		// For now, that's the only setting that can be set.
+		userState.DefaultListCount = req.Msg.GetSettings().DefaultListCount
+
+		return s.st.SetUserState(ctx, txn, userState)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&pb.UpdateSettingsResponse{}), nil
 }
 
 func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.AuthorizeRequest]) (*connect.Response[pb.AuthorizeResponse], error) {
@@ -410,6 +458,11 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 		return nil, err
 	}
 
+	maxCount := userState.DefaultListCount
+	if maxCount <= 0 {
+		maxCount = storage.DefaultSettings.DefaultListCount
+	}
+
 	accountState, err := s.st.FirstAccountStateByUID(ctx, nil, userState.UID)
 	if err != nil {
 		return nil, err
@@ -423,17 +476,17 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 	case pb.ListRequest_DEFAULT:
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("missing direction specification"))
 	case pb.ListRequest_INITIAL:
-		listResult, err = s.st.ListForward(ctx, stid, req.Msg.Position, true /* isInitial */)
+		listResult, err = s.st.ListForward(ctx, stid, req.Msg.Position, true /* isInitial */, maxCount)
 		if err != nil {
 			return nil, err
 		}
 	case pb.ListRequest_FORWARD:
-		listResult, err = s.st.ListForward(ctx, stid, req.Msg.Position, false /* isInitial */)
+		listResult, err = s.st.ListForward(ctx, stid, req.Msg.Position, false /* isInitial */, maxCount)
 		if err != nil {
 			return nil, err
 		}
 	case pb.ListRequest_BACKWARD:
-		listResult, err = s.st.ListBackward(ctx, stid, req.Msg.Position)
+		listResult, err = s.st.ListBackward(ctx, stid, req.Msg.Position, maxCount)
 		if err != nil {
 			return nil, err
 		}

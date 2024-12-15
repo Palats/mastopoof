@@ -1087,7 +1087,7 @@ type ListResult struct {
 
 // ListBackward get statuses before the provided position.
 // refPosition must be strictly positive - i.e., refer to an actual position.
-func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int64) (_ *ListResult, retErr error) {
+func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int64, maxCount int64) (_ *ListResult, retErr error) {
 	defer recordAction("list-backward")(retErr)
 	if refPosition < 1 {
 		return nil, fmt.Errorf("invalid position %d", refPosition)
@@ -1109,8 +1109,6 @@ func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int6
 		}
 
 		result.StreamState = streamState
-
-		maxCount := 10
 
 		// Fetch what is currently available after refPosition
 		rows, err := txn.Query(ctx, "list-backward", `
@@ -1167,7 +1165,7 @@ func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int6
 // ListForward get statuses after the provided position.
 // It can triage things in the stream if necessary.
 // If refPosition is 0, gives data around the provided position.
-func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64, isInitial bool) (_ *ListResult, retErr error) {
+func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64, isInitial bool, maxCount int64) (_ *ListResult, retErr error) {
 	defer recordAction("list-forward")(retErr)
 	if refPosition < 0 {
 		return nil, fmt.Errorf("invalid position %d", refPosition)
@@ -1201,8 +1199,6 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 				return fmt.Errorf("position %d does not exists", refPosition)
 			}
 		}
-
-		maxCount := 10
 
 		// Fetch what is currently available after refPosition
 		rows, err := txn.Query(ctx, "list-forward", `
@@ -1247,7 +1243,7 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 		// Nothing is triaged on initial load - the idea is to try to reload similarly as
 		// what it was before and keep triage on explicit request (as long as no auto-loading is
 		// enabled).
-		for len(result.Items) < maxCount && !isInitial {
+		for int64(len(result.Items)) < maxCount && !isInitial {
 			// If we're here, it means we've reached the end of the current stream,
 			// so we need to try to inject new items.
 			ost, err := st.pickNextInTxn(ctx, txn, streamState)
