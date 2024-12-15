@@ -32,17 +32,30 @@ export enum LoginState {
 }
 
 export class Backend {
-  private streamInfo?: pb.StreamInfo;
-
   // Events:
-  //  'stream-update': Fired when last-read is changed. Gives a StreamUpdateEvent event.
+  //  'stream-update' -> StreamUpdateEvent: Fired when last-read is changed.
+  //  'login-update' -> LoginUpdateEvent.
   public onEvent: EventTarget;
 
+  // Latest user info obtained from the backend. Might be out of date if an update
+  // request is in flight or was not reflected here.
+  public userInfo?: pb.UserInfo;
+
   private client: PromiseClient<typeof Mastopoof>;
+  private streamInfo?: pb.StreamInfo;
 
   constructor(transport: Transport) {
     this.client = createPromiseClient(Mastopoof, transport);
     this.onEvent = new EventTarget();
+  }
+
+  private dispatchLoginUpdate(state: LoginState, userInfo: pb.UserInfo | undefined) {
+    this.userInfo = userInfo;
+
+    const evt = new LoginUpdateEvent("login-update");
+    evt.state = state;
+    evt.userInfo = userInfo;
+    this.onEvent.dispatchEvent(evt);
   }
 
   private updateStreamInfo(streamInfo?: pb.StreamInfo) {
@@ -73,29 +86,20 @@ export class Backend {
   }
 
   public async login() {
-    const evt = new LoginUpdateEvent("login-update");
-    evt.state = LoginState.LOADING;
-    this.onEvent.dispatchEvent(evt);
+    this.dispatchLoginUpdate(LoginState.LOADING, undefined);
 
     try {
       const resp = await this.client.login({});
       if (resp.userInfo) {
-        const evt = new LoginUpdateEvent("login-update");
-        evt.state = LoginState.LOGGED;
-        evt.userInfo = resp.userInfo;
-        this.onEvent.dispatchEvent(evt);
+        this.dispatchLoginUpdate(LoginState.LOGGED, resp.userInfo);
       } else {
-        const evt = new LoginUpdateEvent("login-update");
-        evt.state = LoginState.NOT_LOGGED;
-        this.onEvent.dispatchEvent(evt);
+        this.dispatchLoginUpdate(LoginState.NOT_LOGGED, undefined);
       }
 
     } catch (err) {
       const connectErr = ConnectError.from(err);
       if (connectErr.code === Code.PermissionDenied) {
-        const evt = new LoginUpdateEvent("login-update");
-        evt.state = LoginState.NOT_LOGGED;
-        this.onEvent.dispatchEvent(evt);
+        this.dispatchLoginUpdate(LoginState.NOT_LOGGED, undefined);
         return null;
       }
       throw err;
@@ -103,13 +107,9 @@ export class Backend {
   }
 
   public async logout() {
-    let evt = new LoginUpdateEvent("login-update");
-    evt.state = LoginState.LOADING;
-    this.onEvent.dispatchEvent(evt);
+    this.dispatchLoginUpdate(LoginState.LOADING, undefined);
     await this.client.logout({});
-    evt = new LoginUpdateEvent("login-update");
-    evt.state = LoginState.NOT_LOGGED;
-    this.onEvent.dispatchEvent(evt);
+    this.dispatchLoginUpdate(LoginState.NOT_LOGGED, undefined);
   }
 
   public async authorize(serverAddr: string, inviteCode?: string): Promise<pb.AuthorizeResponse> {
@@ -122,10 +122,7 @@ export class Backend {
     if (!resp.userInfo) {
       throw "oops";
     }
-    let evt = new LoginUpdateEvent("login-update");
-    evt.state = LoginState.LOGGED;
-    evt.userInfo = resp.userInfo;
-    this.onEvent.dispatchEvent(evt);
+    this.dispatchLoginUpdate(LoginState.LOGGED, resp.userInfo);
   }
 
   // Returns true if finished, false if more statuses are likely available.
@@ -142,5 +139,9 @@ export class Backend {
 
   public async setStatus(statusID: string, action: pb.SetStatusRequest_Action): Promise<pb.SetStatusResponse> {
     return await this.client.setStatus({ statusId: statusID, action: action });
+  }
+
+  public async updateSettings(settings: pb.Settings): Promise<pb.UpdateSettingsResponse> {
+    return await this.client.updateSettings({ settings: settings });
   }
 }
