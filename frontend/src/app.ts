@@ -7,6 +7,7 @@ import * as mainview from "./mainview";
 import "./auth";
 import "./stream";
 import "./search";
+import "./settings";
 
 console.log("Config:", globalThis.mastopoofConfig.src);
 
@@ -45,12 +46,13 @@ export class AppRoot extends LitElement {
   }
 
   updateFromLocation() {
-    const targetView = new URL(document.location.toString()).searchParams.get("v");
-    if (targetView === "search") {
-      this.currentView = "search";
-    } else {
-      this.currentView = "stream";
+    let targetView = new URL(document.location.toString()).searchParams.get("v");
+    if (!targetView) {
+      // When the view is not specified in the URL, we want to fallback to stream by default.
+      targetView = "stream";
     }
+    // TODO: verify it is a valid value.
+    this.currentView = targetView as mainview.viewName;
   }
 
   render() {
@@ -60,15 +62,22 @@ export class AppRoot extends LitElement {
     if (this.lastLoginUpdate.state === LoginState.NOT_LOGGED) {
       return html`<mast-login></mast-login>`;
     }
-    if (this.currentView === "search") {
-      return html`<mast-search></mast-search>`;
-    };
-
     if (!this.lastLoginUpdate?.userInfo) {
       throw new Error("missing login information");
     }
-    const userInfo = this.lastLoginUpdate.userInfo;
-    return html`<mast-stream .userInfo=${userInfo} .stid=${userInfo.defaultStid}></mast-stream>`;
+
+    switch (this.currentView) {
+      case "stream":
+        const userInfo = this.lastLoginUpdate.userInfo;
+        return html`<mast-stream .userInfo=${userInfo} .stid=${userInfo.defaultStid}></mast-stream>`;
+      case "search":
+        return html`<mast-search></mast-search>`;
+      case "settings":
+        return html`<mast-settings></mast-settings>`;
+      default:
+        const exhaustive: never = this.currentView;
+        return html`Invalid view ${exhaustive}`;
+    }
   }
 
   static styles = [common.sharedCSS, css``];

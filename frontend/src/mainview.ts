@@ -6,7 +6,7 @@ import * as common from "./common";
 
 import "./time";
 
-export type viewName = "stream" | "search";
+export type viewName = "stream" | "search" | "settings";
 
 export class ChangeViewEvent extends CustomEvent<viewName> { }
 
@@ -23,7 +23,7 @@ export class MastMainView extends LitElement {
   // the first one finishing removing the loading bar.
   @property({ attribute: false }) loadingBarUsers = 0;
 
-  @property() selectedView = "stream";
+  @property() selectedView: viewName = "stream";
 
   @state() private showMenu = false;
 
@@ -62,6 +62,9 @@ export class MastMainView extends LitElement {
             </div>
             <div class=${classMap({ "menuentry": true, "menuselected": this.selectedView === "search" })}>
               <a href="?v=search" @click=${(e: Event) => this.switchView(e, "search")}>Search</a>
+            </div>
+            <div class=${classMap({ "menuentry": true, "menuselected": this.selectedView === "settings" })}>
+              <a href="?v=settings" @click=${(e: Event) => this.switchView(e, "settings")}>Settings</a>
             </div>
             <slot name="menu"></slot>
             <div class="menuentry">
