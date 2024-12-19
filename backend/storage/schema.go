@@ -215,6 +215,11 @@ type StreamState struct {
 	// Position of the latest read status in this stream.
 	LastRead int64 `json:"last_read"`
 	// Position of the first status, if any. Usually == 1.
+	// 0 if there is no status yet in the stream.
+	// TODO: using 0 is a bit risky as it would be very easy to accidentely end up with
+	// first status to be at zero. Should either have cleaner semantic of LastPosition
+	// (e.g., have it not include the last status - thus having a diff when there are status)
+	// or have an explicit signal.
 	FirstPosition int64 `json:"first_position"`
 	// Position of the last status, if any.
 	LastPosition int64 `json:"last_position"`

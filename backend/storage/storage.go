@@ -1101,7 +1101,7 @@ func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int6
 			return err
 		}
 
-		if streamState.FirstPosition == streamState.LastPosition {
+		if streamState.FirstPosition == 0 {
 			return fmt.Errorf("backward requests on empty stream are not allowed")
 		}
 		if refPosition < streamState.FirstPosition || refPosition > streamState.LastPosition {
@@ -1185,8 +1185,7 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 		//  - Initial load, when the frontend loads up.
 		//  - Requesting more stuff, while the stream was empty before.
 		//  - Requesting more stuff, while the stream was not empty.
-
-		emptyStream := streamState.FirstPosition == streamState.LastPosition
+		emptyStream := streamState.FirstPosition == 0
 		if emptyStream && refPosition != 0 {
 			return fmt.Errorf("forward requests with non-null position on empty stream are not allowed")
 		}
