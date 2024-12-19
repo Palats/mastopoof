@@ -81,12 +81,24 @@ export class MastSettings extends LitElement {
     return html`
       <mast-main-view .loadingBarUsers=${this.loadingBarUsers} selectedView="settings">
         <span slot="header">Settings</span>
-        <div slot="list">
+        <div slot="list" class="list">
           <div>
-          <label for="s-default-list-count">Number of statuses to fetch when clicking "Get more statuses"</label>
-          <input type="number" id="s-default-list-count" value=${actualValue.toString()} @change=${this.changeInput} ${ref(this.inputRef)}></input>
-          <label for="s-default-list-count-default">Use default</label>
-          <input type="checkbox" id="s-default-list-count-default" ?checked=${isDefault} @change=${this.changeCheckbox} ${ref(this.checkBoxRef)}></input>
+            Number of statuses to fetch when clicking "Get more statuses"
+            <div class="inputs">
+              <span>
+                Default: ${this.defaultSettings.defaultListCount}
+              </span>
+
+              <span>
+                <label for="s-default-list-count-default">Override</label>
+                <input type="checkbox" id="s-default-list-count-default" ?checked=${isDefault} @change=${this.changeCheckbox} ${ref(this.checkBoxRef)}></input>
+                <input type="number" id="s-default-list-count" value=${actualValue.toString()} @change=${this.changeInput} ${ref(this.inputRef)}></input>
+              </span>
+            </div>
+          </div>
+
+          <div>
+            Another setting
           </div>
         </div>
         <div slot="footer" class="centered">
@@ -96,6 +108,35 @@ export class MastSettings extends LitElement {
     `;
   }
   static styles = [common.sharedCSS, css`
+    .list {
+      display: flex;
+      flex-direction: vertical;
+    }
+
+    .list > * {
+      margin: 4px;
+      margin-bottom: 6px;
+      border-width: 1px;
+      border-style: solid;
+      border-color: var(--color-grey-300);
+    }
+
+    .inputs {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .inputs > * + * {
+      border-left: solid 2px var(--color-grey-999);
+      padding-left: 8px;
+    }
+
+    input {
+      margin-left: 2px;
+      margin-right: 2px;
+    }
   `];
 }
 
