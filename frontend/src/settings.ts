@@ -131,6 +131,9 @@ export class MastSettings extends LitElement {
     .inputs > * + * {
       border-left: solid 2px var(--color-grey-999);
       padding-left: 8px;
+
+      display: flex;
+      align-items: center;
     }
 
     input {
