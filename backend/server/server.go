@@ -15,6 +15,7 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/golang/glog"
 	"github.com/mattn/go-mastodon"
+	"google.golang.org/protobuf/proto"
 
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	"github.com/Palats/mastopoof/proto/gen/mastopoof/mastopoofconnect"
@@ -211,20 +212,9 @@ func (s *Server) getUserInfo(ctx context.Context, userState *storage.UserState) 
 		userInfo.Accounts = append(userInfo.Accounts, accountState.ToAccountProto())
 	}
 
-	userInfo.Settings, err = s.getSettings(ctx, userState)
-	if err != nil {
-		return nil, err
-	}
+	userInfo.Settings = userState.Settings
 
 	return userInfo, nil
-}
-
-// getSettings builds a Settings proto suitable for the UI.
-func (s *Server) getSettings(_ context.Context, userState *storage.UserState) (*pb.Settings, error) {
-	settings := &pb.Settings{
-		DefaultListCount: userState.DefaultListCount,
-	}
-	return settings, nil
 }
 
 // verifyStdID checks that the logged in user is allowed access to that
@@ -291,10 +281,17 @@ func (s *Server) UpdateSettings(ctx context.Context, req *connect.Request[pb.Upd
 		return nil, err
 	}
 
-	if v := req.Msg.GetSettings().DefaultListCount; v < 0 {
+	// Clone the settings - not sure what is the lifecycle of the one provided
+	// for the RPC, and it will be used in userstate.
+	settings := proto.Clone(req.Msg.GetSettings()).(*pb.Settings)
+	if settings == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("missing settings"))
+	}
+
+	if v := settings.GetListCount().GetValue(); v < 0 {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("DefaultListCount must be 0 or positive; got: %d", v))
 	}
-	if v, max := req.Msg.GetSettings().DefaultListCount, int64(200); v > max {
+	if v, max := settings.GetListCount().GetValue(), int64(200); v > max {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("DefaultListCount must be lower then %d; got: %d", max, v))
 	}
 
@@ -304,8 +301,7 @@ func (s *Server) UpdateSettings(ctx context.Context, req *connect.Request[pb.Upd
 			return err
 		}
 
-		// For now, that's the only setting that can be set.
-		userState.DefaultListCount = req.Msg.GetSettings().DefaultListCount
+		userState.Settings = settings
 
 		return s.st.SetUserState(ctx, txn, userState)
 	})
@@ -458,9 +454,9 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 		return nil, err
 	}
 
-	maxCount := userState.DefaultListCount
-	if maxCount <= 0 {
-		maxCount = storage.DefaultSettings.DefaultListCount
+	maxCount := storage.DefaultSettings.GetListCount().GetValue()
+	if userState.Settings.GetListCount().GetOverride() {
+		maxCount = userState.Settings.GetListCount().GetValue()
 	}
 
 	accountState, err := s.st.FirstAccountStateByUID(ctx, nil, userState.UID)

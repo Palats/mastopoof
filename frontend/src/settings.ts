@@ -29,7 +29,7 @@ export class MastSettings extends LitElement {
   }
 
   changeInput() {
-    if (!this.defaultSettings || !this.currentSettings) {
+    if (!this.defaultSettings) {
       throw new Error("missing settings");
     }
     this.checkBoxRef.value!.checked = false;
@@ -37,46 +37,52 @@ export class MastSettings extends LitElement {
   }
 
   changeCheckbox() {
-    if (!this.defaultSettings || !this.currentSettings) {
+    if (!this.defaultSettings) {
       throw new Error("missing settings");
     }
     if (this.checkBoxRef.value?.checked) {
-      this.inputRef.value!.value = this.defaultSettings.defaultListCount.toString();
+      this.inputRef.value!.value = this.defaultSettings.listCount!.value.toString();
     }
     this.updateSettings();
   }
 
   updateSettings() {
-    if (!this.defaultSettings || !this.currentSettings) {
+    if (!this.defaultSettings) {
       throw new Error("missing settings");
     }
 
-    if (this.checkBoxRef.value?.checked) {
-      this.currentSettings.defaultListCount = BigInt(0);
-    } else {
-      this.currentSettings.defaultListCount = BigInt(this.inputRef.value!.value);
+    if (!this.currentSettings) {
+      this.currentSettings = new pb.Settings();
     }
+
+    this.currentSettings.listCount = new pb.SettingInt64({
+      value: BigInt(this.inputRef.value!.value),
+      override: this.checkBoxRef.value?.checked || false,
+    });
     this.requestUpdate();
   }
 
   async save() {
-    if (!this.defaultSettings || !this.currentSettings) {
+    if (!this.defaultSettings) {
       throw new Error("missing settings");
+    }
+    if (!this.currentSettings) {
+      // Nothing was set at all. Can happen when settings were empty.
+      return;
     }
 
     this.loadingBarUsers++;
-    console.log("settings", this.currentSettings);
     await common.backend.updateSettings(this.currentSettings);
     this.loadingBarUsers--;
   }
 
   render() {
-    if (!this.defaultSettings || !this.currentSettings) {
+    if (!this.defaultSettings) {
       throw new Error("missing settings");
     }
 
-    const isDefault = this.currentSettings.defaultListCount == BigInt(0);
-    const actualValue = isDefault ? this.defaultSettings.defaultListCount : this.currentSettings.defaultListCount;
+    const isDefault = !this.currentSettings?.listCount?.override;
+    const actualValue = isDefault ? this.defaultSettings.listCount!.value : this.currentSettings!.listCount!.value;
 
     return html`
       <mast-main-view .loadingBarUsers=${this.loadingBarUsers} selectedView="settings">
@@ -86,7 +92,7 @@ export class MastSettings extends LitElement {
             Number of statuses to fetch when clicking "Get more statuses"
             <div class="inputs">
               <span>
-                Default: ${this.defaultSettings.defaultListCount}
+                Default: ${this.defaultSettings.listCount!.value}
               </span>
 
               <span>

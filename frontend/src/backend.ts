@@ -55,6 +55,7 @@ export class Backend {
     const evt = new LoginUpdateEvent("login-update");
     evt.state = state;
     evt.userInfo = userInfo;
+    console.log("userInfo", userInfo);
     this.onEvent.dispatchEvent(evt);
   }
 

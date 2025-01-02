@@ -291,20 +291,20 @@ func TestListWithCustomMaxCount(t *testing.T) {
 		Stid:      userInfo.DefaultStid,
 		Direction: pb.ListRequest_FORWARD,
 	})
-	if got, want := int64(len(listResp.Items)), storage.DefaultSettings.DefaultListCount; got != want {
+	if got, want := int64(len(listResp.Items)), storage.DefaultSettings.GetListCount().GetValue(); got != want {
 		t.Errorf("Got %d statuses, wanted %d", got, want)
 	}
 
 	// Let's set the default number of status to get for the user.
 	// But first verify that bad values are rejected.
 	req := &pb.UpdateSettingsRequest{Settings: &pb.Settings{
-		DefaultListCount: -1,
+		ListCount: &pb.SettingInt64{Value: -1},
 	}}
 	if resp, want := MustRequest(env, "UpdateSettings", req), http.StatusBadRequest; resp.StatusCode != want {
 		t.Errorf("Got status code %v, wanted %v", resp.StatusCode, want)
 	}
 	req = &pb.UpdateSettingsRequest{Settings: &pb.Settings{
-		DefaultListCount: 210,
+		ListCount: &pb.SettingInt64{Value: 210},
 	}}
 	if resp, want := MustRequest(env, "UpdateSettings", req), http.StatusBadRequest; resp.StatusCode != want {
 		t.Errorf("Got status code %v, wanted %v", resp.StatusCode, want)
@@ -312,7 +312,7 @@ func TestListWithCustomMaxCount(t *testing.T) {
 
 	// Now set it to a higher but valid value.
 	req = &pb.UpdateSettingsRequest{Settings: &pb.Settings{
-		DefaultListCount: 20,
+		ListCount: &pb.SettingInt64{Value: 20, Override: true},
 	}}
 	MustCall[pb.UpdateSettingsResponse](env, "UpdateSettings", req)
 

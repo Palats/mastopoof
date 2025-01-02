@@ -41,15 +41,21 @@ message UserInfo {
     repeated Account accounts = 2;
 
     Settings settings = 3;
-    // Default values for the settings when a field is set to 0.
-    // TODO: build that into the javascript or something.
+    // Default values for the settings.
+    // The default value is part of the value of the fields, and
+    // "override" is ignored.
     Settings default_settings = 4;
 }
 
 message Settings {
     // Number of statuses to list by default when user click button.
-    // Set to 0 to use the default.
-    int64 default_list_count = 3;
+    SettingInt64 list_count = 1;
+}
+
+message SettingInt64 {
+    int64 value = 1;
+    // If true, use the value. Otherwise, rely on defaults.
+    bool override = 2;
 }
 
 // Information about the state of the stream.

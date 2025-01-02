@@ -24,14 +24,12 @@ type UserState struct {
 	// Default stream of that user.
 	DefaultStID StID `json:"default_stid"`
 
-	// Number of statuses to list when user clicks on default "load more statuses".
-	// If 0 or unset, use the built-in default value.
-	DefaultListCount int64 `json:"default_list_count"`
+	Settings *pb.Settings `json:"settings"`
 }
 
 // Values for user settings when unspecified.
 var DefaultSettings = &pb.Settings{
-	DefaultListCount: 10,
+	ListCount: &pb.SettingInt64{Value: 10},
 }
 
 // Scan implements the [Scanner] interface.
