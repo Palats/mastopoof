@@ -4,60 +4,46 @@ import { LoginUpdateEvent } from './backend';
 import * as common from "./common";
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import { createRef, ref, Ref } from 'lit/directives/ref.js';
+import { ifDefined } from 'lit/directives/if-defined.js';
 
 @customElement('mast-settings')
 export class MastSettings extends LitElement {
   // Currently known settings, incl. modification made through the UI.
-  @state() private currentSettings?: pb.Settings;
+  @state() private currentSettings: pb.Settings = new pb.Settings();
 
   @state() loadingBarUsers = 0;
 
   private defaultSettings?: pb.Settings;
 
-  private inputRef: Ref<HTMLInputElement> = createRef();
-  private checkBoxRef: Ref<HTMLInputElement> = createRef();
+  private listCountInputRef: Ref<HTMLInputElement> = createRef();
+  private listCountCheckBoxRef: Ref<HTMLInputElement> = createRef();
 
   connectedCallback(): void {
     super.connectedCallback();
 
-    this.currentSettings = common.backend.userInfo?.settings;
-    this.defaultSettings = common.backend.userInfo?.defaultSettings;
+    this.userInfoUpdate(common.backend.userInfo);
 
     common.backend.onEvent.addEventListener("login-update", ((evt: LoginUpdateEvent) => {
-      this.currentSettings = evt.userInfo?.settings;
+      this.userInfoUpdate(evt.userInfo);
     }) as EventListener);
   }
 
-  changeInput() {
-    if (!this.defaultSettings) {
-      throw new Error("missing settings");
-    }
-    this.checkBoxRef.value!.checked = false;
-    this.updateSettings();
+  userInfoUpdate(userInfo?: pb.UserInfo) {
+    // TODO: this can update the values while the user is editing, which
+    // is a terrible experience.
+    this.currentSettings = userInfo?.settings ?? this.currentSettings;
+    this.defaultSettings = userInfo?.defaultSettings;
   }
 
-  changeCheckbox() {
+  // Update currentSettings with the content of the UI.
+  updateCurrentSettings() {
     if (!this.defaultSettings) {
-      throw new Error("missing settings");
-    }
-    if (this.checkBoxRef.value?.checked) {
-      this.inputRef.value!.value = this.defaultSettings.listCount!.value.toString();
-    }
-    this.updateSettings();
-  }
-
-  updateSettings() {
-    if (!this.defaultSettings) {
-      throw new Error("missing settings");
-    }
-
-    if (!this.currentSettings) {
-      this.currentSettings = new pb.Settings();
+      throw new Error("missing default settings");
     }
 
     this.currentSettings.listCount = new pb.SettingInt64({
-      value: BigInt(this.inputRef.value!.value),
-      override: this.checkBoxRef.value?.checked || false,
+      value: BigInt(this.listCountInputRef.value?.value || this.defaultSettings.listCount!.value),
+      override: this.listCountCheckBoxRef.value?.checked || false,
     });
     this.requestUpdate();
   }
@@ -66,10 +52,7 @@ export class MastSettings extends LitElement {
     if (!this.defaultSettings) {
       throw new Error("missing settings");
     }
-    if (!this.currentSettings) {
-      // Nothing was set at all. Can happen when settings were empty.
-      return;
-    }
+    this.updateCurrentSettings();
 
     this.loadingBarUsers++;
     await common.backend.updateSettings(this.currentSettings);
@@ -81,9 +64,6 @@ export class MastSettings extends LitElement {
       throw new Error("missing settings");
     }
 
-    const isDefault = !this.currentSettings?.listCount?.override;
-    const actualValue = isDefault ? this.defaultSettings.listCount!.value : this.currentSettings!.listCount!.value;
-
     return html`
       <mast-main-view .loadingBarUsers=${this.loadingBarUsers} selectedView="settings">
         <span slot="header">Settings</span>
@@ -94,11 +74,22 @@ export class MastSettings extends LitElement {
               <span>
                 Default: ${this.defaultSettings.listCount!.value}
               </span>
-
               <span>
                 <label for="s-default-list-count-default">Override</label>
-                <input type="checkbox" id="s-default-list-count-default" ?checked=${isDefault} @change=${this.changeCheckbox} ${ref(this.checkBoxRef)}></input>
-                <input type="number" id="s-default-list-count" value=${actualValue.toString()} @change=${this.changeInput} ${ref(this.inputRef)}></input>
+                <input
+                  type="checkbox"
+                  id="s-default-list-count-default"
+                  ?checked=${this.currentSettings?.listCount?.override}
+                  @change=${this.updateCurrentSettings}
+                  ${ref(this.listCountCheckBoxRef)}>
+                </input>
+                <input
+                  type="number"
+                  id="s-default-list-count"
+                  value=${ifDefined(this.currentSettings?.listCount?.value.toString())}
+                  @change=${this.updateCurrentSettings}
+                  ${ref(this.listCountInputRef)}>
+                </input>
               </span>
             </div>
           </div>
