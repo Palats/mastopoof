@@ -28,8 +28,12 @@ type UserState struct {
 }
 
 // Values for user settings when unspecified.
-var DefaultSettings = &pb.Settings{
-	ListCount: &pb.SettingInt64{Value: 10},
+var SettingsInfo = &pb.SettingsInfo{
+	ListCount: &pb.SettingInt64Info{
+		Default: 10,
+		Min:     1,
+		Max:     100,
+	},
 }
 
 // Scan implements the [Scanner] interface.

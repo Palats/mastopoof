@@ -92,8 +92,8 @@ export class TestServer {
     const reqLogin = await this.login.expect();
     reqLogin.respond(new pb.LoginResponse({
       userInfo: new pb.UserInfo({
-        defaultSettings: new pb.Settings({
-          listCount: new pb.SettingInt64({ value: BigInt(10) }),
+        settingsInfo: new pb.SettingsInfo({
+          listCount: new pb.SettingInt64Info({ default: BigInt(10), min: BigInt(1), max: BigInt(200) }),
         }),
       }),
     }));

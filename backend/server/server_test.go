@@ -291,7 +291,7 @@ func TestListWithCustomMaxCount(t *testing.T) {
 		Stid:      userInfo.DefaultStid,
 		Direction: pb.ListRequest_FORWARD,
 	})
-	if got, want := int64(len(listResp.Items)), storage.DefaultSettings.GetListCount().GetValue(); got != want {
+	if got, want := int64(len(listResp.Items)), storage.SettingsInfo.GetListCount().GetDefault(); got != want {
 		t.Errorf("Got %d statuses, wanted %d", got, want)
 	}
 

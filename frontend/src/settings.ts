@@ -13,7 +13,7 @@ export class MastSettings extends LitElement {
 
   @state() loadingBarUsers = 0;
 
-  private defaultSettings?: pb.Settings;
+  private settingsInfo?: pb.SettingsInfo;
 
   private listCountInputRef: Ref<HTMLInputElement> = createRef();
   private listCountCheckBoxRef: Ref<HTMLInputElement> = createRef();
@@ -32,24 +32,24 @@ export class MastSettings extends LitElement {
     // TODO: this can update the values while the user is editing, which
     // is a terrible experience.
     this.currentSettings = userInfo?.settings ?? this.currentSettings;
-    this.defaultSettings = userInfo?.defaultSettings;
+    this.settingsInfo = userInfo?.settingsInfo;
   }
 
   // Update currentSettings with the content of the UI.
   updateCurrentSettings() {
-    if (!this.defaultSettings) {
+    if (!this.settingsInfo) {
       throw new Error("missing default settings");
     }
 
     this.currentSettings.listCount = new pb.SettingInt64({
-      value: BigInt(this.listCountInputRef.value?.value || this.defaultSettings.listCount!.value),
+      value: BigInt(this.listCountInputRef.value?.value || this.settingsInfo.listCount!.default),
       override: this.listCountCheckBoxRef.value?.checked || false,
     });
     this.requestUpdate();
   }
 
   async save() {
-    if (!this.defaultSettings) {
+    if (!this.settingsInfo) {
       throw new Error("missing default settings");
     }
     this.updateCurrentSettings();
@@ -60,7 +60,7 @@ export class MastSettings extends LitElement {
   }
 
   render() {
-    if (!this.defaultSettings) {
+    if (!this.settingsInfo) {
       throw new Error("missing default settings");
     }
 
@@ -72,7 +72,7 @@ export class MastSettings extends LitElement {
             Number of statuses to fetch when clicking "Get more statuses"
             <div class="inputs">
               <span>
-                Default: ${this.defaultSettings.listCount!.value}
+                Default: ${this.settingsInfo.listCount!.default}
               </span>
               <span>
                 <label for="s-default-list-count-default">Override</label>

@@ -41,10 +41,10 @@ message UserInfo {
     repeated Account accounts = 2;
 
     Settings settings = 3;
-    // Default values for the settings.
-    // The default value is part of the value of the fields, and
-    // "override" is ignored.
-    Settings default_settings = 4;
+
+    // Information about existing settings.
+    // TODO: find another way to carry it around.
+    SettingsInfo settings_info = 4;
 }
 
 message Settings {
@@ -56,6 +56,17 @@ message SettingInt64 {
     int64 value = 1;
     // If true, use the value. Otherwise, rely on defaults.
     bool override = 2;
+}
+
+message SettingsInfo {
+  SettingInt64Info list_count = 1;
+}
+
+message SettingInt64Info {
+  int64 default = 1;
+  // Min & max are included - i.e., allowed values.
+  int64 min = 2;
+  int64 max = 3;
 }
 
 // Information about the state of the stream.

@@ -200,8 +200,8 @@ func (s *Server) isLogged(ctx context.Context) (storage.UID, error) {
 // getUserInfo builds a UserInfo proto suitable for the UI.
 func (s *Server) getUserInfo(ctx context.Context, userState *storage.UserState) (*pb.UserInfo, error) {
 	userInfo := &pb.UserInfo{
-		DefaultStid:     int64(userState.DefaultStID),
-		DefaultSettings: storage.DefaultSettings,
+		DefaultStid:  int64(userState.DefaultStID),
+		SettingsInfo: storage.SettingsInfo,
 	}
 
 	accountStates, err := s.st.AllAccountStateByUID(ctx, nil, userState.UID)
@@ -288,11 +288,11 @@ func (s *Server) UpdateSettings(ctx context.Context, req *connect.Request[pb.Upd
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("missing settings"))
 	}
 
-	if v := settings.GetListCount().GetValue(); v < 0 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("DefaultListCount must be 0 or positive; got: %d", v))
+	if v, min := settings.GetListCount().GetValue(), storage.SettingsInfo.GetListCount().GetMin(); v < min {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("DefaultListCount must be at least %d; got: %d", min, v))
 	}
-	if v, max := settings.GetListCount().GetValue(), int64(200); v > max {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("DefaultListCount must be lower then %d; got: %d", max, v))
+	if v, max := settings.GetListCount().GetValue(), storage.SettingsInfo.GetListCount().GetMax(); v > max {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("DefaultListCount must be less or equal to %d; got: %d", max, v))
 	}
 
 	err = s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
@@ -454,7 +454,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 		return nil, err
 	}
 
-	maxCount := storage.DefaultSettings.GetListCount().GetValue()
+	maxCount := storage.SettingsInfo.GetListCount().GetDefault()
 	if userState.Settings.GetListCount().GetOverride() {
 		maxCount = userState.Settings.GetListCount().GetValue()
 	}
