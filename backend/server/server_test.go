@@ -15,6 +15,7 @@ import (
 
 	"github.com/Palats/mastopoof/backend/mastodon/testserver"
 	"github.com/Palats/mastopoof/backend/storage"
+	mpdata "github.com/Palats/mastopoof/proto/data"
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	"github.com/mattn/go-mastodon"
 	"golang.org/x/net/publicsuffix"
@@ -291,7 +292,7 @@ func TestListWithCustomMaxCount(t *testing.T) {
 		Stid:      userInfo.DefaultStid,
 		Direction: pb.ListRequest_FORWARD,
 	})
-	if got, want := int64(len(listResp.Items)), storage.SettingsInfo.GetListCount().GetDefault(); got != want {
+	if got, want := int64(len(listResp.Items)), mpdata.SettingsInfo().GetListCount().GetDefault(); got != want {
 		t.Errorf("Got %d statuses, wanted %d", got, want)
 	}
 

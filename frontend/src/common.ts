@@ -20,6 +20,12 @@ dayjs.extend(timezonePlugin);
 export const displayTimezone = dayjs.tz.guess();
 console.log("Display timezone:", displayTimezone);
 
+// Get the settings meta info, which have been generated
+// from a textproto.
+import settingsInfoJSON from "mastopoof-proto/gen/settings.json?raw";
+export const settingsInfo = new pb.SettingsInfo();
+settingsInfo.fromJsonString(settingsInfoJSON);
+
 // Create a global backend access.
 // TODO: use context https://lit.dev/docs/data/context/
 export let backend = new Backend(createConnectTransport({

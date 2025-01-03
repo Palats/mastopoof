@@ -17,6 +17,7 @@ import (
 	"github.com/mattn/go-mastodon"
 	"google.golang.org/protobuf/proto"
 
+	mpdata "github.com/Palats/mastopoof/proto/data"
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	"github.com/Palats/mastopoof/proto/gen/mastopoof/mastopoofconnect"
 )
@@ -201,7 +202,7 @@ func (s *Server) isLogged(ctx context.Context) (storage.UID, error) {
 func (s *Server) getUserInfo(ctx context.Context, userState *storage.UserState) (*pb.UserInfo, error) {
 	userInfo := &pb.UserInfo{
 		DefaultStid:  int64(userState.DefaultStID),
-		SettingsInfo: storage.SettingsInfo,
+		SettingsInfo: mpdata.SettingsInfo(),
 	}
 
 	accountStates, err := s.st.AllAccountStateByUID(ctx, nil, userState.UID)
@@ -288,10 +289,10 @@ func (s *Server) UpdateSettings(ctx context.Context, req *connect.Request[pb.Upd
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("missing settings"))
 	}
 
-	if v, min := settings.GetListCount().GetValue(), storage.SettingsInfo.GetListCount().GetMin(); v < min {
+	if v, min := settings.GetListCount().GetValue(), mpdata.SettingsInfo().GetListCount().GetMin(); v < min {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("DefaultListCount must be at least %d; got: %d", min, v))
 	}
-	if v, max := settings.GetListCount().GetValue(), storage.SettingsInfo.GetListCount().GetMax(); v > max {
+	if v, max := settings.GetListCount().GetValue(), mpdata.SettingsInfo().GetListCount().GetMax(); v > max {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("DefaultListCount must be less or equal to %d; got: %d", max, v))
 	}
 
@@ -454,7 +455,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 		return nil, err
 	}
 
-	maxCount := storage.SettingsInfo.GetListCount().GetDefault()
+	maxCount := mpdata.SettingsInfo().GetListCount().GetDefault()
 	if userState.Settings.GetListCount().GetOverride() {
 		maxCount = userState.Settings.GetListCount().GetValue()
 	}

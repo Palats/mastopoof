@@ -27,15 +27,6 @@ type UserState struct {
 	Settings *pb.Settings `json:"settings"`
 }
 
-// Values for user settings when unspecified.
-var SettingsInfo = &pb.SettingsInfo{
-	ListCount: &pb.SettingInt64Info{
-		Default: 10,
-		Min:     1,
-		Max:     100,
-	},
-}
-
 // Scan implements the [Scanner] interface.
 func (u *UserState) Scan(src any) error {
 	s, ok := src.(string)

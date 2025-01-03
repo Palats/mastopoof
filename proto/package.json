@@ -2,7 +2,9 @@
   "name": "mastopoof-proto",
   "version": "0.0.0",
   "scripts": {
-    "gen": "buf generate"
+    "genproto": "buf generate",
+    "gendata": "buf convert mastopoof/mastopoof.proto --type=mastopoof.SettingsInfo --from=data/settings.textproto#format=txtpb --to=gen/settings.json#format=json",
+    "gen": "npm run genproto && npm run gendata"
   },
   "dependencies": {
     "@bufbuild/buf": "1.40.0",
