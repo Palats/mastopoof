@@ -50,7 +50,7 @@ export class MastSettings extends LitElement {
 
   async save() {
     if (!this.defaultSettings) {
-      throw new Error("missing settings");
+      throw new Error("missing default settings");
     }
     this.updateCurrentSettings();
 
@@ -61,7 +61,7 @@ export class MastSettings extends LitElement {
 
   render() {
     if (!this.defaultSettings) {
-      throw new Error("missing settings");
+      throw new Error("missing default settings");
     }
 
     return html`

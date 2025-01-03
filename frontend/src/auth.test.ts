@@ -1,13 +1,9 @@
 import { expect } from '@esm-bundle/chai';
 import { html, render } from 'lit';
 import './auth';
-import * as common from "./common";
-import { Code, ConnectError, createRouterTransport } from '@connectrpc/connect';
+import { Code, ConnectError } from '@connectrpc/connect';
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
-import { Mastopoof } from "mastopoof-proto/gen/mastopoof/mastopoof_connect";
-import { Backend } from "./backend";
 import { waitFor } from '@testing-library/dom'
-import { Message } from '@bufbuild/protobuf';
 import * as testlib from './testlib';
 
 before(() => {
@@ -26,64 +22,8 @@ it('basic element construction test', async () => {
   expect(elt!.shadowRoot!.innerHTML).to.contain("Mastodon server");
 });
 
-type RPCReqInfo<ReqT, RespT> = {
-  req: ReqT;
-  respond: (resp: RespT) => void;
-  fail: (err: Error) => void;
-}
-
-class RPCIntercept<ReqT extends Message, RespT extends Message> {
-  private reqResolve?: (nfo: RPCReqInfo<ReqT, RespT>) => void;
-
-  async expect(): Promise<RPCReqInfo<ReqT, RespT>> {
-    return await new Promise<RPCReqInfo<ReqT, RespT>>(resolve => {
-      this.reqResolve = resolve;
-    });
-  }
-
-  async dispatch(req: ReqT) {
-    return await new Promise<RespT>((resolve, reject) => {
-      if (!this.reqResolve) {
-        const msg = `RPC request received, but nothing is expecting it; request=${req.toJsonString()}`;
-        console.error(msg);
-        throw new Error(msg);
-      }
-      this.reqResolve({
-        req: req,
-        respond: resolve,
-        fail: (err: Error) => {
-          reject(err);
-        },
-      });
-    });
-  }
-}
-
-class TestServer {
-  login = new RPCIntercept<pb.LoginRequest, pb.LoginResponse>();
-  authorize = new RPCIntercept<pb.AuthorizeRequest, pb.AuthorizeResponse>();
-
-  private backend: Backend;
-
-  constructor() {
-    const transport = createRouterTransport(({ service }) => {
-      service(Mastopoof, {
-        login: req => this.login.dispatch(req),
-        authorize: req => this.authorize.dispatch(req),
-      });
-    });
-
-    this.backend = new Backend(transport);
-    common.setBackend(new Backend(transport));
-  }
-
-  setAsBackend() {
-    common.setBackend(this.backend);
-  }
-}
-
 it('calls authorize', async () => {
-  const server = new TestServer();
+  const server = new testlib.TestServer();
   server.setAsBackend();
 
   await render(html`<mast-login></mast-login>`, document.body);
@@ -92,9 +32,7 @@ it('calls authorize', async () => {
 
   // Set the target server and invite code.
   // First we start with an invalid invite code and change it afterward.
-  console.log("plop", elt.querySelector("#invite-code"));
   elt.querySelector("#server-addr")!.setAttribute("value", "https://fakeserver1");
-  console.log("plop2");
   elt.querySelector("#invite-code")!.setAttribute("value", "invalid invite");
 
   // Ask for authentication.
