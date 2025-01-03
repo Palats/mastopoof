@@ -97,6 +97,16 @@ To run tests:
 cd backend && go test ./...
 ```
 
+Frontend:
+
+```
+cd frontend && npm run test|test-watch
+```
+
+Frontend tests relies on mocha (default of web-test-runner) and chai
+
+
+
 ### Updating go-mastodon
 
 Mastopoof uses a fork of https://github.com/mattn/go-mastodon available at https://github.com/Palats/go-mastodon . The goal of this fork is to add missing APIs, while waiting to have them upstreamed.
@@ -167,6 +177,18 @@ open the app at. Statuses which are already in the stream but below that line
 Each status in the stream has a unique position. The first one to be added is at
 1 - 0 is kept for other purposes. Value of position is increased as new statuses
 are added.
+
+### Frontend config
+
+Frontend (typescript) has access to a global variable named `mastopoofConfig`
+containing various bits of config. This is always available, as it is loaded
+before main typescript is executed.
+
+This is obtained by loading `/_config` from the `index.html`:
+ - When running the frontend from backend binary, this hits a special end point
+   which provides (see `server.go`) a javascript snippet with the config.
+ - When running from the dev frontend (through npm), the dev proxy simply
+   redirects the requests to the backend.
 
 ### Backend/Frontend RPCs
 

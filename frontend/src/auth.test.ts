@@ -8,6 +8,11 @@ import { Mastopoof } from "mastopoof-proto/gen/mastopoof/mastopoof_connect";
 import { Backend } from "./backend";
 import { waitFor } from '@testing-library/dom'
 import { Message } from '@bufbuild/protobuf';
+import * as testlib from './testlib';
+
+before(() => {
+  testlib.setMastopoofConfig();
+});
 
 
 it('basic element construction test', async () => {
@@ -87,7 +92,9 @@ it('calls authorize', async () => {
 
   // Set the target server and invite code.
   // First we start with an invalid invite code and change it afterward.
+  console.log("plop", elt.querySelector("#invite-code"));
   elt.querySelector("#server-addr")!.setAttribute("value", "https://fakeserver1");
+  console.log("plop2");
   elt.querySelector("#invite-code")!.setAttribute("value", "invalid invite");
 
   // Ask for authentication.
