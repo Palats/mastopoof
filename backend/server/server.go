@@ -201,8 +201,7 @@ func (s *Server) isLogged(ctx context.Context) (storage.UID, error) {
 // getUserInfo builds a UserInfo proto suitable for the UI.
 func (s *Server) getUserInfo(ctx context.Context, userState *storage.UserState) (*pb.UserInfo, error) {
 	userInfo := &pb.UserInfo{
-		DefaultStid:  int64(userState.DefaultStID),
-		SettingsInfo: mpdata.SettingsInfo(),
+		DefaultStid: int64(userState.DefaultStID),
 	}
 
 	accountStates, err := s.st.AllAccountStateByUID(ctx, nil, userState.UID)

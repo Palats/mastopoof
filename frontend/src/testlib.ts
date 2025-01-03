@@ -91,11 +91,7 @@ export class TestServer {
     const login = common.backend.login();
     const reqLogin = await this.login.expect();
     reqLogin.respond(new pb.LoginResponse({
-      userInfo: new pb.UserInfo({
-        settingsInfo: new pb.SettingsInfo({
-          listCount: new pb.SettingInt64Info({ default: BigInt(10), min: BigInt(1), max: BigInt(200) }),
-        }),
-      }),
+      userInfo: new pb.UserInfo(),
     }));
     await login;
   }

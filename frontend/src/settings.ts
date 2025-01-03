@@ -13,8 +13,6 @@ export class MastSettings extends LitElement {
 
   @state() loadingBarUsers = 0;
 
-  private settingsInfo?: pb.SettingsInfo;
-
   private listCountInputRef: Ref<HTMLInputElement> = createRef();
   private listCountCheckBoxRef: Ref<HTMLInputElement> = createRef();
 
@@ -32,26 +30,18 @@ export class MastSettings extends LitElement {
     // TODO: this can update the values while the user is editing, which
     // is a terrible experience.
     this.currentSettings = userInfo?.settings ?? this.currentSettings;
-    this.settingsInfo = userInfo?.settingsInfo;
   }
 
   // Update currentSettings with the content of the UI.
   updateCurrentSettings() {
-    if (!this.settingsInfo) {
-      throw new Error("missing default settings");
-    }
-
     this.currentSettings.listCount = new pb.SettingInt64({
-      value: BigInt(this.listCountInputRef.value?.value || this.settingsInfo.listCount!.default),
+      value: BigInt(this.listCountInputRef.value?.value || common.settingsInfo.listCount!.default),
       override: this.listCountCheckBoxRef.value?.checked || false,
     });
     this.requestUpdate();
   }
 
   async save() {
-    if (!this.settingsInfo) {
-      throw new Error("missing default settings");
-    }
     this.updateCurrentSettings();
 
     this.loadingBarUsers++;
@@ -60,10 +50,6 @@ export class MastSettings extends LitElement {
   }
 
   render() {
-    if (!this.settingsInfo) {
-      throw new Error("missing default settings");
-    }
-
     return html`
       <mast-main-view .loadingBarUsers=${this.loadingBarUsers} selectedView="settings">
         <span slot="header">Settings</span>
@@ -72,7 +58,7 @@ export class MastSettings extends LitElement {
             Number of statuses to fetch when clicking "Get more statuses"
             <div class="inputs">
               <span>
-                Default: ${this.settingsInfo.listCount!.default}
+                Default: ${common.settingsInfo.listCount!.default}
               </span>
               <span>
                 <label for="s-default-list-count-default">Override</label>

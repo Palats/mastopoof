@@ -41,10 +41,6 @@ message UserInfo {
     repeated Account accounts = 2;
 
     Settings settings = 3;
-
-    // Information about existing settings.
-    // TODO: find another way to carry it around.
-    SettingsInfo settings_info = 4;
 }
 
 message Settings {
