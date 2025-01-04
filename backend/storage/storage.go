@@ -980,7 +980,7 @@ func (st *Storage) PickNext(ctx context.Context, stid StID) (_ *Item, retErr err
 // pickNextInTxn adds a new status from the pool to the stream.
 // It updates streamState IN PLACE.
 func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamState *StreamState) (*Item, error) {
-	// List all statuses which are not listed yet in "streamcontent".
+	// List all statuses which do not have a position yet.
 	rows, err := txn.Query(ctx, "pick-next-statuses", `
 		SELECT
 			streamcontent.sid,
@@ -1340,7 +1340,6 @@ func (st *Storage) UpdateStatus(ctx context.Context, txn SQLReadWrite, asid ASID
 }
 
 // computeState calculate whether a status matches filters or not.
-
 func computeState(status *mastodon.Status, filters []*mastodon.Filter) StatusState {
 	var content string
 	var tags []mastodon.Tag

@@ -70,9 +70,18 @@ CREATE TABLE statuses (
 CREATE INDEX statuses_asid_status_id ON statuses(asid, status_id);
 
 -- The actual content of a stream. In practice, this links position in the stream to a specific status.
+-- This is kept separate from table statuses. There are 2 reasons:
+--   - statuses table is more of a cache of status info from Mastodon than a Mastopoof user state.
+--   - Eventually, it should be possible to have multiple stream even with a single Mastodon account.
+-- While "statuses as cache" is not possible right now (e.g., status ID management), the hope
+-- of not having a 1:1 mapping between account and stream is important - thus not merging
+-- both tables (statuses & streamcontent).
 CREATE TABLE "streamcontent" (
   stid INTEGER NOT NULL,
   sid INTEGER NOT NULL,
+
+  -- When a new status is fetched from Mastodon, it is inserted in both `statuses`
+  -- and in `streamcontent`. As long as the status is not triaged, position is NULL.
   position INTEGER,
 
   PRIMARY KEY (stid, sid),
