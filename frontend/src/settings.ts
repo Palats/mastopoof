@@ -61,17 +61,17 @@ export class MastSettings extends LitElement {
                 Default: ${common.settingsInfo.listCount!.default}
               </span>
               <span>
-                <label for="s-default-list-count-default">Override</label>
+                <label for="s-list-count-override">Override</label>
                 <input
                   type="checkbox"
-                  id="s-default-list-count-default"
+                  id="s-list-count-override"
                   ?checked=${this.currentSettings?.listCount?.override}
                   @change=${this.updateCurrentSettings}
                   ${ref(this.listCountCheckBoxRef)}>
                 </input>
                 <input
                   type="number"
-                  id="s-default-list-count"
+                  id="s-list-count-input"
                   value=${ifDefined(this.currentSettings?.listCount?.value.toString())}
                   @change=${this.updateCurrentSettings}
                   ${ref(this.listCountInputRef)}>
@@ -85,7 +85,7 @@ export class MastSettings extends LitElement {
           </div>
         </div>
         <div slot="footer" class="centered">
-          <button @click=${this.save}>Save</button>
+          <button @click=${this.save} id="save">Save</button>
         </div>
       </mast-main-view>
     `;

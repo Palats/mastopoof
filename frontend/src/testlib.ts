@@ -66,6 +66,7 @@ export class RPCIntercept<ReqT extends Message, RespT extends Message> {
 export class TestServer {
   login = new RPCIntercept<pb.LoginRequest, pb.LoginResponse>();
   authorize = new RPCIntercept<pb.AuthorizeRequest, pb.AuthorizeResponse>();
+  updateSettings = new RPCIntercept<pb.UpdateSettingsRequest, pb.UpdateSettingsResponse>();
 
   private backend: Backend;
 
@@ -74,6 +75,7 @@ export class TestServer {
       service(Mastopoof, {
         login: req => this.login.dispatch(req),
         authorize: req => this.authorize.dispatch(req),
+        updateSettings: req => this.updateSettings.dispatch(req),
       });
     });
 
