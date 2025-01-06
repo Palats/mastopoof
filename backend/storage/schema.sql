@@ -69,6 +69,10 @@ CREATE TABLE statuses (
 -- to update.
 CREATE INDEX statuses_asid_status_id ON statuses(asid, status_id);
 
+-- Index to help find statuses which have been seen before.
+CREATE INDEX statuses_status_id ON statuses(status_id);
+CREATE INDEX statuses_status_reblog_id ON statuses(status_reblog_id);
+
 -- The actual content of a stream. In practice, this links position in the stream to a specific status.
 -- This is kept separate from table statuses. There are 2 reasons:
 --   - statuses table is more of a cache of status info from Mastodon than a Mastopoof user state.

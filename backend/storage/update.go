@@ -110,11 +110,12 @@ var updateFunctions = []updateFunc{
 	v22Tov23,
 	v23Tov24,
 	v24Tov25,
+	v25Tov26,
 }
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const maxSchemaVersion = 25
+const maxSchemaVersion = 26
 
 func init() {
 	if len(updateFunctions) != maxSchemaVersion {
@@ -763,6 +764,19 @@ func v24Tov25(ctx context.Context, txn txnInterface) error {
 	sqlStmt := `
 		DROP INDEX streamcontent_stid;
 		CREATE INDEX streamcontent_position ON streamcontent(position);
+	`
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+	}
+	return nil
+}
+
+func v25Tov26(ctx context.Context, txn txnInterface) error {
+	// Add more indices to find existing statuses.
+	sqlStmt := `
+		-- Index to help find statuses which have been seen before.
+		CREATE INDEX statuses_status_id ON statuses(status_id);
+		CREATE INDEX statuses_status_reblog_id ON statuses(status_reblog_id);
 	`
 	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
