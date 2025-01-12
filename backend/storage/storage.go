@@ -987,7 +987,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 		SELECT
 			streamcontent.sid,
 			statuses.status,
-			statuses.statusstate
+			statuses.status_meta
 		FROM
 			streamcontent
 			JOIN statuses USING (sid)
@@ -1117,7 +1117,7 @@ func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int6
 			SELECT
 				streamcontent.position,
 				statuses.status,
-				statuses.statusstate
+				statuses.status_meta
 			FROM
 				statuses
 				INNER JOIN streamcontent
@@ -1206,7 +1206,7 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 			SELECT
 				streamcontent.position,
 				statuses.status,
-				statuses.statusstate
+				statuses.status_meta
 			FROM
 				statuses
 				INNER JOIN streamcontent
@@ -1275,7 +1275,7 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid AS
 
 		// Insert in the statuses cache.
 		stmt := `
-			INSERT INTO statuses(asid, status, statusstate) VALUES(?, ?, ?);
+			INSERT INTO statuses(asid, status, status_meta) VALUES(?, ?, ?);
 			INSERT INTO streamcontent(stid, sid) VALUES(?, last_insert_rowid());
 		`
 
@@ -1336,7 +1336,7 @@ func (st *Storage) UpdateStatus(ctx context.Context, txn SQLReadWrite, asid ASID
 	statusMeta := computeStatusMeta(status, filters)
 
 	stmt := `
-		UPDATE statuses SET status = ?, statusstate = ? WHERE sid = ?;	`
+		UPDATE statuses SET status = ?, status_meta = ? WHERE sid = ?;	`
 	_, err = txn.Exec(ctx, "update-status", stmt, &sqlStatus{*status}, &statusMeta, sid)
 	return err
 }

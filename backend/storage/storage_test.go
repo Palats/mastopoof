@@ -270,7 +270,7 @@ func TestFilters(t *testing.T) {
 
 	var got string
 	var num uint64
-	err = env.roDB.QueryRowContext(ctx, `SELECT DISTINCT statusstate, count(DISTINCT statusstate) from statuses`).Scan(&got, &num)
+	err = env.roDB.QueryRowContext(ctx, `SELECT DISTINCT status_meta, count(DISTINCT status_meta) from statuses`).Scan(&got, &num)
 	if err == sql.ErrNoRows {
 		t.Fatal(err)
 	}

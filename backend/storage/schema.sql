@@ -56,7 +56,7 @@ CREATE TABLE statuses (
   -- The status, serialized as JSON.
   status TEXT NOT NULL,
   -- metadata/state about a status (e.g.: filters applied to it)
-  statusstate TEXT NOT NULL DEFAULT "{}",
+  status_meta TEXT NOT NULL DEFAULT "{}",
 
    -- Keep the status ID readily available to find the status again easily.
   status_id TEXT NOT NULL GENERATED ALWAYS AS (json_extract(status, '$.id')) STORED,
