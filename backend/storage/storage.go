@@ -948,11 +948,13 @@ func (st *Storage) ClearPoolAndStream(ctx context.Context, uid UID) (retErr erro
 	})
 }
 
+// Item is a backend-internal representation of a status that is present
+// in the stream.
 type Item struct {
 	// Position in the stream.
-	Position    int64           `json:"position"`
-	Status      mastodon.Status `json:"status"`
-	StatusState StatusState     `json:"statusstate"`
+	Position   int64
+	Status     mastodon.Status
+	StatusMeta StatusMeta
 }
 
 // PickNext
@@ -1001,15 +1003,15 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 
 	var selectedID SID
 	var selected *mastodon.Status
-	var selstatustate *StatusState
+	var selstatustate *StatusMeta
 	var found int64
 	for rows.Next() {
 		found++
 		var sid SID
 		var status sqlStatus
-		var statusState StatusState
+		var statusMeta StatusMeta
 
-		if err := rows.Scan(&sid, &status, &statusState); err != nil {
+		if err := rows.Scan(&sid, &status, &statusMeta); err != nil {
 			return nil, err
 		}
 
@@ -1018,7 +1020,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 		if selected == nil {
 			match = true
 			selected = &status.Status
-			selstatustate = &statusState
+			selstatustate = &statusMeta
 		} else {
 			// For now, just pick the oldest one.
 			if status.CreatedAt.Before(selected.CreatedAt) {
@@ -1029,7 +1031,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 		if match {
 			selectedID = sid
 			selected = &status.Status
-			selstatustate = &statusState
+			selstatustate = &statusMeta
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -1045,7 +1047,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 
 	if selstatustate == nil {
 		glog.Errorf("No status state for current status")
-		selstatustate = &StatusState{}
+		selstatustate = &StatusMeta{}
 	}
 
 	// Now, add that status to the stream.
@@ -1074,9 +1076,9 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 	}
 
 	return &Item{
-		Position:    position,
-		Status:      *selected,
-		StatusState: *selstatustate,
+		Position:   position,
+		Status:     *selected,
+		StatusMeta: *selstatustate,
 	}, nil
 }
 
@@ -1137,14 +1139,14 @@ func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int6
 		for rows.Next() {
 			var position int64
 			var status sqlStatus
-			var statusState StatusState
-			if err := rows.Scan(&position, &status, &statusState); err != nil {
+			var statusMeta StatusMeta
+			if err := rows.Scan(&position, &status, &statusMeta); err != nil {
 				return err
 			}
 			reverseItems = append(reverseItems, &Item{
-				Position:    position,
-				Status:      status.Status,
-				StatusState: statusState,
+				Position:   position,
+				Status:     status.Status,
+				StatusMeta: statusMeta,
 			})
 		}
 		if err := rows.Err(); err != nil {
@@ -1224,14 +1226,14 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 		for rows.Next() {
 			var position int64
 			var status sqlStatus
-			var statusState StatusState
-			if err := rows.Scan(&position, &status, &statusState); err != nil {
+			var statusMeta StatusMeta
+			if err := rows.Scan(&position, &status, &statusMeta); err != nil {
 				return err
 			}
 			result.Items = append(result.Items, &Item{
-				Position:    position,
-				Status:      status.Status,
-				StatusState: statusState,
+				Position:   position,
+				Status:     status.Status,
+				StatusMeta: statusMeta,
 			})
 		}
 		if err := rows.Err(); err != nil {
@@ -1278,8 +1280,8 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid AS
 		`
 
 		// TODO move filtering out of transaction
-		statusState := computeState(status, filters)
-		_, err := txn.Exec(ctx, "insert-statuses", stmt, asid, &sqlStatus{*status}, &statusState, streamState.StID)
+		statusMeta := computeStatusMeta(status, filters)
+		_, err := txn.Exec(ctx, "insert-statuses", stmt, asid, &sqlStatus{*status}, &statusMeta, streamState.StID)
 		if err != nil {
 			return err
 		}
@@ -1330,17 +1332,17 @@ func (st *Storage) UpdateStatus(ctx context.Context, txn SQLReadWrite, asid ASID
 
 	// We've found the row, now update it.
 
-	// TODO: make it only update the StatusState, not replace
-	statusState := computeState(status, filters)
+	// TODO: make it only update the StatusMeta, not replace
+	statusMeta := computeStatusMeta(status, filters)
 
 	stmt := `
 		UPDATE statuses SET status = ?, statusstate = ? WHERE sid = ?;	`
-	_, err = txn.Exec(ctx, "update-status", stmt, &sqlStatus{*status}, &statusState, sid)
+	_, err = txn.Exec(ctx, "update-status", stmt, &sqlStatus{*status}, &statusMeta, sid)
 	return err
 }
 
-// computeState calculate whether a status matches filters or not.
-func computeState(status *mastodon.Status, filters []*mastodon.Filter) StatusState {
+// computeStatusMeta calculate whether a status matches filters or not.
+func computeStatusMeta(status *mastodon.Status, filters []*mastodon.Filter) StatusMeta {
 	var content string
 	var tags []mastodon.Tag
 	if status.Reblog != nil {
@@ -1351,7 +1353,7 @@ func computeState(status *mastodon.Status, filters []*mastodon.Filter) StatusSta
 		tags = status.Tags
 	}
 
-	state := StatusState{}
+	state := StatusMeta{}
 
 	// Note: we lower-case ALL THE THINGS (oh the irony) to normalize
 	for _, filter := range filters {

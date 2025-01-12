@@ -22,7 +22,7 @@ interface StatusItem {
   status: mastodon.Status;
   // The account where this status was obtained from.
   account: pb.Account;
-  statusstate: pb.StatusState;
+  statusMeta: pb.StatusMeta;
 
   // HTML element used to represent this status.
   elt?: Element;
@@ -262,7 +262,7 @@ export class MastStream extends LitElement {
         status: status,
         position: position,
         account: item.account!,
-        statusstate: item.state!,   // TODO: check presence
+        statusMeta: item.meta!,   // TODO: check presence
         isVisible: false,
         wasSeen: false,
         disappeared: false,
@@ -321,7 +321,7 @@ export class MastStream extends LitElement {
         status: status,
         position: position,
         account: item.account!,
-        statusstate: item.state!,  // TODO: check presence
+        statusMeta: item.meta!,  // TODO: check presence
         isVisible: false,
         wasSeen: false,
         disappeared: false,

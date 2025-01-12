@@ -277,7 +277,7 @@ func TestFilters(t *testing.T) {
 	if num != 1 {
 		t.Errorf("Got %d lines, expected1", num)
 	}
-	status := StatusState{}
+	status := StatusMeta{}
 	err = json.Unmarshal([]byte(got), &status)
 	if err != nil {
 		t.Fatal(err)
@@ -306,15 +306,15 @@ func TestComputeState(t *testing.T) {
 	f3 := mastodon.Filter{ID: "3", Phrase: "smurf"}
 	f4 := mastodon.Filter{ID: "3", Phrase: "text"}
 
-	statusState := computeState(&status, []*mastodon.Filter{&f1, &f2, &f3, &f4})
-	if len(statusState.Filters) != 4 {
-		t.Errorf("Got %d filters, wanted 1", len(statusState.Filters))
+	statusMeta := computeStatusMeta(&status, []*mastodon.Filter{&f1, &f2, &f3, &f4})
+	if len(statusMeta.Filters) != 4 {
+		t.Errorf("Got %d filters, wanted 1", len(statusMeta.Filters))
 	}
-	if !statusState.Filters[0].Matched ||
-		statusState.Filters[1].Matched ||
-		statusState.Filters[2].Matched ||
-		!statusState.Filters[3].Matched {
-		t.Errorf("Got filter %#v, wanted {true, false, false, true}", statusState.Filters)
+	if !statusMeta.Filters[0].Matched ||
+		statusMeta.Filters[1].Matched ||
+		statusMeta.Filters[2].Matched ||
+		!statusMeta.Filters[3].Matched {
+		t.Errorf("Got filter %#v, wanted {true, false, false, true}", statusMeta.Filters)
 	}
 
 }
