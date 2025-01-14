@@ -181,7 +181,8 @@ export class MastStatus extends LitElement {
     const attachments: TemplateResult[] = [];
     for (const ma of (s.media_attachments ?? [])) {
       if (ma.type === "image") {
-        // TODO: preview_url is probably wrong?
+        // Using preview_url to display a light weight image. Clicking
+        // on the image allows to see the full version.
         attachments.push(html`
           <a href=${ma.url} target="_blank" rel="noopener noreferrer">
             <img src=${ma.preview_url} alt=${ma.description || ""}></img>
@@ -197,6 +198,9 @@ export class MastStatus extends LitElement {
         `);
       } else {
         attachments.push(html`<span>Unsupported attachment type: ${ma.type}. <a href=${ma.url}>Direct link</a>.</span>`);
+      }
+      if (ma.description) {
+        attachments.push(html`<span class="description">${ma.description}</span>`);
       }
     }
 
@@ -448,6 +452,11 @@ export class MastStatus extends LitElement {
         display: block;
         max-width: 100%;
         max-height: 400px;
+      }
+
+      .description {
+        font-size: 0.8rem;
+        font-style: italic;
       }
 
       .tools {
