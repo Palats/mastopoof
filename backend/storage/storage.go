@@ -952,9 +952,10 @@ func (st *Storage) ClearPoolAndStream(ctx context.Context, uid UID) (retErr erro
 // in the stream.
 type Item struct {
 	// Position in the stream.
-	Position   int64
-	Status     mastodon.Status
-	StatusMeta StatusMeta
+	Position          int64
+	StreamStatusState StreamStatusState
+	Status            mastodon.Status
+	StatusMeta        StatusMeta
 }
 
 // PickNext
@@ -1068,17 +1069,20 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamSt
 		return nil, err
 	}
 
+	streamStatusState := &StreamStatusState{}
+
 	// Set the position for the stream.
-	stmt := `UPDATE streamcontent SET position = ? WHERE stid = ? AND sid = ?;`
-	_, err = txn.Exec(ctx, "pick-next-in-txn", stmt, position, streamState.StID, selectedID)
+	stmt := `UPDATE streamcontent SET position = ?, stream_status_state = ? WHERE stid = ? AND sid = ?;`
+	_, err = txn.Exec(ctx, "pick-next-in-txn", stmt, position, streamStatusState, streamState.StID, selectedID)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Item{
-		Position:   position,
-		Status:     *selected,
-		StatusMeta: *selstatustate,
+		Position:          position,
+		StreamStatusState: *streamStatusState,
+		Status:            *selected,
+		StatusMeta:        *selstatustate,
 	}, nil
 }
 
@@ -1116,6 +1120,7 @@ func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int6
 		rows, err := txn.Query(ctx, "list-backward", `
 			SELECT
 				streamcontent.position,
+				streamcontent.stream_status_state,
 				statuses.status,
 				statuses.status_meta
 			FROM
@@ -1138,15 +1143,17 @@ func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int6
 		var reverseItems []*Item
 		for rows.Next() {
 			var position int64
+			var streamStatusState StreamStatusState
 			var status sqlStatus
 			var statusMeta StatusMeta
-			if err := rows.Scan(&position, &status, &statusMeta); err != nil {
+			if err := rows.Scan(&position, &streamStatusState, &status, &statusMeta); err != nil {
 				return err
 			}
 			reverseItems = append(reverseItems, &Item{
-				Position:   position,
-				Status:     status.Status,
-				StatusMeta: statusMeta,
+				Position:          position,
+				StreamStatusState: streamStatusState,
+				Status:            status.Status,
+				StatusMeta:        statusMeta,
 			})
 		}
 		if err := rows.Err(); err != nil {
@@ -1208,6 +1215,7 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 		rows, err := txn.Query(ctx, "list-forward", `
 			SELECT
 				streamcontent.position,
+				streamcontent.stream_status_state,
 				statuses.status,
 				statuses.status_meta
 			FROM
@@ -1228,15 +1236,17 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 
 		for rows.Next() {
 			var position int64
+			var streamStatusState StreamStatusState
 			var status sqlStatus
 			var statusMeta StatusMeta
-			if err := rows.Scan(&position, &status, &statusMeta); err != nil {
+			if err := rows.Scan(&position, &streamStatusState, &status, &statusMeta); err != nil {
 				return err
 			}
 			result.Items = append(result.Items, &Item{
-				Position:   position,
-				Status:     status.Status,
-				StatusMeta: statusMeta,
+				Position:          position,
+				StreamStatusState: streamStatusState,
+				Status:            status.Status,
+				StatusMeta:        statusMeta,
 			})
 		}
 		if err := rows.Err(); err != nil {
@@ -1423,6 +1433,7 @@ func (st *Storage) SearchByStatusID(ctx context.Context, txn SQLReadOnly, uid UI
 		}
 
 		results = append(results, &Item{
+			// TODO: do not use Item, as it has a different set of info.
 			Position: int64(len(results)),
 			Status:   status.Status,
 		})

@@ -113,11 +113,12 @@ var updateFunctions = []updateFunc{
 	v25Tov26,
 	v26Tov27,
 	v27Tov28,
+	v28Tov29,
 }
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const maxSchemaVersion = 28
+const maxSchemaVersion = 29
 
 func init() {
 	if len(updateFunctions) != maxSchemaVersion {
@@ -853,6 +854,18 @@ func v27Tov28(ctx context.Context, txn txnInterface) error {
 			;
 
 		DROP TABLE streamcontentold;
+	`
+
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+	}
+	return nil
+}
+
+func v28Tov29(ctx context.Context, txn txnInterface) error {
+	// Add triage info
+	sqlStmt := `
+		ALTER TABLE streamcontent ADD COLUMN stream_status_state TEXT NOT NULL DEFAULT "{}";
 	`
 	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)

@@ -258,6 +258,28 @@ func (ss *StreamState) ToStreamInfo() *pb.StreamInfo {
 	}
 }
 
+// StreamState is the state of a single stream, stored as JSON.
+type StreamStatusState struct {
+}
+
+// Scan implements the [Scanner] interface.
+func (sss *StreamStatusState) Scan(src any) error {
+	s, ok := src.(string)
+	if !ok {
+		return fmt.Errorf("expected a string for StreamStatusState json, got %T", src)
+	}
+	return json.Unmarshal([]byte(s), sss)
+}
+
+// Value implements the [driver.Valuer] interface.
+func (sss *StreamStatusState) Value() (driver.Value, error) {
+	data, err := json.Marshal(sss)
+	if err != nil {
+		return nil, err
+	}
+	return string(data), err
+}
+
 // sqlStatus encapsulate a mastodon status to allow for easier SQL
 // serialization, as it is not possible to add it on the original type
 // on the Mastodon library.

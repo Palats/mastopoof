@@ -94,6 +94,9 @@ CREATE TABLE "streamcontent" (
   status_reblog_id TEXT,
   status_in_reply_to_id TEXT,
 
+  -- Information about that status with the stream - e.g., tags.
+  stream_status_state TEXT NOT NULL DEFAULT "{}",
+
   PRIMARY KEY (stid, sid),
   FOREIGN KEY(stid) REFERENCES streamstate(stid),
   FOREIGN KEY(sid) REFERENCES statuses(sid)
