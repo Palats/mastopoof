@@ -38,7 +38,7 @@ export class MastSearch extends LitElement {
         position: position,
         status: status,
         account: item.account!,
-        statusmeta: item.meta!,    // TODO: check presence
+        statusMeta: item.meta!,    // TODO: check presence
       });
     }
 
