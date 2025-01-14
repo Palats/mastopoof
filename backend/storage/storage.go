@@ -1196,6 +1196,9 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 			// Load things after the last-read status.
 			refPosition = streamState.LastRead
 		} else {
+			// It is possible to have an initial list on an empty stream, have a fetch finding some statuses
+			// to triage and then do another list. In that case, the refPosition will come from the initial
+			// empty list - and be zero.
 			if refPosition < streamState.FirstPosition || refPosition > streamState.LastPosition {
 				return fmt.Errorf("position %d does not exists", refPosition)
 			}

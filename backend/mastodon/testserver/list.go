@@ -66,6 +66,9 @@ func (list *EntityList[T]) Update(id string, t T) error {
 	return nil
 }
 
+// idx converts a status ID into an index into the list entities.
+// Returns -1 if the status is not in the list.
+// Can return an error if the ID is not a valid ID for that server.
 func (list *EntityList[T]) idx(id string) (int, error) {
 	if id == "" {
 		return -1, nil

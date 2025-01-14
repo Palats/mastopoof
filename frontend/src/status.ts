@@ -16,7 +16,7 @@ export interface StatusItem {
   status: mastodon.Status;
   // The account where this status was obtained from.
   account: pb.Account;
-  statusmeta: pb.StatusMeta;
+  statusMeta: pb.StatusMeta;
 }
 
 function qualifiedAccount(account: mastodon.Account): string {
@@ -165,7 +165,7 @@ export class MastStatus extends LitElement {
     }
 
     var filteredAr: string[] = [];
-    for (const filter of this.item.statusmeta.filterstate ?? []) {
+    for (const filter of this.item.statusMeta.filterstate ?? []) {
       if (filter.matched == true) {
         filteredAr.push(filter.desc);
       }

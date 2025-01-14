@@ -34,9 +34,9 @@ interface StatusItem {
   disappeared: boolean;
 }
 
-// @ts-ignore
 // Ensure that StatusItem can act as status.StatusItem.
 function assertSubtype(): status.StatusItem { return {} as StatusItem; }
+assertSubtype();
 
 // Page displaying the main mastodon stream.
 @customElement('mast-stream')
