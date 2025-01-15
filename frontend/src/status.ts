@@ -455,8 +455,11 @@ export class MastStatus extends LitElement {
       }
 
       .description {
-        font-size: 0.8rem;
+        font-size: 0.7rem;
         font-style: italic;
+
+        margin: 0px 8px 10px 8px;
+        text-align: center;
       }
 
       .tools {
