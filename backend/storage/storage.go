@@ -1279,12 +1279,22 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid AS
 		// Insert in the statuses cache.
 		stmt := `
 			INSERT INTO statuses(asid, status, status_meta) VALUES(?, ?, ?);
-			INSERT INTO streamcontent(stid, sid) VALUES(?, last_insert_rowid());
+			INSERT INTO streamcontent(stid, sid, status_id, status_reblog_id, status_in_reply_to_id)
+				VALUES(?, last_insert_rowid(), ?, ?, ?);
 		`
 
 		// TODO move filtering out of transaction
+		var reblogID mastodon.ID
+		if status.Reblog != nil {
+			reblogID = status.Reblog.ID
+		}
 		statusMeta := computeStatusMeta(status, filters)
-		_, err := txn.Exec(ctx, "insert-statuses", stmt, asid, &sqlStatus{*status}, &statusMeta, streamState.StID)
+		_, err := txn.Exec(ctx, "insert-statuses",
+			stmt,
+			asid, &sqlStatus{*status}, &statusMeta,
+			streamState.StID,
+			status.ID, reblogID, status.InReplyToID,
+		)
 		if err != nil {
 			return err
 		}

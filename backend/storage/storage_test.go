@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,6 +28,12 @@ type DBTestEnv struct {
 	st   *Storage
 }
 
+// dbNameCounter makes it so that there is a unique in memory DB for each test.
+// If the db connections were closed properly, that would not be an issue -
+// probably something to fix. Though in any case, having a DB per test avoids
+// issue if tests are run for any reason in parallel.
+var dbNameCounter atomic.Int64
+
 func (env *DBTestEnv) Init(ctx context.Context, t testing.TB) *DBTestEnv {
 	t.Helper()
 	var err error
@@ -34,7 +41,8 @@ func (env *DBTestEnv) Init(ctx context.Context, t testing.TB) *DBTestEnv {
 	// in-memory DB. In turns, it means that the connections must be properly closed
 	// with env.Close() at the end of the test - otherwise the content won't
 	// be empty for the next test.
-	env.st, err = newStorageNoInit(ctx, "file::memory:?cache=shared")
+	n := dbNameCounter.Add(1)
+	env.st, err = newStorageNoInit(ctx, fmt.Sprintf("file:memdb%d?mode=memory&cache=shared", n))
 	if err != nil {
 		t.Fatal(err)
 	}

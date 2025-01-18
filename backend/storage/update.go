@@ -112,11 +112,12 @@ var updateFunctions = []updateFunc{
 	v24Tov25,
 	v25Tov26,
 	v26Tov27,
+	v27Tov28,
 }
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const maxSchemaVersion = 27
+const maxSchemaVersion = 28
 
 func init() {
 	if len(updateFunctions) != maxSchemaVersion {
@@ -789,6 +790,69 @@ func v26Tov27(ctx context.Context, txn txnInterface) error {
 	// Rename statusstate to status_meta
 	sqlStmt := `
 		ALTER TABLE statuses RENAME COLUMN statusstate TO status_meta;
+	`
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+	}
+	return nil
+}
+
+func v27Tov28(ctx context.Context, txn txnInterface) error {
+	// Add statuses IDs in the stream table.
+	sqlStmt := `
+		ALTER TABLE streamcontent RENAME TO streamcontentold;
+
+		DROP INDEX streamcontent_sid;
+		DROP INDEX streamcontent_position;
+
+		---- Actual definition
+
+		-- The actual content of a stream. In practice, this links position in the stream to a specific status.
+		-- This is kept separate from table statuses. There are 2 reasons:
+		--   - statuses table is more of a cache of status info from Mastodon than a Mastopoof user state.
+		--   - Eventually, it should be possible to have multiple stream even with a single Mastodon account.
+		-- While "statuses as cache" is not possible right now (e.g., status ID management), the hope
+		-- of not having a 1:1 mapping between account and stream is important - thus not merging
+		-- both tables (statuses & streamcontent).
+		CREATE TABLE "streamcontent" (
+			stid INTEGER NOT NULL,
+			sid INTEGER NOT NULL,
+
+			-- When a new status is fetched from Mastodon, it is inserted in both statuses
+			-- and in streamcontent. As long as the status is not triaged, position is NULL.
+			position INTEGER,
+
+			-- A copy of some of the status information to facilitate
+			-- sorting and operation on the stream.
+			status_id TEXT NOT NULL,
+			status_reblog_id TEXT,
+			status_in_reply_to_id TEXT,
+
+			PRIMARY KEY (stid, sid),
+			FOREIGN KEY(stid) REFERENCES streamstate(stid),
+			FOREIGN KEY(sid) REFERENCES statuses(sid)
+		) STRICT;
+
+		-- No index on stid, as there are many entry for a single stid value.
+		CREATE INDEX streamcontent_sid ON streamcontent(sid);
+		CREATE INDEX streamcontent_position ON streamcontent(position);
+
+		---- And recreating the data
+
+		INSERT INTO streamcontent (stid, sid, position, status_id, status_reblog_id, status_in_reply_to_id)
+			SELECT
+				old.stid,
+				old.sid,
+				old.position,
+				json_extract(st.status, "$.id"),
+				json_extract(st.status, "$.reblog.id"),
+				json_extract(st.status, "$.in_reply_to_id")
+			FROM
+				streamcontentold AS old
+				JOIN statuses AS st USING (sid)
+			;
+
+		DROP TABLE streamcontentold;
 	`
 	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)

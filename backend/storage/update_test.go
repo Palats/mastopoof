@@ -519,7 +519,7 @@ func TestV17ToV18(t *testing.T) {
 	}).Init(ctx, t)
 	defer env.Close()
 
-	if err := prepareDB(ctx, env.rwDB, maxSchemaVersion); err != nil {
+	if err := prepareDB(ctx, env.rwDB, 18); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -543,7 +543,7 @@ func TestV18ToV19(t *testing.T) {
 	}).Init(ctx, t)
 	defer env.Close()
 
-	if err := prepareDB(ctx, env.rwDB, maxSchemaVersion); err != nil {
+	if err := prepareDB(ctx, env.rwDB, 19); err != nil {
 		t.Fatal(err)
 	}
 
@@ -694,6 +694,65 @@ func TestV22ToV23(t *testing.T) {
 	want := []*Row{
 		{Sid: 4, StatusID: "a"},
 		{Sid: 5, StatusID: "b", StatusReblogID: sql.NullString{String: "c", Valid: true}},
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("data mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestV27ToV28(t *testing.T) {
+	ctx := context.Background()
+
+	// Version 28 adds new field in the stream, which requires backfilling.
+
+	env := (&DBTestEnv{
+		targetVersion: 27,
+		sqlInit: `
+      INSERT INTO userstate (uid, state) VALUES (1, "");
+			INSERT INTO accountstate (asid, state, uid) VALUES (2, "", 1);
+			INSERT INTO streamstate (stid, state) VALUES (3, "");
+			INSERT INTO statuses (sid, asid, status) VALUES	(4, 2, "{id: 'a'}");
+      INSERT INTO statuses (sid, asid, status) VALUES	(5, 2, "{id: 'b', reblog: {id: 'c'}}");
+			INSERT INTO statuses (sid, asid, status) VALUES	(6, 2, "{id: 'd', in_reply_to_id: 'e'}");
+
+			INSERT INTO streamcontent (stid, sid, position) VALUES (3, 4, NULL);
+			INSERT INTO streamcontent (stid, sid, position) VALUES (3, 5, 12);
+			INSERT INTO streamcontent (stid, sid, position) VALUES (3, 6, NULL);
+		`,
+	}).Init(ctx, t)
+	defer env.Close()
+
+	if err := prepareDB(ctx, env.rwDB, 28); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the IDs got injected
+	type Row struct {
+		StID              int64
+		SID               int64
+		Position          sql.NullInt64
+		StatusID          string
+		StatusReblogID    sql.NullString
+		StatusInReplyToID sql.NullString
+	}
+
+	got := []*Row{}
+	rows, err := env.roDB.QueryContext(ctx, `SELECT stid, sid, position, status_id, status_reblog_id, status_in_reply_to_id FROM streamcontent ORDER BY stid, sid;`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		row := &Row{}
+		if err := rows.Scan(&row.StID, &row.SID, &row.Position, &row.StatusID, &row.StatusReblogID, &row.StatusInReplyToID); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, row)
+	}
+
+	want := []*Row{
+		{StID: 3, SID: 4, StatusID: "a"},
+		{StID: 3, SID: 5, Position: sql.NullInt64{Int64: 12, Valid: true}, StatusID: "b", StatusReblogID: sql.NullString{String: "c", Valid: true}},
+		{StID: 3, SID: 6, StatusID: "d", StatusInReplyToID: sql.NullString{String: "e", Valid: true}},
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("data mismatch (-want +got):\n%s", diff)

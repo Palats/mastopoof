@@ -88,6 +88,12 @@ CREATE TABLE "streamcontent" (
   -- and in `streamcontent`. As long as the status is not triaged, position is NULL.
   position INTEGER,
 
+  -- A copy of some of the status information to facilitate
+  -- sorting and operation on the stream.
+  status_id TEXT NOT NULL,
+  status_reblog_id TEXT,
+  status_in_reply_to_id TEXT,
+
   PRIMARY KEY (stid, sid),
   FOREIGN KEY(stid) REFERENCES streamstate(stid),
   FOREIGN KEY(sid) REFERENCES statuses(sid)
