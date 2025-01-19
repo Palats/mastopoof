@@ -72,11 +72,11 @@ func (env *DBTestEnv) Close() {
 	}
 }
 
-func (env *DBTestEnv) pickNext(ctx context.Context, streamState *StreamState) (*Item, error) {
+func (env *DBTestEnv) pickNext(ctx context.Context, userState *UserState, streamState *StreamState) (*Item, error) {
 	var item *Item
 	err := env.st.InTxnRW(ctx, func(ctx context.Context, txn SQLReadWrite) error {
 		var err error
-		item, err = env.st.pickNextInTxn(ctx, txn, streamState)
+		item, err = env.st.pickNextInTxn(ctx, txn, userState, streamState)
 		return err
 	})
 	return item, err
@@ -102,13 +102,13 @@ func TestNoCrossUserStatuses(t *testing.T) {
 	env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, accountState1.ASID, streamState1, statuses, []*mastodon.Filter{})
 
 	// Create a second user
-	_, _, streamState2, err := env.st.CreateUser(ctx, nil, "localhost", "456", "user2")
+	userState2, _, streamState2, err := env.st.CreateUser(ctx, nil, "localhost", "456", "user2")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Try to pick some statuses for user 2.
-	item, err := env.pickNext(ctx, streamState2)
+	item, err := env.pickNext(ctx, userState2, streamState2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestPick(t *testing.T) {
 	env := (&DBTestEnv{}).Init(ctx, t)
 	defer env.Close()
 
-	_, accountState1, streamState1, err := env.st.CreateUser(ctx, nil, "localhost", "123", "user1")
+	userState1, accountState1, streamState1, err := env.st.CreateUser(ctx, nil, "localhost", "123", "user1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestPick(t *testing.T) {
 	// Make sure the statuses that were inserted are available.
 	foundIDs := map[mastodon.ID]int{}
 	for i := 0; i < len(statuses); i++ {
-		item, err := env.pickNext(ctx, streamState1)
+		item, err := env.pickNext(ctx, userState1, streamState1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -152,7 +152,7 @@ func TestPick(t *testing.T) {
 	}
 
 	// But no more.
-	item, err := env.pickNext(ctx, streamState1)
+	item, err := env.pickNext(ctx, userState1, streamState1)
 	if err != nil {
 		t.Fatal(err)
 	}

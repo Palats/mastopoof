@@ -454,11 +454,6 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 		return nil, err
 	}
 
-	maxCount := mpdata.SettingsInfo().GetListCount().GetDefault()
-	if userState.Settings.GetListCount().GetOverride() {
-		maxCount = userState.Settings.GetListCount().GetValue()
-	}
-
 	accountState, err := s.st.FirstAccountStateByUID(ctx, nil, userState.UID)
 	if err != nil {
 		return nil, err
@@ -472,17 +467,17 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 	case pb.ListRequest_DEFAULT:
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("missing direction specification"))
 	case pb.ListRequest_INITIAL:
-		listResult, err = s.st.ListForward(ctx, stid, req.Msg.Position, true /* isInitial */, maxCount)
+		listResult, err = s.st.ListForward(ctx, userState, stid, req.Msg.Position, true /* isInitial */)
 		if err != nil {
 			return nil, err
 		}
 	case pb.ListRequest_FORWARD:
-		listResult, err = s.st.ListForward(ctx, stid, req.Msg.Position, false /* isInitial */, maxCount)
+		listResult, err = s.st.ListForward(ctx, userState, stid, req.Msg.Position, false /* isInitial */)
 		if err != nil {
 			return nil, err
 		}
 	case pb.ListRequest_BACKWARD:
-		listResult, err = s.st.ListBackward(ctx, stid, req.Msg.Position, maxCount)
+		listResult, err = s.st.ListBackward(ctx, userState, stid, req.Msg.Position)
 		if err != nil {
 			return nil, err
 		}

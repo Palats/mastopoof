@@ -960,7 +960,8 @@ type Item struct {
 
 // pickNextInTxn adds a new status from the pool to the stream.
 // It updates streamState IN PLACE.
-func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamState *StreamState) (*Item, error) {
+func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userState *UserState, streamState *StreamState) (*Item, error) {
+	_ = userState
 	// List all statuses which do not have a position yet.
 	rows, err := txn.Query(ctx, "pick-next-statuses", `
 		SELECT
@@ -1071,11 +1072,13 @@ type ListResult struct {
 
 // ListBackward get statuses before the provided position.
 // refPosition must be strictly positive - i.e., refer to an actual position.
-func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int64, maxCount int64) (_ *ListResult, retErr error) {
+func (st *Storage) ListBackward(ctx context.Context, userState *UserState, stid StID, refPosition int64) (_ *ListResult, retErr error) {
 	defer recordAction("list-backward")(retErr)
 	if refPosition < 1 {
 		return nil, fmt.Errorf("invalid position %d", refPosition)
 	}
+
+	maxCount := userState.SettingListCount()
 
 	result := &ListResult{}
 
@@ -1152,11 +1155,13 @@ func (st *Storage) ListBackward(ctx context.Context, stid StID, refPosition int6
 // ListForward get statuses after the provided position.
 // It can triage things in the stream if necessary.
 // If refPosition is 0, gives data around the provided position.
-func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64, isInitial bool, maxCount int64) (_ *ListResult, retErr error) {
+func (st *Storage) ListForward(ctx context.Context, userState *UserState, stid StID, refPosition int64, isInitial bool) (_ *ListResult, retErr error) {
 	defer recordAction("list-forward")(retErr)
 	if refPosition < 0 {
 		return nil, fmt.Errorf("invalid position %d", refPosition)
 	}
+
+	maxCount := userState.SettingListCount()
 
 	result := &ListResult{}
 
@@ -1238,7 +1243,7 @@ func (st *Storage) ListForward(ctx context.Context, stid StID, refPosition int64
 		for int64(len(result.Items)) < maxCount && !isInitial {
 			// If we're here, it means we've reached the end of the current stream,
 			// so we need to try to inject new items.
-			ost, err := st.pickNextInTxn(ctx, txn, streamState)
+			ost, err := st.pickNextInTxn(ctx, txn, userState, streamState)
 			if err != nil {
 				return err
 			}

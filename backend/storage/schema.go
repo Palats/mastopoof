@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	mpdata "github.com/Palats/mastopoof/proto/data"
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	"github.com/mattn/go-mastodon"
 )
@@ -43,6 +44,20 @@ func (u *UserState) Value() (driver.Value, error) {
 		return nil, err
 	}
 	return string(data), err
+}
+
+func (u *UserState) SettingListCount() int64 {
+	if u.Settings.GetListCount().GetOverride() {
+		return u.Settings.GetListCount().GetValue()
+	}
+	return mpdata.SettingsInfo().GetListCount().GetDefault()
+}
+
+func (u *UserState) SettingSeenEpochs() *pb.SettingSeenReblogs_Values {
+	if u.Settings.GetSeenReblogs().GetOverride() {
+		return &u.Settings.GetSeenReblogs().Value
+	}
+	return &mpdata.SettingsInfo().GetSeenReblogs().Default
 }
 
 type ASID int64
