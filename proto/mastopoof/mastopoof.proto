@@ -46,6 +46,8 @@ message UserInfo {
 message Settings {
     // Number of statuses to list by default when user click button.
     SettingInt64 list_count = 1;
+    // What to do with reblogs which have already been seen.
+    SettingSeenReblogs seen_reblogs = 2;
 }
 
 message SettingInt64 {
@@ -54,8 +56,20 @@ message SettingInt64 {
     bool override = 2;
 }
 
+message SettingSeenReblogs {
+  enum Values {
+    DISPLAY = 0;
+    HIDE = 1;
+  }
+
+  Values value = 1;
+  // If true, use the value. Otherwise, rely on defaults.
+  bool override = 2;
+}
+
 message SettingsInfo {
   SettingInt64Info list_count = 1;
+  SettingSeenReblogsInfo seen_reblogs = 2;
 }
 
 message SettingInt64Info {
@@ -63,6 +77,10 @@ message SettingInt64Info {
   // Min & max are included - i.e., allowed values.
   int64 min = 2;
   int64 max = 3;
+}
+
+message SettingSeenReblogsInfo {
+  SettingSeenReblogs.Values default = 1;
 }
 
 // Information about the state of the stream.

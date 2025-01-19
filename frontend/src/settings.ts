@@ -5,6 +5,7 @@ import * as common from "./common";
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import { createRef, ref, Ref } from 'lit/directives/ref.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
+import { proto3 } from '@bufbuild/protobuf';
 
 @customElement('mast-settings')
 export class MastSettings extends LitElement {
@@ -15,6 +16,10 @@ export class MastSettings extends LitElement {
 
   private listCountInputRef: Ref<HTMLInputElement> = createRef();
   private listCountCheckBoxRef: Ref<HTMLInputElement> = createRef();
+
+  private seenReblogsInputRef: Ref<HTMLSelectElement> = createRef();
+  private seenReblogsCheckBoxRef: Ref<HTMLInputElement> = createRef();
+
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -37,6 +42,12 @@ export class MastSettings extends LitElement {
     this.currentSettings.listCount = new pb.SettingInt64({
       value: BigInt(this.listCountInputRef.value?.value || common.settingsInfo.listCount!.default),
       override: this.listCountCheckBoxRef.value?.checked || false,
+    });
+    // Get the actual protobuf value from the dropdown.
+    const v = proto3.getEnumType(pb.SettingSeenReblogs_Values).findName(this.seenReblogsInputRef.value?.value || "")?.no;
+    this.currentSettings.seenReblogs = new pb.SettingSeenReblogs({
+      value: v,
+      override: this.seenReblogsCheckBoxRef.value?.checked || false,
     });
     this.requestUpdate();
   }
@@ -81,7 +92,35 @@ export class MastSettings extends LitElement {
           </div>
 
           <div>
-            Another setting
+            What do with statuses which have been seen before
+            <div class="inputs">
+              <span>
+                Default: ${proto3.getEnumType(pb.SettingSeenReblogs_Values).findNumber(common.settingsInfo.seenReblogs!.default)?.name}
+              </span>
+              <span>
+                <label for="s-seen-reblogs-override">Override</label>
+                <input
+                  type="checkbox"
+                  id="s-seen-reblogs-override"
+                  ?checked=${this.currentSettings?.seenReblogs?.override}
+                  @change=${this.updateCurrentSettings}
+                  ${ref(this.seenReblogsCheckBoxRef)}>
+                </input>
+                <select
+                  id="s-seen-reblogs-input"
+                  value=${ifDefined(this.currentSettings?.seenReblogs?.value.toString())}
+                  @change=${this.updateCurrentSettings}
+                  ${ref(this.seenReblogsInputRef)}>
+                  ${proto3.getEnumType(pb.SettingSeenReblogs_Values).values.map(opt => html`
+                    <option
+                      value=${opt.name}
+                      ?selected=${opt.no === this.currentSettings.seenReblogs?.value}
+                    >${opt.name}
+                    </option>
+                  `)}
+                </select>
+              </span>
+            </div>
           </div>
         </div>
         <div slot="footer" class="centered">
