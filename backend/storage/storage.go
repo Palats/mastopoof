@@ -958,28 +958,6 @@ type Item struct {
 	StatusMeta        StatusMeta
 }
 
-// PickNext
-// Return (nil, nil) if there is no next status.
-func (st *Storage) PickNext(ctx context.Context, stid StID) (_ *Item, retErr error) {
-	defer recordAction("pick-next")(retErr)
-	var item *Item
-	err := st.InTxnRW(ctx, func(ctx context.Context, txn SQLReadWrite) error {
-		streamState, err := st.StreamState(ctx, txn, stid)
-		if err != nil {
-			return err
-		}
-		item, err = st.pickNextInTxn(ctx, txn, streamState)
-		if err != nil {
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return item, nil
-}
-
 // pickNextInTxn adds a new status from the pool to the stream.
 // It updates streamState IN PLACE.
 func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, streamState *StreamState) (*Item, error) {

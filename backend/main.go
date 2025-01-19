@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 
 	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -300,70 +299,6 @@ func cmdTestServe() *cobra.Command {
 	return c
 }
 
-func cmdPickNext() *cobra.Command {
-	c := &cobra.Command{
-		Use:   "pick-next",
-		Short: "Add a status to the stream",
-		Args:  cobra.NoArgs,
-	}
-	dbFilename := FlagDBFilename(c.PersistentFlags())
-	c.MarkPersistentFlagRequired("db")
-	userID := FlagUserID(c.PersistentFlags())
-	streamID := FlagStreamID(c.PersistentFlags())
-	c.RunE = func(cmd *cobra.Command, args []string) error {
-		ctx := cmd.Context()
-		st, err := storage.NewStorage(ctx, *dbFilename)
-		if err != nil {
-			return err
-		}
-		defer st.Close()
-
-		stid, err := getStreamID(ctx, st, *streamID, *userID)
-		if err != nil {
-			return err
-		}
-
-		return cmds.CmdPickNext(ctx, st, stid)
-	}
-	return c
-}
-
-func cmdSetRead() *cobra.Command {
-	c := &cobra.Command{
-		Use:   "set-read",
-		Short: "Set the already-read pointer",
-		Args:  cobra.MaximumNArgs(1),
-	}
-	dbFilename := FlagDBFilename(c.PersistentFlags())
-	c.MarkPersistentFlagRequired("db")
-	userID := FlagUserID(c.PersistentFlags())
-	streamID := FlagStreamID(c.PersistentFlags())
-
-	c.RunE = func(cmd *cobra.Command, args []string) error {
-		ctx := cmd.Context()
-		st, err := storage.NewStorage(ctx, *dbFilename)
-		if err != nil {
-			return err
-		}
-		defer st.Close()
-
-		stid, err := getStreamID(ctx, st, *streamID, *userID)
-		if err != nil {
-			return err
-		}
-
-		position := int64(-1)
-		if len(args) > 0 {
-			position, err = strconv.ParseInt(args[0], 10, 64)
-			if err != nil {
-				return err
-			}
-		}
-		return cmds.CmdSetRead(ctx, st, stid, position)
-	}
-	return c
-}
-
 func CmdCheckStreamState() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "check-stream-state",
@@ -417,8 +352,6 @@ func main() {
 	rootCmd.AddCommand(cmdMe())
 	rootCmd.AddCommand(cmdServe())
 	rootCmd.AddCommand(cmdTestServe())
-	rootCmd.AddCommand(cmdPickNext())
-	rootCmd.AddCommand(cmdSetRead())
 	rootCmd.AddCommand(CmdCheckStreamState())
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {

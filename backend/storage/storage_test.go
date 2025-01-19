@@ -72,6 +72,16 @@ func (env *DBTestEnv) Close() {
 	}
 }
 
+func (env *DBTestEnv) pickNext(ctx context.Context, streamState *StreamState) (*Item, error) {
+	var item *Item
+	err := env.st.InTxnRW(ctx, func(ctx context.Context, txn SQLReadWrite) error {
+		var err error
+		item, err = env.st.pickNextInTxn(ctx, txn, streamState)
+		return err
+	})
+	return item, err
+}
+
 // TestNoCrossUserStatuses verifies that fetching statuses for a new users does not pick
 // statuses from another user.
 func TestNoCrossUserStatuses(t *testing.T) {
@@ -98,7 +108,7 @@ func TestNoCrossUserStatuses(t *testing.T) {
 	}
 
 	// Try to pick some statuses for user 2.
-	item, err := env.st.PickNext(ctx, streamState2.StID)
+	item, err := env.pickNext(ctx, streamState2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +135,7 @@ func TestPick(t *testing.T) {
 	// Make sure the statuses that were inserted are available.
 	foundIDs := map[mastodon.ID]int{}
 	for i := 0; i < len(statuses); i++ {
-		item, err := env.st.PickNext(ctx, streamState1.StID)
+		item, err := env.pickNext(ctx, streamState1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -142,7 +152,7 @@ func TestPick(t *testing.T) {
 	}
 
 	// But no more.
-	item, err := env.st.PickNext(ctx, streamState1.StID)
+	item, err := env.pickNext(ctx, streamState1)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -85,34 +85,6 @@ func CmdMe(ctx context.Context, st *storage.Storage, uid storage.UID, showAccoun
 	return nil
 }
 
-func CmdPickNext(ctx context.Context, st *storage.Storage, stid storage.StID) error {
-	ost, err := st.PickNext(ctx, stid)
-	if err != nil {
-		return err
-	}
-	spew.Dump(ost)
-	return nil
-}
-
-func CmdSetRead(ctx context.Context, st *storage.Storage, stid storage.StID, position int64) error {
-	return st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
-		streamState, err := st.StreamState(ctx, txn, stid)
-		if err != nil {
-			return err
-		}
-
-		fmt.Println("Current position:", streamState.LastRead)
-		if position < 0 {
-			streamState.LastRead += -position
-		} else {
-			streamState.LastRead = position
-		}
-		fmt.Println("New position:", streamState.LastRead)
-
-		return st.SetStreamState(ctx, txn, streamState)
-	})
-}
-
 func CmdCheckStreamState(ctx context.Context, st *storage.Storage, stid storage.StID, doFix bool) error {
 	return st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
 		// Stream content - check for duplicates
