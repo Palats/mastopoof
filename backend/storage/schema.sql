@@ -105,3 +105,5 @@ CREATE TABLE "streamcontent" (
 -- No index on `stid`, as there are many entry for a single stid value.
 CREATE INDEX streamcontent_sid ON streamcontent(sid);
 CREATE INDEX streamcontent_position ON streamcontent(position);
+CREATE INDEX streamcontent_status_id ON streamcontent(status_id);
+CREATE INDEX streamcontent_status_reblog_id ON streamcontent(status_reblog_id);
