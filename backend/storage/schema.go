@@ -53,11 +53,11 @@ func (u *UserState) SettingListCount() int64 {
 	return mpdata.SettingsInfo().GetListCount().GetDefault()
 }
 
-func (u *UserState) SettingSeenEpochs() *pb.SettingSeenReblogs_Values {
+func (u *UserState) SettingSeenReblogs() pb.SettingSeenReblogs_Values {
 	if u.Settings.GetSeenReblogs().GetOverride() {
-		return &u.Settings.GetSeenReblogs().Value
+		return u.Settings.GetSeenReblogs().Value
 	}
-	return &mpdata.SettingsInfo().GetSeenReblogs().Default
+	return mpdata.SettingsInfo().GetSeenReblogs().Default
 }
 
 type ASID int64
