@@ -275,6 +275,7 @@ func (ss *StreamState) ToStreamInfo() *pb.StreamInfo {
 
 // StreamState is the state of a single stream, stored as JSON.
 type StreamStatusState struct {
+	AlreadySeen StreamStatusState_AlreadySeen `json:"already_seen"`
 }
 
 // Scan implements the [Scanner] interface.
@@ -294,6 +295,17 @@ func (sss *StreamStatusState) Value() (driver.Value, error) {
 	}
 	return string(data), err
 }
+
+type StreamStatusState_AlreadySeen int
+
+// Setting to detect "already seen" was not enabled.
+const StreamStatusState_AlreadySeen_Unknown StreamStatusState_AlreadySeen = 0
+
+// That status is a reblog of a status that was already triaged in the stream.
+const StreamStatusState_AlreadySeen_Yes StreamStatusState_AlreadySeen = 1
+
+// That status is either not a reblog, or a reblog of something never seen before.
+const StreamStatusState_AlreadySeen_No StreamStatusState_AlreadySeen = 2
 
 // sqlStatus encapsulate a mastodon status to allow for easier SQL
 // serialization, as it is not possible to add it on the original type

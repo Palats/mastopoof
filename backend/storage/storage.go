@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	"github.com/alexedwards/scs/sqlite3store"
 	"github.com/golang/glog"
 	"github.com/mattn/go-mastodon"
@@ -606,7 +607,9 @@ func (st *Storage) SetAccountState(ctx context.Context, txn SQLReadWrite, as *Ac
 // CreateUserState creates a new account and assign it a UID.
 func (st *Storage) CreateUserState(ctx context.Context, txn SQLReadWrite) (_ *UserState, retErr error) {
 	defer recordAction("create-user-state")(retErr)
-	userState := &UserState{}
+	userState := &UserState{
+		Settings: &pb.Settings{},
+	}
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		var uid sql.Null[UID]
 		// If there is no entry, a row is still returned, but with a NULL value.
@@ -961,7 +964,6 @@ type Item struct {
 // pickNextInTxn adds a new status from the pool to the stream.
 // It updates streamState IN PLACE.
 func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userState *UserState, streamState *StreamState) (*Item, error) {
-	_ = userState
 	// List all statuses which do not have a position yet.
 	rows, err := txn.Query(ctx, "pick-next-statuses", `
 		SELECT
@@ -1030,6 +1032,44 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userStat
 		selstatustate = &StatusMeta{}
 	}
 
+	streamStatusState := &StreamStatusState{
+		AlreadySeen: StreamStatusState_AlreadySeen_Unknown,
+	}
+
+	// We've got a status, let's check if that's a reblog of something we've seen
+	// before - assuming that's needed.
+	if userState.SettingSeenReblogs() == pb.SettingSeenReblogs_HIDE {
+		alreadySeen := false
+		if selected.Reblog != nil {
+			// Let's see if we've seen that status before.
+			row := txn.QueryRow(ctx, "check-reblogs", `
+				SELECT
+					1
+				FROM
+					streamcontent
+				WHERE
+					stid = ?
+					AND position IS NOT NULL
+					AND (status_id = ? OR status_reblog_id = ?)
+				LIMIT 1;`,
+				streamState.StID,
+				selected.Reblog.ID,
+				selected.Reblog.ID,
+			)
+			var value int64
+			err := row.Scan(&value)
+			if err != nil && err != sql.ErrNoRows {
+				return nil, fmt.Errorf("unable to check if status existed: %w", err)
+			}
+			alreadySeen = err == nil
+		}
+		if alreadySeen {
+			streamStatusState.AlreadySeen = StreamStatusState_AlreadySeen_Yes
+		} else {
+			streamStatusState.AlreadySeen = StreamStatusState_AlreadySeen_No
+		}
+	}
+
 	// Now, add that status to the stream.
 	// Pick current last filled position.
 	position := streamState.LastPosition
@@ -1048,10 +1088,14 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userStat
 		return nil, err
 	}
 
-	streamStatusState := &StreamStatusState{}
-
 	// Set the position for the stream.
-	stmt := `UPDATE streamcontent SET position = ?, stream_status_state = ? WHERE stid = ? AND sid = ?;`
+	stmt := `
+		UPDATE streamcontent SET
+			position = ?,
+			stream_status_state = ?
+		WHERE
+			stid = ?
+			AND sid = ?;`
 	_, err = txn.Exec(ctx, "pick-next-in-txn", stmt, position, streamStatusState, streamState.StID, selectedID)
 	if err != nil {
 		return nil, err

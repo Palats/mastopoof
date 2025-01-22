@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Palats/mastopoof/backend/mastodon/testserver"
+	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	"github.com/mattn/go-mastodon"
 )
 
@@ -23,6 +24,7 @@ type DBTestEnv struct {
 	sqlInit string
 
 	// -- Available after Init
+	t    testing.TB
 	rwDB *sql.DB
 	roDB *sql.DB
 	st   *Storage
@@ -36,6 +38,7 @@ var dbNameCounter atomic.Int64
 
 func (env *DBTestEnv) Init(ctx context.Context, t testing.TB) *DBTestEnv {
 	t.Helper()
+	env.t = t
 	var err error
 	// As storage creates multiple connections, all of them must reach the same
 	// in-memory DB. In turns, it means that the connections must be properly closed
@@ -82,6 +85,15 @@ func (env *DBTestEnv) pickNext(ctx context.Context, userState *UserState, stream
 	return item, err
 }
 
+func (env *DBTestEnv) mustPickNext(ctx context.Context, userState *UserState, streamState *StreamState) *Item {
+	env.t.Helper()
+	item, err := env.pickNext(ctx, userState, streamState)
+	if err != nil {
+		env.t.Fatal(err)
+	}
+	return item
+}
+
 // TestNoCrossUserStatuses verifies that fetching statuses for a new users does not pick
 // statuses from another user.
 func TestNoCrossUserStatuses(t *testing.T) {
@@ -108,10 +120,7 @@ func TestNoCrossUserStatuses(t *testing.T) {
 	}
 
 	// Try to pick some statuses for user 2.
-	item, err := env.pickNext(ctx, userState2, streamState2)
-	if err != nil {
-		t.Fatal(err)
-	}
+	item := env.mustPickNext(ctx, userState2, streamState2)
 	if item != nil {
 		t.Errorf("Got item with status ID %v, should have gotten nothing", item.Status.ID)
 	}
@@ -135,10 +144,7 @@ func TestPick(t *testing.T) {
 	// Make sure the statuses that were inserted are available.
 	foundIDs := map[mastodon.ID]int{}
 	for i := 0; i < len(statuses); i++ {
-		item, err := env.pickNext(ctx, userState1, streamState1)
-		if err != nil {
-			t.Fatal(err)
-		}
+		item := env.mustPickNext(ctx, userState1, streamState1)
 		if item == nil {
 			t.Fatalf("Got no statuses, while one was expected")
 		}
@@ -152,10 +158,7 @@ func TestPick(t *testing.T) {
 	}
 
 	// But no more.
-	item, err := env.pickNext(ctx, userState1, streamState1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	item := env.mustPickNext(ctx, userState1, streamState1)
 	if item != nil {
 		t.Errorf("Got status ID %v, while none was expected", item.Status.ID)
 	}
@@ -335,4 +338,138 @@ func TestComputeState(t *testing.T) {
 		t.Errorf("Got filter %#v, wanted {true, false, false, true}", statusMeta.Filters)
 	}
 
+}
+
+func getStreamStatusState(ctx context.Context, env *DBTestEnv, withID string) *StreamStatusState {
+	var streamStatusState StreamStatusState
+	row := env.roDB.QueryRowContext(ctx, `
+		SELECT stream_status_state FROM streamcontent WHERE status_id = ?
+	`, withID)
+	if err := row.Scan(&streamStatusState); err != nil {
+		env.t.Fatal(err)
+	}
+	return &streamStatusState
+}
+
+// Verify that the feature hiding already-seen status detects things properly.
+func TestAlreadySeenActive(t *testing.T) {
+	ctx := context.Background()
+	env := (&DBTestEnv{}).Init(ctx, t)
+	defer env.Close()
+
+	// Prep the environment with users and statuses.
+	userState1, accountState1, streamState1, err := env.st.CreateUser(ctx, nil, "localhost", "123", "user1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Activate the feature.
+	userState1.Settings.SeenReblogs = &pb.SettingSeenReblogs{
+		Value:    pb.SettingSeenReblogs_HIDE,
+		Override: true,
+	}
+
+	// A basic status
+	status1 := testserver.NewFakeStatus(mastodon.ID("101"), "123")
+	// Another basic status
+	status2 := testserver.NewFakeStatus(mastodon.ID("102"), "123")
+	// A reblog of the first status.
+	status3 := testserver.NewFakeStatus(mastodon.ID("103"), "123")
+	status3.Reblog = status2
+	// A reblog of a never seen before status
+	status4 := testserver.NewFakeStatus(mastodon.ID("104"), "123")
+	status4.Reblog = testserver.NewFakeStatus(mastodon.ID("991"), "123")
+	// A reblog of a reblog
+	status5 := testserver.NewFakeStatus(mastodon.ID("105"), "123")
+	status5.Reblog = status4
+
+	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, accountState1.ASID, streamState1, []*mastodon.Status{
+		status1, status2, status3, status4, status5,
+	}, []*mastodon.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	env.mustPickNext(ctx, userState1, streamState1)
+	if got, want := getStreamStatusState(ctx, env, "101").AlreadySeen, StreamStatusState_AlreadySeen_No; got != want {
+		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
+	}
+
+	env.mustPickNext(ctx, userState1, streamState1)
+	if got, want := getStreamStatusState(ctx, env, "102").AlreadySeen, StreamStatusState_AlreadySeen_No; got != want {
+		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
+	}
+
+	env.mustPickNext(ctx, userState1, streamState1)
+	if got, want := getStreamStatusState(ctx, env, "103").AlreadySeen, StreamStatusState_AlreadySeen_Yes; got != want {
+		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
+	}
+
+	env.mustPickNext(ctx, userState1, streamState1)
+	if got, want := getStreamStatusState(ctx, env, "104").AlreadySeen, StreamStatusState_AlreadySeen_No; got != want {
+		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
+	}
+
+	env.mustPickNext(ctx, userState1, streamState1)
+	if got, want := getStreamStatusState(ctx, env, "105").AlreadySeen, StreamStatusState_AlreadySeen_Yes; got != want {
+		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
+	}
+}
+
+// Verify that the feature hiding already-seen does not try thing when not active.
+func TestAlreadySeenInactive(t *testing.T) {
+	ctx := context.Background()
+	env := (&DBTestEnv{}).Init(ctx, t)
+	defer env.Close()
+
+	// Prep the environment with users and statuses.
+	userState1, accountState1, streamState1, err := env.st.CreateUser(ctx, nil, "localhost", "123", "user1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Activate the feature.
+	userState1.Settings.SeenReblogs = &pb.SettingSeenReblogs{
+		Value:    pb.SettingSeenReblogs_DISPLAY,
+		Override: true,
+	}
+
+	// A basic status
+	status1 := testserver.NewFakeStatus(mastodon.ID("101"), "123")
+	// A reblog of the first status.
+	status2 := testserver.NewFakeStatus(mastodon.ID("102"), "123")
+	status2.Reblog = status1
+	// A reblog of a never seen before status
+	status3 := testserver.NewFakeStatus(mastodon.ID("103"), "123")
+	status3.Reblog = testserver.NewFakeStatus(mastodon.ID("991"), "123")
+	// A reblog of a reblog
+	status4 := testserver.NewFakeStatus(mastodon.ID("104"), "123")
+	status4.Reblog = status3
+
+	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, accountState1.ASID, streamState1, []*mastodon.Status{
+		status1, status2, status3, status4,
+	}, []*mastodon.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	env.mustPickNext(ctx, userState1, streamState1)
+	if got, want := getStreamStatusState(ctx, env, "101").AlreadySeen, StreamStatusState_AlreadySeen_Unknown; got != want {
+		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
+	}
+
+	env.mustPickNext(ctx, userState1, streamState1)
+	if got, want := getStreamStatusState(ctx, env, "102").AlreadySeen, StreamStatusState_AlreadySeen_Unknown; got != want {
+		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
+	}
+
+	env.mustPickNext(ctx, userState1, streamState1)
+	if got, want := getStreamStatusState(ctx, env, "103").AlreadySeen, StreamStatusState_AlreadySeen_Unknown; got != want {
+		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
+	}
+
+	env.mustPickNext(ctx, userState1, streamState1)
+	if got, want := getStreamStatusState(ctx, env, "104").AlreadySeen, StreamStatusState_AlreadySeen_Unknown; got != want {
+		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
+	}
 }
