@@ -278,6 +278,12 @@ type StreamStatusState struct {
 	AlreadySeen StreamStatusState_AlreadySeen `json:"already_seen"`
 }
 
+func (sss *StreamStatusState) ToProto() *pb.StreamStatusState {
+	return &pb.StreamStatusState{
+		AlreadySeen: sss.AlreadySeen.ToProto(),
+	}
+}
+
 // Scan implements the [Scanner] interface.
 func (sss *StreamStatusState) Scan(src any) error {
 	s, ok := src.(string)
@@ -297,6 +303,19 @@ func (sss *StreamStatusState) Value() (driver.Value, error) {
 }
 
 type StreamStatusState_AlreadySeen int
+
+func (v StreamStatusState_AlreadySeen) ToProto() pb.StreamStatusState_AlreadySeen {
+	switch v {
+	case StreamStatusState_AlreadySeen_Unknown:
+		return pb.StreamStatusState_UNKNOWN
+	case StreamStatusState_AlreadySeen_Yes:
+		return pb.StreamStatusState_YES
+	case StreamStatusState_AlreadySeen_No:
+		return pb.StreamStatusState_NO
+	default:
+		return pb.StreamStatusState_UNKNOWN
+	}
+}
 
 // Setting to detect "already seen" was not enabled.
 const StreamStatusState_AlreadySeen_Unknown StreamStatusState_AlreadySeen = 0

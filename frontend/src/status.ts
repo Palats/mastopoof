@@ -17,6 +17,7 @@ export interface StatusItem {
   // The account where this status was obtained from.
   account: pb.Account;
   statusMeta: pb.StatusMeta;
+  streamStatusState: pb.StreamStatusState;
 }
 
 function qualifiedAccount(account: mastodon.Account): string {
@@ -172,7 +173,13 @@ export class MastStatus extends LitElement {
     }
     const filtered = filteredAr.join(", ");
 
-    // This actual status - i.e., the reblogged one when it is a reblogged, or
+    const alreadySeen = this.item.streamStatusState.alreadySeen === pb.StreamStatusState_AlreadySeen.YES;
+
+    // TODO: clarify whether setting is about showing those already seen
+    // or recording it.
+    const showStatus = !filtered && !alreadySeen;
+
+    // This actual status - i.e., the reblogged one when it is a reblog, or
     // the basic one.
     const s = this.item.status.reblog ?? this.item.status;
     const reblog = this.item.status.reblog;
@@ -354,7 +361,9 @@ export class MastStatus extends LitElement {
 
           </span>
         </div>
-        ${!!filtered ? html`<div class="filtered">filtered by ${filtered}</div>` : contentHtml}
+        ${!!filtered ? html`<div class="filtered">filtered by ${filtered}</div>` : nothing}
+        ${alreadySeen ? html`<div class="alreadyseen">status already seen</div>` : nothing}
+        ${showStatus ? contentHtml : nothing}
         ${toolsHtml}
       </div>`;
   }

@@ -508,8 +508,9 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 			Status:   &pb.MastodonStatus{Content: string(raw)},
 			Position: item.Position,
 			// TODO: account is potentially per status, while it is currently considered per user.
-			Account: accountStateProto,
-			Meta:    item.StatusMeta.ToStatusMetaProto(),
+			Account:           accountStateProto,
+			Meta:              item.StatusMeta.ToStatusMetaProto(),
+			StreamStatusState: item.StreamStatusState.ToProto(),
 		})
 	}
 

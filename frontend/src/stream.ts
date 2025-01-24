@@ -23,6 +23,7 @@ interface StatusItem {
   // The account where this status was obtained from.
   account: pb.Account;
   statusMeta: pb.StatusMeta;
+  streamStatusState: pb.StreamStatusState;
 
   // HTML element used to represent this status.
   elt?: Element;
@@ -263,6 +264,7 @@ export class MastStream extends LitElement {
         position: position,
         account: item.account!,
         statusMeta: item.meta!,   // TODO: check presence
+        streamStatusState: item.streamStatusState!,
         isVisible: false,
         wasSeen: false,
         disappeared: false,
@@ -322,6 +324,7 @@ export class MastStream extends LitElement {
         position: position,
         account: item.account!,
         statusMeta: item.meta!,  // TODO: check presence
+        streamStatusState: item.streamStatusState!,
         isVisible: false,
         wasSeen: false,
         disappeared: false,

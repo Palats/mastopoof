@@ -129,6 +129,13 @@ func New() *Server {
 	return &Server{}
 }
 
+func (s *Server) newStatusWhileLocked() *mastodon.Status {
+	id := s.statuses.CreateNextID()
+	gen := s.fakeCounter
+	s.fakeCounter += 1
+	return NewFakeStatus(mastodon.ID(id), mastodon.ID(strconv.FormatInt(gen, 10)))
+}
+
 func (s *Server) SetListDelay(delay time.Duration) {
 	s.m.Lock()
 	s.listDelay = delay
@@ -165,12 +172,27 @@ func (s *Server) AddFakeStatus() (*mastodon.Status, error) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
-	id := s.statuses.CreateNextID()
-	gen := s.fakeCounter
-	s.fakeCounter += 1
-
-	status := NewFakeStatus(mastodon.ID(id), mastodon.ID(strconv.FormatInt(gen, 10)))
+	status := s.newStatusWhileLocked()
 	return status, s.statuses.Insert(status, string(status.ID))
+}
+
+// AddReblog creates a reblog of the provided status ID.
+// If the status ID does not already exists, create one.
+func (s *Server) AddReblog(idToReblog mastodon.ID) (*mastodon.Status, error) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	rebloggedStatus, err := s.statuses.ByID(string(idToReblog))
+	if err != nil {
+		return nil, err
+	}
+	if rebloggedStatus == nil {
+		rebloggedStatus = NewFakeStatus(mastodon.ID(idToReblog), "unknown-account")
+	}
+
+	reblog := s.newStatusWhileLocked()
+	reblog.Reblog = rebloggedStatus
+	return reblog, s.statuses.Insert(reblog, string(reblog.ID))
 }
 
 func (s *Server) UpdateStatus(status *mastodon.Status) error {

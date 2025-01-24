@@ -56,6 +56,7 @@ func NewTestServe(mux *http.ServeMux, port int, testData fs.FS) *TestServe {
 
 	ops := []*OpDesc{
 		{Text: "fake-statuses", Op: s.opFakeStatus, Description: "Add fake statuses; opt: number of statuses"},
+		{Text: "reblog", Op: s.opReblog, Description: "Reblog another status specified by ID."},
 		{Text: "fake-notifications", Op: s.opFakeNotifications, Description: "Add notifications statuses; opt: number of notifications"},
 		{Text: "clear-notifications", Op: s.opClearNotifications, Description: "Clear all notifications"},
 		{Text: "set-list-delay", Op: s.opSetListDelay, Description: "Introduce delay when listing statuses from Mastodon"},
@@ -173,6 +174,17 @@ func (s *TestServe) opFakeStatus(args []string) error {
 		s.mastodonServer.AddFakeStatus()
 	}
 	fmt.Printf("Added %d fake statuses.\n", count)
+	return nil
+}
+
+func (s *TestServe) opReblog(args []string) error {
+	if len(args) != 1 {
+		return errors.New("exactly one parameter required - the ID to reblog")
+	}
+	_, err := s.mastodonServer.AddReblog(mastodon.ID(args[0]))
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
