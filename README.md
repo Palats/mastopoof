@@ -24,8 +24,9 @@ Building:
 ```
 git clone https://github.com/Palats/mastopoof.git
 cd mastopoof
-(cd proto; npm install; npm run gen)
-(cd frontend; npm install; npm run build)
+npm install
+(cd proto; npm run gen)
+(cd frontend; npm run build)
 (cd backend; go build)
 ```
 
@@ -48,8 +49,9 @@ where:
 This assumes the repository has been cloned locally:
 
 ```
-(cd proto; npm install; npm run gen)
-(cd frontend; npm install; npm run build)
+npm install
+(cd proto; npm run gen)
+(cd frontend; npm run build)
 ```
 
 ### Running

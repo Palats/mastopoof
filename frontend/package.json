@@ -17,7 +17,7 @@
     "@material-symbols/font-400": "^0.27.2",
     "dayjs": "1.11.13",
     "lit": "3.2.0",
-    "mastopoof-proto": "file:../proto"
+    "mastopoof-proto": "0.0.0"
   },
   "devDependencies": {
     "@esm-bundle/chai": "4.3.4-fix.0",
@@ -26,6 +26,7 @@
     "@types/mocha": "10.0.10",
     "@web/test-runner": "0.18.3",
     "typescript": "5.5.4",
-    "vite": "5.4.3"
+    "vite": "5.4.3",
+    "vite-bundle-analyzer": "^0.16.0"
   }
 }

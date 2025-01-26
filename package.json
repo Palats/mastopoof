@@ -1,0 +1,9 @@
+{
+  "name": "mastopoof-ws",
+  "version": "0.0.0",
+  "description": "Mastopoof workspace",
+  "workspaces": [
+    "proto",
+    "frontend"
+  ]
+}
