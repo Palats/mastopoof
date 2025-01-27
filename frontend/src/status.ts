@@ -114,6 +114,10 @@ export class MastStatus extends LitElement {
   @state()
   private showExtraTools = false;
 
+  // Show the status even if it was filtered or hidden.
+  @state()
+  private forceShow = false;
+
   markUnread() {
     if (!this.item) {
       console.error("missing connection");
@@ -174,10 +178,6 @@ export class MastStatus extends LitElement {
     const filtered = filteredAr.join(", ");
 
     const alreadySeen = this.item.streamStatusState.alreadySeen === pb.StreamStatusState_AlreadySeen.YES;
-
-    // TODO: clarify whether setting is about showing those already seen
-    // or recording it.
-    const showStatus = !filtered && !alreadySeen;
 
     // This actual status - i.e., the reblogged one when it is a reblog, or
     // the basic one.
@@ -249,30 +249,21 @@ export class MastStatus extends LitElement {
     const openTarget = localStatusURL(this.item);
 
     const contentHtml = html`
-      ${!!reblog ? html`
-        <div class="reblog">
-          <span class="centered">
-            <img class="avatar" src=${account.avatar}></img>
-            Reblog by ${expandEmojis(account.display_name, account.emojis)} &lt;${qualifiedAccount(account)}&gt;
-          </span>
-          <span class="timestamp" title="${reblogTimeLabel}">${reblogTime.fromNow()}</span>
-        </div>
+      ${s.sensitive ? html`
+        <div class="spoilertext">${expandEmojis(s.spoiler_text)}</div>
       ` : nothing}
-    ${s.sensitive ? html`
-      <div class="spoilertext">${expandEmojis(s.spoiler_text)}</div>
-    ` : nothing}
-    <div class="content">
-      ${expandEmojis(s.content, s.emojis)}
-    </div>
-    <div class="poll">
-      ${poll}
-    </div>
-    <div class="previewcard">
-      ${card}
-    </div>
-    <div class="attachments">
-      ${attachments}
-    </div>`;
+      <div class="content">
+        ${expandEmojis(s.content, s.emojis)}
+      </div>
+      <div class="poll">
+        ${poll}
+      </div>
+      <div class="previewcard">
+        ${card}
+      </div>
+      <div class="attachments">
+        ${attachments}
+      </div>`;
 
     const toolsHtml = html`
       <div class="tools">
@@ -361,9 +352,26 @@ export class MastStatus extends LitElement {
 
           </span>
         </div>
+
+        ${!!reblog ? html`
+          <div class="reblog">
+            <span class="centered">
+              <img class="avatar" src=${account.avatar}></img>
+              Reblog by ${expandEmojis(account.display_name, account.emojis)} &lt;${qualifiedAccount(account)}&gt;
+            </span>
+            <span class="timestamp" title="${reblogTimeLabel}">${reblogTime.fromNow()}</span>
+          </div>
+        ` : nothing}
+
         ${!!filtered ? html`<div class="filtered">filtered by ${filtered}</div>` : nothing}
-        ${alreadySeen ? html`<div class="alreadyseen">status already seen</div>` : nothing}
-        ${showStatus ? contentHtml : nothing}
+        ${alreadySeen ? html`<div class="alreadyseen">
+          Status already seen.
+          <button @click=${() => this.forceShow = !this.forceShow}>
+            ${this.forceShow ? "Hide" : "Show"}
+          </button>
+        </div>` : nothing}
+        ${(!filtered && !alreadySeen) || this.forceShow ? contentHtml : nothing}
+
         ${toolsHtml}
       </div>`;
   }
@@ -410,6 +418,13 @@ export class MastStatus extends LitElement {
 
       .filtered {
         background-color: var(--color-blue-100);
+      }
+
+      .alreadyseen {
+        align-self: center;
+        flex-grow: 1;
+        background-color: var(--color-grey-150);
+        padding: 1px 10px 1px 10px;
       }
 
       .spoilertext {
