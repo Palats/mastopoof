@@ -164,10 +164,7 @@ export class MastStatus extends LitElement {
   }
 
   render() {
-    if (!this.item) {
-      return html`
-        <div class="status">oops.</div>`
-    }
+    if (!this.item) { return html`<div class="status">oops.</div>`; }
 
     var filteredAr: string[] = [];
     for (const filter of this.item.statusMeta.filterstate ?? []) {
@@ -185,6 +182,109 @@ export class MastStatus extends LitElement {
     const reblog = this.item.status.reblog;
     const account = this.item.status.account;
 
+    // Main created time is the time of the status or of the reblog content
+    // if the status is a reblog.
+    const createdTime = dayjs(s.created_at);
+    const createdTimeLabel = `${common.displayTimezone}: ${createdTime.tz(common.displayTimezone).format()}\nSource: ${s.created_at}`;
+
+    // Reblog time is the time of the main status, as in those case, the real content is in the reblog.
+    const reblogTime = dayjs(this.item.status.created_at);
+    const reblogTimeLabel = `${common.displayTimezone}: ${reblogTime.tz(common.displayTimezone).format()}\nSource: ${this.item.status.created_at}`;
+
+    const openTarget = localStatusURL(this.item);
+
+    return html`
+      <div class="status ${classMap({ read: this.isRead, unread: !this.isRead })}">
+        <div class="account">
+          <span class="centered">
+            <img class="avatar" src=${s.account.avatar}></img>
+            <div class="namebox">
+              <div class="name">${expandEmojis(s.account.display_name, s.account.emojis)}</div>
+              <div class="address">${qualifiedAccount(s.account)}</div>
+            </div>
+          </span>
+          <span>
+            <span class="timestamp" title="${createdTimeLabel}">${createdTime.fromNow()}</span>
+            <a href=${openTarget} target="_blank" class="headlink">
+              <span class="material-symbols-outlined" title="Open status">open_in_new</span></a>
+            <a href=${s.url ?? ""} target="_blank" class="headlink">
+              <span class="material-symbols-outlined" title="Open status on original server">travel_explore</span></a>
+
+          </span>
+        </div>
+
+        ${!!reblog ? html`
+          <div class="reblog">
+            <span class="centered">
+              <img class="avatar" src=${account.avatar}></img>
+              Reblog by ${expandEmojis(account.display_name, account.emojis)} &lt;${qualifiedAccount(account)}&gt;
+            </span>
+            <span class="timestamp" title="${reblogTimeLabel}">${reblogTime.fromNow()}</span>
+          </div>
+        ` : nothing}
+
+        ${!!filtered ? html`<div class="filtered">filtered by ${filtered}</div>` : nothing}
+        ${alreadySeen ? html`<div class="alreadyseen">
+          Status already seen.
+          <button @click=${() => this.forceShow = !this.forceShow}>
+            ${this.forceShow ? "Hide" : "Show"}
+          </button>
+        </div>` : nothing}
+
+        ${(!filtered && !alreadySeen) || this.forceShow ? html`
+            ${s.sensitive ? html`
+              <div class="spoilertext">${expandEmojis(s.spoiler_text)}</div>
+            ` : nothing}
+            <div class="content">
+              ${expandEmojis(s.content, s.emojis)}
+            </div>
+            <div class="poll">
+              ${this.renderPoll(s)}
+            </div>
+            <div class="previewcard">
+              ${this.renderPreview(s)}
+            </div>
+            <div class="attachments">
+              ${this.renderAttachments(s)}
+            </div>
+        `: nothing}
+        ${this.renderTools(s)}
+      </div>`;
+  }
+
+  renderPoll(s: mastodon.Status) {
+    if (!s.poll) {
+      return nothing;
+    }
+    const poll: TemplateResult[] = [];
+    for (const option of s.poll.options) {
+      poll.push(html`
+          <div class="poll-option"><input type="radio" disabled>${option.title}</input></div>
+        `);
+    }
+    return poll;
+  }
+
+  renderPreview(s: mastodon.Status) {
+    if (!s.card || s.media_attachments.length > 0) {
+      return nothing;
+    }
+    return html`
+        <a href="${s.card.url}" target="_blank" class="previewcard-link">
+          <div class="previewcard-container">
+            <div class="previewcard-image">
+              <img src="${s.card.image ?? ''}"/>
+            </div>
+            <div class="previewcard-meta">
+              <div class="previewcard-provider">${s.card.provider_name}</div>
+              <div class="previewcard-title">${s.card.title}</div>
+            </div>
+          </div>
+        </a>
+      `;
+  }
+
+  renderAttachments(s: mastodon.Status): TemplateResult[] {
     const attachments: TemplateResult[] = [];
     for (const ma of (s.media_attachments ?? [])) {
       if (ma.type === "image") {
@@ -210,62 +310,13 @@ export class MastStatus extends LitElement {
         attachments.push(html`<span class="description">${ma.description}</span>`);
       }
     }
+    return attachments;
+  }
 
-    const poll: TemplateResult[] = [];
-    if (s.poll) {
-      for (const option of s.poll.options) {
-        poll.push(html`
-          <div class="poll-option"><input type="radio" disabled>${option.title}</input></div>
-        `);
-      }
-    }
+  renderTools(s: mastodon.Status): TemplateResult {
+    if (!this.item) { return html`<div class="status">oops.</div>`; }
 
-    const card: TemplateResult[] = [];
-    if (s.card && s.media_attachments.length === 0) {
-      card.push(html`
-        <a href="${s.card.url}" target="_blank" class="previewcard-link">
-          <div class="previewcard-container">
-            <div class="previewcard-image">
-              <img src="${s.card.image ?? ''}"/>
-            </div>
-            <div class="previewcard-meta">
-              <div class="previewcard-provider">${s.card.provider_name}</div>
-              <div class="previewcard-title">${s.card.title}</div>
-            </div>
-          </div>
-        </a>
-      `)
-    }
-
-    // Main created time is the time of the status or of the reblog content
-    // if the status is a reblog.
-    const createdTime = dayjs(s.created_at);
-    const createdTimeLabel = `${common.displayTimezone}: ${createdTime.tz(common.displayTimezone).format()}\nSource: ${s.created_at}`;
-
-    // Reblog time is the time of the main status, as in those case, the real content is in the reblog.
-    const reblogTime = dayjs(this.item.status.created_at);
-    const reblogTimeLabel = `${common.displayTimezone}: ${reblogTime.tz(common.displayTimezone).format()}\nSource: ${this.item.status.created_at}`;
-
-    const openTarget = localStatusURL(this.item);
-
-    const contentHtml = html`
-      ${s.sensitive ? html`
-        <div class="spoilertext">${expandEmojis(s.spoiler_text)}</div>
-      ` : nothing}
-      <div class="content">
-        ${expandEmojis(s.content, s.emojis)}
-      </div>
-      <div class="poll">
-        ${poll}
-      </div>
-      <div class="previewcard">
-        ${card}
-      </div>
-      <div class="attachments">
-        ${attachments}
-      </div>`;
-
-    const toolsHtml = html`
+    return html`
       <div class="tools">
         <div style="flex-grow: 1; display: flex; justify-content: space-evenly;">
           <div>
@@ -332,48 +383,6 @@ export class MastStatus extends LitElement {
       `: nothing}
       ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(this.item.status, null, "  ")}</pre>` : nothing}
     `;
-
-    return html`
-      <div class="status ${classMap({ read: this.isRead, unread: !this.isRead })}">
-        <div class="account">
-          <span class="centered">
-            <img class="avatar" src=${s.account.avatar}></img>
-            <div class="namebox">
-              <div class="name">${expandEmojis(s.account.display_name, s.account.emojis)}</div>
-              <div class="address">${qualifiedAccount(s.account)}</div>
-            </div>
-          </span>
-          <span>
-            <span class="timestamp" title="${createdTimeLabel}">${createdTime.fromNow()}</span>
-            <a href=${openTarget} target="_blank" class="headlink">
-              <span class="material-symbols-outlined" title="Open status">open_in_new</span></a>
-            <a href=${s.url ?? ""} target="_blank" class="headlink">
-              <span class="material-symbols-outlined" title="Open status on original server">travel_explore</span></a>
-
-          </span>
-        </div>
-
-        ${!!reblog ? html`
-          <div class="reblog">
-            <span class="centered">
-              <img class="avatar" src=${account.avatar}></img>
-              Reblog by ${expandEmojis(account.display_name, account.emojis)} &lt;${qualifiedAccount(account)}&gt;
-            </span>
-            <span class="timestamp" title="${reblogTimeLabel}">${reblogTime.fromNow()}</span>
-          </div>
-        ` : nothing}
-
-        ${!!filtered ? html`<div class="filtered">filtered by ${filtered}</div>` : nothing}
-        ${alreadySeen ? html`<div class="alreadyseen">
-          Status already seen.
-          <button @click=${() => this.forceShow = !this.forceShow}>
-            ${this.forceShow ? "Hide" : "Show"}
-          </button>
-        </div>` : nothing}
-        ${(!filtered && !alreadySeen) || this.forceShow ? contentHtml : nothing}
-
-        ${toolsHtml}
-      </div>`;
   }
 
   static styles = [common.sharedCSS, css`
