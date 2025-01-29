@@ -238,15 +238,9 @@ export class MastStatus extends LitElement {
             <div class="content">
               ${expandEmojis(s.content, s.emojis)}
             </div>
-            <div class="poll">
-              ${this.renderPoll(s)}
-            </div>
-            <div class="previewcard">
-              ${this.renderPreview(s)}
-            </div>
-            <div class="attachments">
-              ${this.renderAttachments(s)}
-            </div>
+            ${this.renderPoll(s)}
+            ${this.renderPreview(s)}
+            ${this.renderAttachments(s)}
         `: nothing}
         ${this.renderTools(s)}
       </div>`;
@@ -256,13 +250,13 @@ export class MastStatus extends LitElement {
     if (!s.poll) {
       return nothing;
     }
-    const poll: TemplateResult[] = [];
-    for (const option of s.poll.options) {
-      poll.push(html`
-          <div class="poll-option"><input type="radio" disabled>${option.title}</input></div>
-        `);
-    }
-    return poll;
+    return html`
+      <div class="poll">
+        ${s.poll.options.map(option => html`
+        <div class="poll-option"><input type="radio" disabled>${option.title}</input></div>
+        `)}
+      </div>
+    `;
   }
 
   renderPreview(s: mastodon.Status) {
@@ -270,6 +264,7 @@ export class MastStatus extends LitElement {
       return nothing;
     }
     return html`
+      <div class="previewcard">
         <a href="${s.card.url}" target="_blank" class="previewcard-link">
           <div class="previewcard-container">
             <div class="previewcard-image">
@@ -281,10 +276,11 @@ export class MastStatus extends LitElement {
             </div>
           </div>
         </a>
-      `;
+      </div>
+    `;
   }
 
-  renderAttachments(s: mastodon.Status): TemplateResult[] {
+  renderAttachments(s: mastodon.Status) {
     const attachments: TemplateResult[] = [];
     for (const ma of (s.media_attachments ?? [])) {
       if (ma.type === "image") {
@@ -310,7 +306,8 @@ export class MastStatus extends LitElement {
         attachments.push(html`<span class="description">${ma.description}</span>`);
       }
     }
-    return attachments;
+    if (attachments.length === 0) { return nothing; }
+    return html`<div class="attachments">${attachments}</div>`;
   }
 
   renderTools(s: mastodon.Status): TemplateResult {
