@@ -116,7 +116,7 @@ export class MastStatus extends LitElement {
 
   // Show the status even if it was filtered or hidden.
   @state()
-  private forceShow = false;
+  private forceShow: undefined | boolean;
 
   markUnread() {
     if (!this.item) {
@@ -176,6 +176,8 @@ export class MastStatus extends LitElement {
 
     const alreadySeen = this.item.streamStatusState.alreadySeen === pb.StreamStatusState_AlreadySeen.YES;
 
+    const isOpen = this.forceShow === undefined ? (!filtered && !alreadySeen) : this.forceShow;
+
     // This actual status - i.e., the reblogged one when it is a reblog, or
     // the basic one.
     const s = this.item.status.reblog ?? this.item.status;
@@ -223,26 +225,34 @@ export class MastStatus extends LitElement {
           </div>
         ` : nothing}
 
-        ${!!filtered ? html`<div class="filtered">filtered by ${filtered}</div>` : nothing}
-        ${alreadySeen ? html`<div class="alreadyseen">
-          Status already seen.
-          <button @click=${() => this.forceShow = !this.forceShow}>
-            ${this.forceShow ? "Hide" : "Show"}
-          </button>
-        </div>` : nothing}
+        ${s.sensitive || !!filtered || alreadySeen ? html`
+          <div class=${classMap({ "spoilerbar": true, "sb-default": !isOpen || !s.sensitive, "sb-open-sensitive": isOpen && s.sensitive })}>
+            <div>
+              ${!!filtered ? html`<span class="tag-filter">filter(${filtered})</span>` : nothing}
+              ${alreadySeen ? html`<span class="tag-reblog">reblog</span>` : nothing}
+              ${s.sensitive ? expandEmojis(s.spoiler_text) : nothing}
+            </div>
+            <div>
+              <button @click=${() => this.forceShow = !isOpen}>
+                ${isOpen ? html`
+                  <span class="material-symbols-outlined" title="Hide status content">compress</span>
+                `: html`
+                  <span class="material-symbols-outlined" title="Show status content">expand</span>
+                `}
+              </button>
+            </div>
+          </div>
+        `: nothing}
 
-        ${(!filtered && !alreadySeen) || this.forceShow ? html`
-            ${s.sensitive ? html`
-              <div class="spoilertext">${expandEmojis(s.spoiler_text)}</div>
-            ` : nothing}
+        ${isOpen ? html`
             <div class="content">
               ${expandEmojis(s.content, s.emojis)}
             </div>
             ${this.renderPoll(s)}
             ${this.renderPreview(s)}
             ${this.renderAttachments(s)}
+            ${this.renderTools(s)}
         `: nothing}
-        ${this.renderTools(s)}
       </div>`;
   }
 
@@ -422,19 +432,39 @@ export class MastStatus extends LitElement {
         font-size: 0.6rem;
       }
 
-      .filtered {
-        background-color: var(--color-blue-100);
+      .spoilerbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-sizing: border-box;
+        padding: 2px 2px 2px 4px;
       }
 
-      .alreadyseen {
-        align-self: center;
-        flex-grow: 1;
+      .spoilerbar button {
+        min-height: 24px;
+        min-width: 24px;
+        padding: 0 2px;
+        margin: 0;
+      }
+
+      .sb-default {
         background-color: var(--color-grey-150);
-        padding: 1px 10px 1px 10px;
       }
 
-      .spoilertext {
+      .sb-open-sensitive {
         background-color: var(--color-purple-200);
+      }
+
+      .tag-filter {
+        border-radius: 8px;
+        background-color: var(--color-grey-300);
+        padding: 2px;
+      }
+
+      .tag-reblog {
+        border-radius: 8px;
+        background-color: var(--color-grey-300);
+        padding: 2px;
       }
 
       .reblog {
