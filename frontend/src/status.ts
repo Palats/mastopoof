@@ -196,7 +196,7 @@ export class MastStatus extends LitElement {
     const openTarget = localStatusURL(this.item);
 
     return html`
-      <div class="status ${classMap({ read: this.isRead, unread: !this.isRead })}">
+      <div class="status ${classMap({ read: this.isRead, unread: !this.isRead, hiddenstatus: !isOpen })}">
         <div class="account">
           <span class="centered">
             <img class="avatar" src=${s.account.avatar}></img>
@@ -403,6 +403,10 @@ export class MastStatus extends LitElement {
         overflow: hidden;
         display: flex;
         flex-direction: column;
+      }
+
+      .hiddenstatus {
+        filter: grayscale(100%);
       }
 
       .read {
