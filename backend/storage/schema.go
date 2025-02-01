@@ -173,45 +173,6 @@ func (nfo *AppRegInfo) Key() string {
 	return nfo.ServerAddr + "--" + nfo.RedirectURI + "--" + nfo.Scopes
 }
 
-// AppRegState contains information about an app registration on a Mastodon server.
-// This state is kept in DB.
-type AppRegState struct {
-	// The storage key for this app registration.
-	// Redundant in storage, but convenient when manipulating the data around.
-	Key string `json:"key"`
-
-	// Following fields are an AppRegKey.
-	// Mastodon server address.
-	ServerAddr string `json:"server_addr"`
-	// Scopes used when registering the app.
-	Scopes string `json:"scopes"`
-	// Where the oauth should redirect - incl. /_redirect.
-	RedirectURI string `json:"redirect_uri"`
-
-	// App registration info not part of the key.
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-	AuthURI      string `json:"auth_uri"`
-}
-
-// Scan implements the [Scanner] interface.
-func (a *AppRegState) Scan(src any) error {
-	s, ok := src.(string)
-	if !ok {
-		return fmt.Errorf("expected a string for AppRegState json, got %T", src)
-	}
-	return json.Unmarshal([]byte(s), a)
-}
-
-// Value implements the [driver.Valuer] interface.
-func (a *AppRegState) Value() (driver.Value, error) {
-	data, err := json.Marshal(a)
-	if err != nil {
-		return nil, err
-	}
-	return string(data), err
-}
-
 type StID int64
 
 // StreamState is the state of a single stream, stored as JSON.

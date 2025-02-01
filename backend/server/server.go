@@ -20,6 +20,7 @@ import (
 	mpdata "github.com/Palats/mastopoof/proto/data"
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	"github.com/Palats/mastopoof/proto/gen/mastopoof/mastopoofconnect"
+	stpb "github.com/Palats/mastopoof/proto/gen/mastopoof/storage"
 )
 
 const AppMastodonScopes = "read write push"
@@ -50,10 +51,10 @@ func NewAppRegistry(st *storage.Storage) *AppRegistry {
 	}
 }
 
-func (appreg *AppRegistry) Register(ctx context.Context, serverAddr string, selfURL *url.URL) (*storage.AppRegState, error) {
+func (appreg *AppRegistry) Register(ctx context.Context, serverAddr string, selfURL *url.URL) (*stpb.AppRegState, error) {
 	appRegInfo := appreg.appRegInfo(serverAddr, selfURL)
 
-	var appRegState *storage.AppRegState
+	var appRegState *stpb.AppRegState
 	err := appreg.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
 		var err error
 		appRegState, err = appreg.st.AppRegState(ctx, txn, appRegInfo)
@@ -75,11 +76,11 @@ func (appreg *AppRegistry) Register(ctx context.Context, serverAddr string, self
 	return appRegState, err
 }
 
-func (appreg *AppRegistry) MastodonClient(appRegState *storage.AppRegState, accessToken string) *mastodon.Client {
+func (appreg *AppRegistry) MastodonClient(appRegState *stpb.AppRegState, accessToken string) *mastodon.Client {
 	// TODO: Re-use mastodon clients.
 	client := mastodon.NewClient(&mastodon.Config{
 		Server:       appRegState.ServerAddr,
-		ClientID:     appRegState.ClientID,
+		ClientID:     appRegState.ClientId,
 		ClientSecret: appRegState.ClientSecret,
 		AccessToken:  accessToken,
 	})
@@ -111,7 +112,7 @@ func (appreg *AppRegistry) appRegInfo(serverAddr string, selfURL *url.URL) *stor
 }
 
 // callRegister register Mastopoof on the specified mastodon server, with the provided scopes and redirect URI.
-func (appreg *AppRegistry) callRegister(ctx context.Context, nfo *storage.AppRegInfo) (*storage.AppRegState, error) {
+func (appreg *AppRegistry) callRegister(ctx context.Context, nfo *storage.AppRegInfo) (*stpb.AppRegState, error) {
 	// TODO: rate limiting to avoid abuse.
 	// TODO: garbage collection of unused ones.
 	// TODO: update redirect URIs as needed.
@@ -131,14 +132,14 @@ func (appreg *AppRegistry) callRegister(ctx context.Context, nfo *storage.AppReg
 		return nil, fmt.Errorf("unable to register app on server %s: %w", nfo.ServerAddr, err)
 	}
 
-	return &storage.AppRegState{
+	return &stpb.AppRegState{
 		Key:          nfo.Key(),
 		ServerAddr:   nfo.ServerAddr,
 		Scopes:       nfo.Scopes,
-		RedirectURI:  nfo.RedirectURI,
-		ClientID:     app.ClientID,
+		RedirectUri:  nfo.RedirectURI,
+		ClientId:     app.ClientID,
 		ClientSecret: app.ClientSecret,
-		AuthURI:      app.AuthURI,
+		AuthUri:      app.AuthURI,
 	}, nil
 }
 
@@ -336,8 +337,8 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 	}
 	authAddr.Path = "/oauth/authorize"
 	q := authAddr.Query()
-	q.Set("client_id", appRegState.ClientID)
-	q.Set("redirect_uri", appRegState.RedirectURI)
+	q.Set("client_id", appRegState.ClientId)
+	q.Set("redirect_uri", appRegState.RedirectUri)
 	q.Set("response_type", "code")
 	// TODO: narrow down scopes
 	// TODO: support changing scope (or at least detecting)
@@ -346,7 +347,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 
 	return connect.NewResponse(&pb.AuthorizeResponse{
 		AuthorizeAddr: authAddr.String(),
-		OutOfBand:     appRegState.RedirectURI == OutOfBandURI,
+		OutOfBand:     appRegState.RedirectUri == OutOfBandURI,
 	}), nil
 }
 
@@ -378,7 +379,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	}
 	client := s.appRegistry.MastodonClient(appRegState, "" /* accessToken */)
 
-	err = client.AuthenticateToken(ctx, authCode, appRegState.RedirectURI)
+	err = client.AuthenticateToken(ctx, authCode, appRegState.RedirectUri)
 	if err != nil {
 		return nil, fmt.Errorf("unable to authenticate on server %s: %w", appRegState.ServerAddr, err)
 	}

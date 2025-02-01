@@ -5,6 +5,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -14,11 +15,14 @@ import (
 	"time"
 
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
+	stpb "github.com/Palats/mastopoof/proto/gen/mastopoof/storage"
 	"github.com/alexedwards/scs/sqlite3store"
 	"github.com/golang/glog"
 	"github.com/mattn/go-mastodon"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -53,6 +57,31 @@ func recordAction(name string) func(error) {
 		d := time.Since(start)
 		actionLatency.With(prometheus.Labels{"action": name, "code": errToCode(err)}).Observe(d.Seconds())
 	}
+}
+
+// SQLProto encapsulate a protobuf message to make suitable as value
+// of SQL queries - both as source data and as destination data.
+// E.g.,:  SQLProto{myMsg}
+type SQLProto struct {
+	proto.Message
+}
+
+// Scan implements the [sql.Scanner] interface.
+func (m SQLProto) Scan(src any) error {
+	s, ok := src.(string)
+	if !ok {
+		return fmt.Errorf("expected a string for proto json, got %T", src)
+	}
+	return protojson.Unmarshal([]byte(s), m)
+}
+
+// Value implements the [driver.Valuer] interface.
+func (m SQLProto) Value() (driver.Value, error) {
+	data, err := protojson.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	return string(data), err
 }
 
 type SQLReadOnly interface {
@@ -450,7 +479,7 @@ func (st *Storage) CreateUser(ctx context.Context, txn SQLReadWrite, serverAddr 
 }
 
 // CreateAppRegState creates a server with the given address.
-func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLReadWrite, src *AppRegState) (retErr error) {
+func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLReadWrite, src *stpb.AppRegState) (retErr error) {
 	defer recordAction("create-app-reg-state")(retErr)
 	if src.Key == "" {
 		// Sanity checking - if it fails, it means there is a coding error.
@@ -460,7 +489,7 @@ func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLReadWrite, src 
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		// Do not use SetAppRegState(), as it will not fail if that already exists.
 		stmt := `INSERT INTO appregstate(key, state) VALUES(?, ?)`
-		_, err := txn.Exec(ctx, "insert-appregstate", stmt, src.Key, src)
+		_, err := txn.Exec(ctx, "insert-appregstate", stmt, src.Key, SQLProto{src})
 		return err
 	})
 	if err != nil {
@@ -471,13 +500,13 @@ func (st *Storage) CreateAppRegState(ctx context.Context, txn SQLReadWrite, src 
 
 // AppRegState returns the current AppRegState for a given, well, server.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) AppRegState(ctx context.Context, txn SQLReadOnly, nfo *AppRegInfo) (retARS *AppRegState, retErr error) {
+func (st *Storage) AppRegState(ctx context.Context, txn SQLReadOnly, nfo *AppRegInfo) (retARS *stpb.AppRegState, retErr error) {
 	defer recordAction("app-reg-state")(retErr)
-	as := &AppRegState{}
+	as := &stpb.AppRegState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		key := nfo.Key()
 		err := txn.QueryRow(ctx, "app-reg-state",
-			"SELECT state FROM appregstate WHERE key=?", key).Scan(&as)
+			"SELECT state FROM appregstate WHERE key=?", key).Scan(SQLProto{as})
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("no state for server_addr=%s, key=%s: %w", nfo.ServerAddr, key, ErrNotFound)
 		}

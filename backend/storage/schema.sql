@@ -32,7 +32,7 @@ CREATE TABLE appregstate (
   -- Made of hash of redirect URI & scopes requested, as each of those
   -- require a different Mastodon app registration.
   key TEXT NOT NULL,
-  -- Serialized AppRegState
+  -- Proto mastopoof.storage.AppRegState as JSON
   state TEXT NOT NULL
 ) STRICT;
 

@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package mastopoof.storage;
+
+// AppRegState contains information about an app registration on a Mastodon server.
+// This state is kept in DB.
+message AppRegState {
+  // The storage key for this app registration.
+	// Redundant in storage, but convenient when manipulating the data around.
+  string key = 1 [json_name = "key"];
+
+  // Following fields are an AppRegKey.
+	// Mastodon server address.
+  string server_addr = 2  [json_name = "server_addr"];
+	// Scopes used when registering the app.
+	string scopes = 3 [json_name = "scopes"];
+	// Where the oauth should redirect - incl. /_redirect.
+  string redirect_uri = 4 [json_name = "redirect_uri"];
+
+	// App registration info not part of the key.
+	string client_id = 5 [json_name = "client_id"];
+  string client_secret = 6 [json_name = "client_secret"] ;
+  string auth_uri = 7 [json_name = "auth_uri"];
+}

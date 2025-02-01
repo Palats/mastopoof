@@ -54,8 +54,8 @@ func CmdMe(ctx context.Context, st *storage.Storage, uid storage.UID, showAccoun
 	if err != nil {
 		return err
 	}
-	fmt.Println("# Auth URI:", appRegState.AuthURI)
-	fmt.Println("# Redirect URI:", appRegState.RedirectURI)
+	fmt.Println("# Auth URI:", appRegState.AuthUri)
+	fmt.Println("# Redirect URI:", appRegState.RedirectUri)
 
 	streamState, err := st.StreamState(ctx, nil, stid)
 	if err != nil {
@@ -70,7 +70,7 @@ func CmdMe(ctx context.Context, st *storage.Storage, uid storage.UID, showAccoun
 	if showAccount {
 		client = mastodon.NewClient(&mastodon.Config{
 			Server:       appRegState.ServerAddr,
-			ClientID:     appRegState.ClientID,
+			ClientID:     appRegState.ClientId,
 			ClientSecret: appRegState.ClientSecret,
 			AccessToken:  accountState.AccessToken,
 		})
