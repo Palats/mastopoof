@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "genproto": "buf generate",
-    "gendata": "buf convert mastopoof/mastopoof.proto --type=mastopoof.SettingsInfo --from=data/settings.textproto#format=txtpb --to=gen/settings.json#format=json",
+    "gendata": "buf convert mastopoof/mastopoof.proto --type=mastopoof.settings.SettingsInfo --from=data/settings.textproto#format=txtpb --to=gen/settings.json#format=json",
     "gen": "npm run genproto && npm run gendata"
   },
   "dependencies": {

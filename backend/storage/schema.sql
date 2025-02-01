@@ -8,7 +8,7 @@
 CREATE TABLE userstate (
   -- A unique id for that user.
   uid INTEGER PRIMARY KEY,
-  -- Serialized JSON UserState
+  -- Protobuf mastpoof.storage.UserState as JSON
   state TEXT NOT NULL
 ) STRICT;
 
@@ -32,7 +32,7 @@ CREATE TABLE appregstate (
   -- Made of hash of redirect URI & scopes requested, as each of those
   -- require a different Mastodon app registration.
   key TEXT NOT NULL,
-  -- Proto mastopoof.storage.AppRegState as JSON
+  -- Protobuf mastopoof.storage.AppRegState as JSON
   state TEXT NOT NULL
 ) STRICT;
 

@@ -9,6 +9,7 @@ import (
 
 	mpdata "github.com/Palats/mastopoof/proto/data"
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
+	settingspb "github.com/Palats/mastopoof/proto/gen/mastopoof/settings"
 	"github.com/mattn/go-mastodon"
 )
 
@@ -17,45 +18,16 @@ type SID int64
 
 type UID int64
 
-// UserState is the state of a Mastopoof user, stored as JSON in the DB.
-type UserState struct {
-	// User ID.
-	UID UID `json:"uid"`
-
-	// Default stream of that user.
-	DefaultStID StID `json:"default_stid"`
-
-	Settings *pb.Settings `json:"settings"`
-}
-
-// Scan implements the [Scanner] interface.
-func (u *UserState) Scan(src any) error {
-	s, ok := src.(string)
-	if !ok {
-		return fmt.Errorf("expected a string for UserState json, got %T", src)
-	}
-	return json.Unmarshal([]byte(s), u)
-}
-
-// Value implements the [driver.Valuer] interface.
-func (u *UserState) Value() (driver.Value, error) {
-	data, err := json.Marshal(u)
-	if err != nil {
-		return nil, err
-	}
-	return string(data), err
-}
-
-func (u *UserState) SettingListCount() int64 {
-	if u.Settings.GetListCount().GetOverride() {
-		return u.Settings.GetListCount().GetValue()
+func SettingListCount(s *settingspb.Settings) int64 {
+	if s.GetListCount().GetOverride() {
+		return s.GetListCount().GetValue()
 	}
 	return mpdata.SettingsInfo().GetListCount().GetDefault()
 }
 
-func (u *UserState) SettingSeenReblogs() pb.SettingSeenReblogs_Values {
-	if u.Settings.GetSeenReblogs().GetOverride() {
-		return u.Settings.GetSeenReblogs().Value
+func SettingSeenReblogs(s *settingspb.Settings) settingspb.SettingSeenReblogs_Values {
+	if s.GetSeenReblogs().GetOverride() {
+		return s.GetSeenReblogs().Value
 	}
 	return mpdata.SettingsInfo().GetSeenReblogs().Default
 }

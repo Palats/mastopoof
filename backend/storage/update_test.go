@@ -382,7 +382,7 @@ func TestV13ToV14(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := userState.UID, UID(2); got != want {
+	if got, want := UID(userState.Uid), UID(2); got != want {
 		t.Errorf("Got uid %d, wanted %d", got, want)
 	}
 
@@ -390,7 +390,7 @@ func TestV13ToV14(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := userState.UID, UID(3); got != want {
+	if got, want := UID(userState.Uid), UID(3); got != want {
 		t.Errorf("Got uid %d, wanted %d", got, want)
 	}
 }

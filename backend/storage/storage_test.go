@@ -11,7 +11,8 @@ import (
 	"time"
 
 	"github.com/Palats/mastopoof/backend/mastodon/testserver"
-	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
+	settingspb "github.com/Palats/mastopoof/proto/gen/mastopoof/settings"
+	stpb "github.com/Palats/mastopoof/proto/gen/mastopoof/storage"
 	"github.com/mattn/go-mastodon"
 )
 
@@ -75,7 +76,7 @@ func (env *DBTestEnv) Close() {
 	}
 }
 
-func (env *DBTestEnv) pickNext(ctx context.Context, userState *UserState, streamState *StreamState) (*Item, error) {
+func (env *DBTestEnv) pickNext(ctx context.Context, userState *stpb.UserState, streamState *StreamState) (*Item, error) {
 	var item *Item
 	err := env.st.InTxnRW(ctx, func(ctx context.Context, txn SQLReadWrite) error {
 		var err error
@@ -85,7 +86,7 @@ func (env *DBTestEnv) pickNext(ctx context.Context, userState *UserState, stream
 	return item, err
 }
 
-func (env *DBTestEnv) mustPickNext(ctx context.Context, userState *UserState, streamState *StreamState) *Item {
+func (env *DBTestEnv) mustPickNext(ctx context.Context, userState *stpb.UserState, streamState *StreamState) *Item {
 	env.t.Helper()
 	item, err := env.pickNext(ctx, userState, streamState)
 	if err != nil {
@@ -182,10 +183,10 @@ func TestCreateStreamStateIncreases(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if seenUIDs[userState.UID] {
-			t.Errorf("duplicate UID %d", userState.UID)
+		if seenUIDs[UID(userState.Uid)] {
+			t.Errorf("duplicate UID %d", userState.Uid)
 		}
-		seenUIDs[userState.UID] = true
+		seenUIDs[UID(userState.Uid)] = true
 
 		if seenASIDs[accountState.ASID] {
 			t.Errorf("duplicate ASID %d", accountState.ASID)
@@ -232,7 +233,7 @@ func TestSearchStatusID(t *testing.T) {
 
 	err = env.st.InTxnRO(ctx, func(ctx context.Context, txn SQLReadOnly) error {
 		// Make sure the statuses that were inserted are available.
-		results, err := env.st.SearchByStatusID(ctx, txn, userState1.UID, "101")
+		results, err := env.st.SearchByStatusID(ctx, txn, UID(userState1.Uid), "101")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -244,7 +245,7 @@ func TestSearchStatusID(t *testing.T) {
 		}
 
 		// Search for an unknown status.
-		results, err = env.st.SearchByStatusID(ctx, txn, userState1.UID, "199")
+		results, err = env.st.SearchByStatusID(ctx, txn, UID(userState1.Uid), "199")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -253,7 +254,7 @@ func TestSearchStatusID(t *testing.T) {
 		}
 
 		// Check that searchs look only for the provided user statuses.
-		results, err = env.st.SearchByStatusID(ctx, txn, userState2.UID, "101")
+		results, err = env.st.SearchByStatusID(ctx, txn, UID(userState2.Uid), "101")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -364,8 +365,8 @@ func TestAlreadySeenActive(t *testing.T) {
 	}
 
 	// Activate the feature.
-	userState1.Settings.SeenReblogs = &pb.SettingSeenReblogs{
-		Value:    pb.SettingSeenReblogs_HIDE,
+	userState1.Settings.SeenReblogs = &settingspb.SettingSeenReblogs{
+		Value:    settingspb.SettingSeenReblogs_HIDE,
 		Override: true,
 	}
 
@@ -429,8 +430,8 @@ func TestAlreadySeenInactive(t *testing.T) {
 	}
 
 	// Activate the feature.
-	userState1.Settings.SeenReblogs = &pb.SettingSeenReblogs{
-		Value:    pb.SettingSeenReblogs_DISPLAY,
+	userState1.Settings.SeenReblogs = &settingspb.SettingSeenReblogs{
+		Value:    settingspb.SettingSeenReblogs_DISPLAY,
 		Override: true,
 	}
 

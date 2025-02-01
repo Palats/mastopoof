@@ -20,12 +20,12 @@ func CmdUsers(ctx context.Context, st *storage.Storage) error {
 	}
 	for _, userEntry := range userList {
 		fmt.Printf("uid=%d,asid=%d: username=%s id=%s server=%s stream=%d\n",
-			userEntry.UserState.UID,
+			userEntry.UserState.Uid,
 			userEntry.AccountState.ASID,
 			userEntry.AccountState.Username,
 			userEntry.AccountState.AccountID,
 			userEntry.AccountState.ServerAddr,
-			userEntry.UserState.DefaultStID)
+			userEntry.UserState.DefaultStid)
 	}
 	return nil
 }
@@ -37,8 +37,8 @@ func CmdMe(ctx context.Context, st *storage.Storage, uid storage.UID, showAccoun
 	if err != nil {
 		return err
 	}
-	fmt.Println("# Default stream ID:", userState.DefaultStID)
-	stid := userState.DefaultStID
+	fmt.Println("# Default stream ID:", userState.DefaultStid)
+	stid := storage.StID(userState.DefaultStid)
 
 	accountState, err := st.FirstAccountStateByUID(ctx, nil, uid)
 	if err != nil {

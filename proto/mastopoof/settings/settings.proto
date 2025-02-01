@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package mastopoof.settings;
+
+message Settings {
+  // Number of statuses to list by default when user click button.
+  SettingInt64 list_count = 1 [json_name = "list_count"];
+  // What to do with reblogs which have already been seen.
+  SettingSeenReblogs seen_reblogs = 2 [json_name = "seen_reblogs"];
+}
+
+message SettingInt64 {
+  int64 value = 1 [json_name = "value"];
+  // If true, use the value. Otherwise, rely on defaults.
+  bool override = 2 [json_name = "override"];
+}
+
+message SettingSeenReblogs {
+  enum Values {
+    DISPLAY = 0;
+    HIDE = 1;
+  }
+
+  Values value = 1 [json_name = "value"];
+  // If true, use the value. Otherwise, rely on defaults.
+  bool override = 2 [json_name = "override"];
+}
+
+message SettingsInfo {
+  SettingInt64Info list_count = 1 [json_name = "list_count"];
+  SettingSeenReblogsInfo seen_reblogs = 2 [json_name = "seen_reblogs"];
+}
+
+message SettingInt64Info {
+  int64 default = 1 [json_name = "default"];
+  // Min & max are included - i.e., allowed values.
+  int64 min = 2 [json_name = "min"];
+  int64 max = 3 [json_name = "max"];
+}
+
+message SettingSeenReblogsInfo {
+  SettingSeenReblogs.Values default = 1 [json_name = "default"];
+}
+

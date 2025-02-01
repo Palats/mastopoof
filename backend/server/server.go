@@ -20,6 +20,7 @@ import (
 	mpdata "github.com/Palats/mastopoof/proto/data"
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	"github.com/Palats/mastopoof/proto/gen/mastopoof/mastopoofconnect"
+	settingspb "github.com/Palats/mastopoof/proto/gen/mastopoof/settings"
 	stpb "github.com/Palats/mastopoof/proto/gen/mastopoof/storage"
 )
 
@@ -200,12 +201,12 @@ func (s *Server) isLogged(ctx context.Context) (storage.UID, error) {
 }
 
 // getUserInfo builds a UserInfo proto suitable for the UI.
-func (s *Server) getUserInfo(ctx context.Context, userState *storage.UserState) (*pb.UserInfo, error) {
+func (s *Server) getUserInfo(ctx context.Context, userState *stpb.UserState) (*pb.UserInfo, error) {
 	userInfo := &pb.UserInfo{
-		DefaultStid: int64(userState.DefaultStID),
+		DefaultStid: userState.DefaultStid,
 	}
 
-	accountStates, err := s.st.AllAccountStateByUID(ctx, nil, userState.UID)
+	accountStates, err := s.st.AllAccountStateByUID(ctx, nil, storage.UID(userState.Uid))
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +221,7 @@ func (s *Server) getUserInfo(ctx context.Context, userState *storage.UserState) 
 
 // verifyStdID checks that the logged in user is allowed access to that
 // stream.
-func (s *Server) verifyStID(ctx context.Context, stid storage.StID) (*storage.UserState, error) {
+func (s *Server) verifyStID(ctx context.Context, stid storage.StID) (*stpb.UserState, error) {
 	userID, err := s.isLogged(ctx)
 	if err != nil {
 		return nil, err
@@ -229,7 +230,7 @@ func (s *Server) verifyStID(ctx context.Context, stid storage.StID) (*storage.Us
 	if err != nil {
 		return nil, err
 	}
-	if userState.DefaultStID != stid {
+	if storage.StID(userState.DefaultStid) != stid {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("stream access denied"))
 	}
 	return userState, nil
@@ -284,7 +285,7 @@ func (s *Server) UpdateSettings(ctx context.Context, req *connect.Request[pb.Upd
 
 	// Clone the settings - not sure what is the lifecycle of the one provided
 	// for the RPC, and it will be used in userstate.
-	settings := proto.Clone(req.Msg.GetSettings()).(*pb.Settings)
+	settings := proto.Clone(req.Msg.GetSettings()).(*settingspb.Settings)
 	if settings == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("missing settings"))
 	}
@@ -396,7 +397,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	}
 	username := mastodonAccount.Username
 
-	var userState *storage.UserState
+	var userState *stpb.UserState
 	err = s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
 		// Find the account state (Mastodon).
 		accountState, err := s.st.AccountStateByAccountID(ctx, txn, serverAddr, accountID)
@@ -436,7 +437,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	if err != nil {
 		return nil, fmt.Errorf("unable to renew token: %w", err)
 	}
-	s.setSessionUserID(ctx, userState.UID)
+	s.setSessionUserID(ctx, storage.UID(userState.Uid))
 
 	userInfo, err := s.getUserInfo(ctx, userState)
 	if err != nil {
@@ -455,7 +456,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 		return nil, err
 	}
 
-	accountState, err := s.st.FirstAccountStateByUID(ctx, nil, userState.UID)
+	accountState, err := s.st.FirstAccountStateByUID(ctx, nil, storage.UID(userState.Uid))
 	if err != nil {
 		return nil, err
 	}

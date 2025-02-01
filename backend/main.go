@@ -59,7 +59,7 @@ func getStreamID(ctx context.Context, st *storage.Storage, streamID storage.StID
 		if err != nil {
 			return 0, err
 		}
-		return userState.DefaultStID, nil
+		return storage.StID(userState.DefaultStid), nil
 	}
 	return 0, errors.New("no streamID / user ID specified")
 }
@@ -278,7 +278,7 @@ func cmdTestServe() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("unable to create testuser: %w", err)
 			}
-			uid = userState.UID
+			uid = storage.UID(userState.Uid)
 		}
 
 		s, err := getServer(st, uid, *inviteCode, *insecure, *selfURL)

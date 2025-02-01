@@ -4,7 +4,7 @@ package data
 import (
 	_ "embed"
 
-	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
+	settingspb "github.com/Palats/mastopoof/proto/gen/mastopoof/settings"
 
 	"google.golang.org/protobuf/encoding/prototext"
 )
@@ -12,7 +12,7 @@ import (
 //go:embed settings.textproto
 var textSettingsInfo []byte
 
-var settingsInfo pb.SettingsInfo
+var settingsInfo settingspb.SettingsInfo
 
 func init() {
 	if err := prototext.Unmarshal(textSettingsInfo, &settingsInfo); err != nil {
@@ -20,6 +20,6 @@ func init() {
 	}
 }
 
-func SettingsInfo() *pb.SettingsInfo {
+func SettingsInfo() *settingspb.SettingsInfo {
 	return &settingsInfo
 }

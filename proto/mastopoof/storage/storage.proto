@@ -2,6 +2,19 @@ syntax = "proto3";
 
 package mastopoof.storage;
 
+import "mastopoof/settings/settings.proto";
+
+// UserState is the state of a Mastopoof user, stored as JSON in the DB.
+message UserState {
+	// User ID.
+  int64 uid = 1 [json_name = "uid"];
+
+	// Default stream of that user.
+  int64 default_stid = 2 [json_name = "default_stid"];
+
+  mastopoof.settings.Settings settings = 3 [json_name = "settings"];
+}
+
 // AppRegState contains information about an app registration on a Mastodon server.
 // This state is kept in DB.
 message AppRegState {

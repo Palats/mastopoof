@@ -17,6 +17,7 @@ import (
 	"github.com/Palats/mastopoof/backend/storage"
 	mpdata "github.com/Palats/mastopoof/proto/data"
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
+	settingspb "github.com/Palats/mastopoof/proto/gen/mastopoof/settings"
 	"github.com/mattn/go-mastodon"
 	"golang.org/x/net/publicsuffix"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -298,22 +299,22 @@ func TestListWithCustomMaxCount(t *testing.T) {
 
 	// Let's set the default number of status to get for the user.
 	// But first verify that bad values are rejected.
-	req := &pb.UpdateSettingsRequest{Settings: &pb.Settings{
-		ListCount: &pb.SettingInt64{Value: -1},
+	req := &pb.UpdateSettingsRequest{Settings: &settingspb.Settings{
+		ListCount: &settingspb.SettingInt64{Value: -1},
 	}}
 	if resp, want := MustRequest(env, "UpdateSettings", req), http.StatusBadRequest; resp.StatusCode != want {
 		t.Errorf("Got status code %v, wanted %v", resp.StatusCode, want)
 	}
-	req = &pb.UpdateSettingsRequest{Settings: &pb.Settings{
-		ListCount: &pb.SettingInt64{Value: 210},
+	req = &pb.UpdateSettingsRequest{Settings: &settingspb.Settings{
+		ListCount: &settingspb.SettingInt64{Value: 210},
 	}}
 	if resp, want := MustRequest(env, "UpdateSettings", req), http.StatusBadRequest; resp.StatusCode != want {
 		t.Errorf("Got status code %v, wanted %v", resp.StatusCode, want)
 	}
 
 	// Now set it to a higher but valid value.
-	req = &pb.UpdateSettingsRequest{Settings: &pb.Settings{
-		ListCount: &pb.SettingInt64{Value: 20, Override: true},
+	req = &pb.UpdateSettingsRequest{Settings: &settingspb.Settings{
+		ListCount: &settingspb.SettingInt64{Value: 20, Override: true},
 	}}
 	MustCall[pb.UpdateSettingsResponse](env, "UpdateSettings", req)
 
