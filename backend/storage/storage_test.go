@@ -299,7 +299,7 @@ func TestFilters(t *testing.T) {
 	if num != 1 {
 		t.Errorf("Got %d lines, expected1", num)
 	}
-	status := StatusMeta{}
+	status := &stpb.StatusMeta{}
 	err = json.Unmarshal([]byte(got), &status)
 	if err != nil {
 		t.Fatal(err)
@@ -307,10 +307,10 @@ func TestFilters(t *testing.T) {
 	if len(status.Filters) != 2 {
 		t.Errorf("Got %d filters, wanted 2", len(status.Filters))
 	}
-	if status.Filters[0].ID != "123" || !status.Filters[0].Matched {
+	if status.Filters[0].Id != "123" || !status.Filters[0].Matched {
 		t.Errorf("Got filter %#v, wanted {123, true}", status.Filters[0])
 	}
-	if status.Filters[1].ID != "456" || status.Filters[1].Matched {
+	if status.Filters[1].Id != "456" || status.Filters[1].Matched {
 		t.Errorf("Got filter %#v, wanted {456, false}", status.Filters[1])
 	}
 }

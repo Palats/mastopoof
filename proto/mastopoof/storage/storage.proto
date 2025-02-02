@@ -93,3 +93,16 @@ message StreamState {
 	// Number of unread notifications
 	int64 notifications_count = 9 [json_name = "notifications_count"];
 }
+
+// StatusMeta represent metadata about a status - for now only filter state
+message StatusMeta {
+	repeated FilterStateMatch filters = 1 [json_name = "filters"];
+}
+
+// FilterStateMatch represents whether a filter matches a given status at the time it is fetched
+message FilterStateMatch {
+	// ID of the filter
+	string id = 1 [json_name = "id"];
+	// Whether the filter matched the status
+  bool matched = 2 [json_name = "matched"];
+}

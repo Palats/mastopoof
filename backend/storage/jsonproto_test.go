@@ -179,3 +179,26 @@ func TestStreamStateConv(t *testing.T) {
 		NotificationsCount: 19,
 	})
 }
+
+type OldStatusMeta struct {
+	Filters []OldFilterStateMatch `json:"filters"`
+}
+
+type OldFilterStateMatch struct {
+	ID      string `json:"id"`
+	Matched bool   `json:"matched"`
+}
+
+func TestStatusMetaConv(t *testing.T) {
+	testProtoAndGo(t, &OldStatusMeta{
+		Filters: []OldFilterStateMatch{
+			{ID: "aaa", Matched: true},
+			{ID: "bbb", Matched: false},
+		},
+	}, &stpb.StatusMeta{
+		Filters: []*stpb.FilterStateMatch{
+			{Id: "aaa", Matched: true},
+			{Id: "bbb", Matched: false},
+		},
+	})
+}

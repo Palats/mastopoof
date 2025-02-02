@@ -56,6 +56,7 @@ CREATE TABLE statuses (
   -- The status, serialized as JSON.
   status TEXT NOT NULL,
   -- metadata/state about a status (e.g.: filters applied to it)
+  -- Protobuf mastopoof.storage.StatusMeta as JSON
   status_meta TEXT NOT NULL DEFAULT "{}",
 
    -- Keep the status ID readily available to find the status again easily.

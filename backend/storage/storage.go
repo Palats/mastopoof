@@ -987,7 +987,7 @@ type Item struct {
 	Position          int64
 	StreamStatusState StreamStatusState
 	Status            mastodon.Status
-	StatusMeta        StatusMeta
+	StatusMeta        *stpb.StatusMeta
 }
 
 // pickNextInTxn adds a new status from the pool to the stream.
@@ -1014,15 +1014,16 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userStat
 
 	var selectedID SID
 	var selected *mastodon.Status
-	var selstatustate *StatusMeta
+	var selstatustate *stpb.StatusMeta
 	var found int64
 	for rows.Next() {
 		found++
 		var sid SID
 		var status sqlStatus
-		var statusMeta StatusMeta
 
-		if err := rows.Scan(&sid, &status, &statusMeta); err != nil {
+		statusMeta := &stpb.StatusMeta{}
+
+		if err := rows.Scan(&sid, &status, SQLProto{statusMeta}); err != nil {
 			return nil, err
 		}
 
@@ -1031,7 +1032,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userStat
 		if selected == nil {
 			match = true
 			selected = &status.Status
-			selstatustate = &statusMeta
+			selstatustate = statusMeta
 		} else {
 			// For now, just pick the oldest one.
 			if status.CreatedAt.Before(selected.CreatedAt) {
@@ -1042,7 +1043,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userStat
 		if match {
 			selectedID = sid
 			selected = &status.Status
-			selstatustate = &statusMeta
+			selstatustate = statusMeta
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -1058,7 +1059,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userStat
 
 	if selstatustate == nil {
 		glog.Errorf("No status state for current status")
-		selstatustate = &StatusMeta{}
+		selstatustate = &stpb.StatusMeta{}
 	}
 
 	streamStatusState := &StreamStatusState{
@@ -1134,7 +1135,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userStat
 		Position:          position,
 		StreamStatusState: *streamStatusState,
 		Status:            *selected,
-		StatusMeta:        *selstatustate,
+		StatusMeta:        selstatustate,
 	}, nil
 }
 
@@ -1199,8 +1200,8 @@ func (st *Storage) ListBackward(ctx context.Context, userState *stpb.UserState, 
 			var position int64
 			var streamStatusState StreamStatusState
 			var status sqlStatus
-			var statusMeta StatusMeta
-			if err := rows.Scan(&position, &streamStatusState, &status, &statusMeta); err != nil {
+			statusMeta := &stpb.StatusMeta{}
+			if err := rows.Scan(&position, &streamStatusState, &status, SQLProto{statusMeta}); err != nil {
 				return err
 			}
 			reverseItems = append(reverseItems, &Item{
@@ -1294,8 +1295,8 @@ func (st *Storage) ListForward(ctx context.Context, userState *stpb.UserState, s
 			var position int64
 			var streamStatusState StreamStatusState
 			var status sqlStatus
-			var statusMeta StatusMeta
-			if err := rows.Scan(&position, &streamStatusState, &status, &statusMeta); err != nil {
+			statusMeta := &stpb.StatusMeta{}
+			if err := rows.Scan(&position, &streamStatusState, &status, SQLProto{statusMeta}); err != nil {
 				return err
 			}
 			result.Items = append(result.Items, &Item{
@@ -1357,7 +1358,7 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid AS
 		statusMeta := computeStatusMeta(status, filters)
 		_, err := txn.Exec(ctx, "insert-statuses",
 			stmt,
-			asid, &sqlStatus{*status}, &statusMeta,
+			asid, &sqlStatus{*status}, SQLProto{statusMeta},
 			streamState.Stid,
 			status.ID, reblogID, status.InReplyToID,
 		)
@@ -1416,12 +1417,12 @@ func (st *Storage) UpdateStatus(ctx context.Context, txn SQLReadWrite, asid ASID
 
 	stmt := `
 		UPDATE statuses SET status = ?, status_meta = ? WHERE sid = ?;	`
-	_, err = txn.Exec(ctx, "update-status", stmt, &sqlStatus{*status}, &statusMeta, sid)
+	_, err = txn.Exec(ctx, "update-status", stmt, &sqlStatus{*status}, SQLProto{statusMeta}, sid)
 	return err
 }
 
 // computeStatusMeta calculate whether a status matches filters or not.
-func computeStatusMeta(status *mastodon.Status, filters []*mastodon.Filter) StatusMeta {
+func computeStatusMeta(status *mastodon.Status, filters []*mastodon.Filter) *stpb.StatusMeta {
 	var content string
 	var tags []mastodon.Tag
 	if status.Reblog != nil {
@@ -1432,7 +1433,7 @@ func computeStatusMeta(status *mastodon.Status, filters []*mastodon.Filter) Stat
 		tags = status.Tags
 	}
 
-	state := StatusMeta{}
+	state := &stpb.StatusMeta{}
 
 	// Note: we lower-case ALL THE THINGS (oh the irony) to normalize
 	for _, filter := range filters {
@@ -1454,7 +1455,7 @@ func computeStatusMeta(status *mastodon.Status, filters []*mastodon.Filter) Stat
 				}
 			}
 		}
-		state.Filters = append(state.Filters, FilterStateMatch{string(filter.ID), matched})
+		state.Filters = append(state.Filters, &stpb.FilterStateMatch{Id: string(filter.ID), Matched: matched})
 	}
 	return state
 }
@@ -1490,8 +1491,9 @@ func (st *Storage) SearchByStatusID(ctx context.Context, txn SQLReadOnly, uid UI
 
 		results = append(results, &Item{
 			// TODO: do not use Item, as it has a different set of info.
-			Position: int64(len(results)),
-			Status:   status.Status,
+			Position:   int64(len(results)),
+			Status:     status.Status,
+			StatusMeta: &stpb.StatusMeta{},
 		})
 	}
 	if err := rows.Err(); err != nil {

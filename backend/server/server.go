@@ -511,7 +511,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 			Position: item.Position,
 			// TODO: account is potentially per status, while it is currently considered per user.
 			Account:           accountStateProto,
-			Meta:              item.StatusMeta.ToStatusMetaProto(),
+			Meta:              storage.StatusMetaToStatusMetaProto(item.StatusMeta),
 			StreamStatusState: item.StreamStatusState.ToProto(),
 		})
 	}
@@ -769,7 +769,6 @@ func (s *Server) Search(ctx context.Context, req *connect.Request[pb.SearchReque
 	accountStateProto := storage.AccountStateToAccountProto(accountState)
 	resp := &pb.SearchResponse{}
 	for _, item := range results {
-
 		raw, err := json.Marshal(item.Status)
 		if err != nil {
 			return nil, err
@@ -778,7 +777,7 @@ func (s *Server) Search(ctx context.Context, req *connect.Request[pb.SearchReque
 			Status:   &pb.MastodonStatus{Content: string(raw)},
 			Position: item.Position,
 			Account:  accountStateProto,
-			Meta:     item.StatusMeta.ToStatusMetaProto(),
+			Meta:     storage.StatusMetaToStatusMetaProto(item.StatusMeta),
 		})
 	}
 	return connect.NewResponse(resp), nil

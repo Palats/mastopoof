@@ -48,42 +48,11 @@ func AccountStateToAccountProto(accountState *stpb.AccountState) *pb.Account {
 	}
 }
 
-// StatusMeta represent metadata about a status - for now only filter state
-type StatusMeta struct {
-	Filters []FilterStateMatch `json:"filters"`
-}
-
-// FilterStateMatch represents whether a filter matches a given status at the time it is fetched
-type FilterStateMatch struct {
-	// ID of the filter
-	ID string `json:"id"`
-	// Whether the filter matched the status
-	Matched bool `json:"matched"`
-}
-
-// Scan implements the [Scanner] interface.
-func (ss *StatusMeta) Scan(src any) error {
-	s, ok := src.(string)
-	if !ok {
-		return fmt.Errorf("expected a string for AppRegState json, got %T", src)
-	}
-	return json.Unmarshal([]byte(s), ss)
-}
-
-// Value implements the [driver.Valuer] interface.
-func (ss *StatusMeta) Value() (driver.Value, error) {
-	data, err := json.Marshal(ss)
-	if err != nil {
-		return nil, err
-	}
-	return string(data), err
-}
-
-func (ss *StatusMeta) ToStatusMetaProto() *pb.StatusMeta {
+func StatusMetaToStatusMetaProto(ss *stpb.StatusMeta) *pb.StatusMeta {
 	var filters []*pb.FilterStateMatch
 	for _, filter := range ss.Filters {
 		filters = append(filters, &pb.FilterStateMatch{
-			Desc:    filter.ID,
+			Desc:    filter.Id,
 			Matched: filter.Matched,
 		})
 	}
