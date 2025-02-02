@@ -397,7 +397,7 @@ func (st *Storage) inTxnRW(ctx context.Context, txn SQLReadWrite, f func(ctx con
 
 type ListUserEntry struct {
 	UserState    *stpb.UserState
-	AccountState *AccountState
+	AccountState *stpb.AccountState
 }
 
 func (st *Storage) ListUsers(ctx context.Context) (_ []*ListUserEntry, retErr error) {
@@ -446,10 +446,10 @@ func (st *Storage) ListUsers(ctx context.Context) (_ []*ListUserEntry, retErr er
 }
 
 // CreateUser creates a new mastopoof user, with all the necessary bit and pieces.
-func (st *Storage) CreateUser(ctx context.Context, txn SQLReadWrite, serverAddr string, accountID mastodon.ID, username string) (_ *stpb.UserState, _ *AccountState, _ *StreamState, retErr error) {
+func (st *Storage) CreateUser(ctx context.Context, txn SQLReadWrite, serverAddr string, accountID mastodon.ID, username string) (_ *stpb.UserState, _ *stpb.AccountState, _ *StreamState, retErr error) {
 	defer recordAction("create-user")(retErr)
 	var userState *stpb.UserState
-	var accountState *AccountState
+	var accountState *stpb.AccountState
 	var streamState *StreamState
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		// Create the local user.
@@ -519,9 +519,9 @@ func (st *Storage) AppRegState(ctx context.Context, txn SQLReadOnly, nfo *AppReg
 }
 
 // CreateAccountState creates a new account for the given UID and assign it an ASID.
-func (st *Storage) CreateAccountState(ctx context.Context, txn SQLReadWrite, uid UID, serverAddr string, accountID mastodon.ID, username string) (_ *AccountState, retErr error) {
+func (st *Storage) CreateAccountState(ctx context.Context, txn SQLReadWrite, uid UID, serverAddr string, accountID mastodon.ID, username string) (_ *stpb.AccountState, retErr error) {
 	defer recordAction("create-account-state")(retErr)
-	var as *AccountState
+	var as *stpb.AccountState
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		var asid sql.Null[ASID]
 		err := txn.QueryRow(ctx, "create-account-state-read", "SELECT MAX(asid) FROM accountstate").Scan(&asid)
@@ -529,12 +529,12 @@ func (st *Storage) CreateAccountState(ctx context.Context, txn SQLReadWrite, uid
 			return err
 		}
 
-		as = &AccountState{
+		as = &stpb.AccountState{
 			// DB is empty, consider previous asid is zero, to get first real entry at 1.
-			ASID:       asid.V + 1,
-			UID:        uid,
+			Asid:       int64(asid.V + 1),
+			Uid:        int64(uid),
 			ServerAddr: serverAddr,
-			AccountID:  accountID,
+			AccountId:  string(accountID),
 			Username:   username,
 		}
 		return st.SetAccountState(ctx, txn, as)
@@ -547,11 +547,11 @@ func (st *Storage) CreateAccountState(ctx context.Context, txn SQLReadWrite, uid
 
 // FirstAccountStateByUID gets a the mastodon account of a mastopoof user identified by its UID.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) FirstAccountStateByUID(ctx context.Context, txn SQLReadOnly, uid UID) (_ *AccountState, retErr error) {
+func (st *Storage) FirstAccountStateByUID(ctx context.Context, txn SQLReadOnly, uid UID) (_ *stpb.AccountState, retErr error) {
 	defer recordAction("first-account-state-by-uid")(retErr)
-	as := &AccountState{}
+	as := &stpb.AccountState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
-		err := txn.QueryRow(ctx, "first-account-state-by-uid", "SELECT state FROM accountstate WHERE uid=?", uid).Scan(as)
+		err := txn.QueryRow(ctx, "first-account-state-by-uid", "SELECT state FROM accountstate WHERE uid=?", uid).Scan(SQLProto{as})
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("no mastodon account for uid=%v: %w", uid, ErrNotFound)
 		}
@@ -564,9 +564,9 @@ func (st *Storage) FirstAccountStateByUID(ctx context.Context, txn SQLReadOnly, 
 }
 
 // AllAccountStateByUID returns all the Mastodon accounts of that one Mastopoof user.
-func (st *Storage) AllAccountStateByUID(ctx context.Context, txn SQLReadOnly, uid UID) (_ []*AccountState, retErr error) {
+func (st *Storage) AllAccountStateByUID(ctx context.Context, txn SQLReadOnly, uid UID) (_ []*stpb.AccountState, retErr error) {
 	defer recordAction("all-account-state-by-uid")(retErr)
-	var accountStates []*AccountState
+	var accountStates []*stpb.AccountState
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		rows, err := txn.Query(ctx, "all-accountstate-by-uid", `
 			SELECT
@@ -581,8 +581,8 @@ func (st *Storage) AllAccountStateByUID(ctx context.Context, txn SQLReadOnly, ui
 		defer rows.Close()
 
 		for rows.Next() {
-			as := &AccountState{}
-			if err := rows.Scan(&as); err != nil {
+			as := &stpb.AccountState{}
+			if err := rows.Scan(SQLProto{as}); err != nil {
 				return err
 			}
 			accountStates = append(accountStates, as)
@@ -601,9 +601,9 @@ func (st *Storage) AllAccountStateByUID(ctx context.Context, txn SQLReadOnly, ui
 
 // AccountStateByAccountID gets a the mastodon account based on server address and account ID on that server.
 // Returns wrapped ErrNotFound if no entry exists.
-func (st *Storage) AccountStateByAccountID(ctx context.Context, txn SQLReadOnly, serverAddr string, accountID mastodon.ID) (_ *AccountState, retErr error) {
+func (st *Storage) AccountStateByAccountID(ctx context.Context, txn SQLReadOnly, serverAddr string, accountID mastodon.ID) (_ *stpb.AccountState, retErr error) {
 	defer recordAction("account-state-by-account-id")(retErr)
-	as := &AccountState{}
+	as := &stpb.AccountState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
 		err := txn.QueryRow(ctx, "account-state-by-account-id", `
 			SELECT state
@@ -611,7 +611,7 @@ func (st *Storage) AccountStateByAccountID(ctx context.Context, txn SQLReadOnly,
 			WHERE
 				json_extract(state, "$.server_addr") = ?
 				AND json_extract(state, "$.account_id") = ?
-		`, serverAddr, accountID).Scan(&as)
+		`, serverAddr, accountID).Scan(SQLProto{as})
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("no mastodon account for server=%q, account id=%v: %w", serverAddr, accountID, ErrNotFound)
 		}
@@ -623,12 +623,12 @@ func (st *Storage) AccountStateByAccountID(ctx context.Context, txn SQLReadOnly,
 	return as, nil
 }
 
-func (st *Storage) SetAccountState(ctx context.Context, txn SQLReadWrite, as *AccountState) (retErr error) {
+func (st *Storage) SetAccountState(ctx context.Context, txn SQLReadWrite, as *stpb.AccountState) (retErr error) {
 	defer recordAction("set-account-state")(retErr)
 	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		// TODO: make SetAccountState support only update and verify primary key existin for ON CONFLICT.
 		stmt := `INSERT INTO accountstate(asid, state, uid) VALUES(?, ?, ?) ON CONFLICT(asid) DO UPDATE SET state = excluded.state`
-		_, err := txn.Exec(ctx, "set-account-state", stmt, as.ASID, as, as.UID)
+		_, err := txn.Exec(ctx, "set-account-state", stmt, as.Asid, SQLProto{as}, as.Uid)
 		return err
 	})
 }
@@ -882,7 +882,7 @@ func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLReadWrite, stid 
 			AND statuses.asid != ?
 		GROUP BY
 			sid
-	`, stid, accountState.ASID)
+	`, stid, accountState.Asid)
 	if err != nil {
 		return err
 	}
@@ -954,13 +954,13 @@ func (st *Storage) ClearPoolAndStream(ctx context.Context, uid UID) (retErr erro
 		if err != nil {
 			return err
 		}
-		accountState.LastHomeStatusID = ""
+		accountState.LastHomeStatusId = ""
 		if err := st.SetAccountState(ctx, txn, accountState); err != nil {
 			return err
 		}
 
 		// Remove all statuses.
-		if _, err := txn.Exec(ctx, "delete-statuses", `DELETE FROM statuses WHERE asid = ?`, accountState.ASID); err != nil {
+		if _, err := txn.Exec(ctx, "delete-statuses", `DELETE FROM statuses WHERE asid = ?`, accountState.Asid); err != nil {
 			return err
 		}
 		// Remove everything from the stream.
@@ -1475,7 +1475,7 @@ func (st *Storage) SearchByStatusID(ctx context.Context, txn SQLReadOnly, uid UI
 			json_extract(status, "$.id") = ?
 			AND asid = ?
 		;
-	`, statusID, accountState.ASID)
+	`, statusID, accountState.Asid)
 	if err != nil {
 		return nil, err
 	}

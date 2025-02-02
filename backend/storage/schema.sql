@@ -16,7 +16,7 @@ CREATE TABLE userstate (
 CREATE TABLE accountstate (
   -- Unique id.
   asid INTEGER PRIMARY KEY,
-  -- Serialized JSON AccountState
+  -- Protobuf mastopoof.storage.AccountState as JSON
   state TEXT NOT NULL,
   -- The user which owns this account.
   -- Immutable - even if another user ends up configuring that account,

@@ -9,6 +9,7 @@ import (
 	settingspb "github.com/Palats/mastopoof/proto/gen/mastopoof/settings"
 	stpb "github.com/Palats/mastopoof/proto/gen/mastopoof/storage"
 	"github.com/google/go-cmp/cmp"
+	"github.com/mattn/go-mastodon"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/testing/protocmp"
@@ -106,5 +107,37 @@ func TestUserStateConv(t *testing.T) {
 		Settings: &settingspb.Settings{
 			ListCount: &settingspb.SettingInt64{Override: true, Value: 14},
 		},
+	})
+}
+
+type OldAccountState struct {
+	ASID             ASID        `json:"asid"`
+	ServerAddr       string      `json:"server_addr"`
+	AccountID        mastodon.ID `json:"account_id"`
+	Username         string      `json:"username"`
+	AccessToken      string      `json:"access_token"`
+	UID              UID         `json:"uid"`
+	LastHomeStatusID mastodon.ID `json:"last_home_status_id"`
+}
+
+func TestAccountStateConv(t *testing.T) {
+	// Do not test proto->go. Int64 are encoded to string in protojson, which is not readable by json.Unmarshal.
+	// However, protojson.Unmarshal is able to use integers in json fields for proto int64.
+	testGoToProto(t, &OldAccountState{
+		ASID:             11,
+		ServerAddr:       "aaa",
+		AccountID:        "bbb",
+		Username:         "ccc",
+		AccessToken:      "ddd",
+		UID:              12,
+		LastHomeStatusID: "eee",
+	}, &stpb.AccountState{
+		Asid:             11,
+		ServerAddr:       "aaa",
+		AccountId:        "bbb",
+		Username:         "ccc",
+		AccessToken:      "ddd",
+		Uid:              12,
+		LastHomeStatusId: "eee",
 	})
 }

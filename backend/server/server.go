@@ -211,7 +211,7 @@ func (s *Server) getUserInfo(ctx context.Context, userState *stpb.UserState) (*p
 		return nil, err
 	}
 	for _, accountState := range accountStates {
-		userInfo.Accounts = append(userInfo.Accounts, accountState.ToAccountProto())
+		userInfo.Accounts = append(userInfo.Accounts, storage.AccountStateToAccountProto(accountState))
 	}
 
 	userInfo.Settings = userState.Settings
@@ -415,15 +415,15 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 
 		// Get the userState
 		// TODO: don't re-read it if it was just created
-		userState, err = s.st.UserState(ctx, txn, accountState.UID)
+		userState, err = s.st.UserState(ctx, txn, storage.UID(accountState.Uid))
 		if err != nil {
-			return fmt.Errorf("unable to load userstate for UID %d: %w", accountState.UID, err)
+			return fmt.Errorf("unable to load userstate for UID %d: %w", accountState.Uid, err)
 		}
 
 		// Now, let's write the access token we got in the account state.
 		accountState.AccessToken = client.Config.AccessToken
 		if err := s.st.SetAccountState(ctx, txn, accountState); err != nil {
-			return fmt.Errorf("failed to set account state %d: %w", accountState.ASID, err)
+			return fmt.Errorf("failed to set account state %d: %w", accountState.Asid, err)
 		}
 
 		return nil
@@ -460,7 +460,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 	if err != nil {
 		return nil, err
 	}
-	accountStateProto := accountState.ToAccountProto()
+	accountStateProto := storage.AccountStateToAccountProto(accountState)
 
 	resp := &pb.ListResponse{}
 
@@ -577,7 +577,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	// Do a first transaction to get the state of the stream. That will serve as
 	// reference when trying to inject in the DB the statuses - while avoiding
 	// having a transaction opened while fetching.
-	var accountState *storage.AccountState
+	var accountState *stpb.AccountState
 
 	err := s.st.InTxnRO(ctx, func(ctx context.Context, txn storage.SQLReadOnly) error {
 		streamState, err := s.st.StreamState(ctx, txn, stid)
@@ -623,7 +623,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 	// It seems that if max_id and min_id are identical, it means the end has been reached and some result were given.
 	// And if there is no max_id, the end has been reached.
 	pg := &mastodon.Pagination{
-		MinID: accountState.LastHomeStatusID,
+		MinID: mastodon.ID(accountState.LastHomeStatusId),
 	}
 	glog.Infof("Fetching... (max_id:%v, min_id:%v, since_id:%v)", pg.MaxID, pg.MinID, pg.SinceID)
 	timeline, err := client.GetTimelineHome(ctx, pg)
@@ -638,7 +638,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		return nil, err
 	}
 
-	newStatusID := accountState.LastHomeStatusID
+	newStatusID := mastodon.ID(accountState.LastHomeStatusId)
 	for _, status := range timeline {
 		if storage.IDNewer(status.ID, newStatusID) {
 			newStatusID = status.ID
@@ -704,17 +704,17 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		if err != nil {
 			return fmt.Errorf("unable to verify for race conditions: %w", err)
 		}
-		if currentAccountState.LastHomeStatusID != accountState.LastHomeStatusID {
+		if currentAccountState.LastHomeStatusId != accountState.LastHomeStatusId {
 			return connect.NewError(connect.CodeUnavailable, errors.New("concurrent fetch of Mastodon statuses - aborting"))
 		}
 
-		currentAccountState.LastHomeStatusID = newStatusID
+		currentAccountState.LastHomeStatusId = string(newStatusID)
 		if err := s.st.SetAccountState(ctx, txn, currentAccountState); err != nil {
 			return err
 		}
 
 		// InsertStatuses updates streamState IN PLACE and persists it.
-		if err := s.st.InsertStatuses(ctx, txn, accountState.ASID, streamState, timeline, filters); err != nil {
+		if err := s.st.InsertStatuses(ctx, txn, storage.ASID(accountState.Asid), streamState, timeline, filters); err != nil {
 			return err
 		}
 		resp.StreamInfo = streamState.ToStreamInfo()
@@ -750,7 +750,7 @@ func (s *Server) Search(ctx context.Context, req *connect.Request[pb.SearchReque
 	}
 
 	var results []*storage.Item
-	var accountState *storage.AccountState
+	var accountState *stpb.AccountState
 	err = s.st.InTxnRO(ctx, func(ctx context.Context, txn storage.SQLReadOnly) error {
 		var err error
 		accountState, err = s.st.FirstAccountStateByUID(ctx, txn, uid)
@@ -766,7 +766,7 @@ func (s *Server) Search(ctx context.Context, req *connect.Request[pb.SearchReque
 	}
 
 	// TODO: account is potentially per status, while it is currently considered per user.
-	accountStateProto := accountState.ToAccountProto()
+	accountStateProto := storage.AccountStateToAccountProto(accountState)
 	resp := &pb.SearchResponse{}
 	for _, item := range results {
 
@@ -790,7 +790,7 @@ func (s *Server) SetStatus(ctx context.Context, req *connect.Request[pb.SetStatu
 		return nil, err
 	}
 
-	var accountState *storage.AccountState
+	var accountState *stpb.AccountState
 	err = s.st.InTxnRO(ctx, func(ctx context.Context, txn storage.SQLReadOnly) error {
 		accountState, err = s.st.FirstAccountStateByUID(ctx, txn, uid)
 		if err != nil {
@@ -828,7 +828,7 @@ func (s *Server) SetStatus(ctx context.Context, req *connect.Request[pb.SetStatu
 		return nil, fmt.Errorf("unable to get filters: %w", err)
 	}
 	err = s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
-		return s.st.UpdateStatus(ctx, txn, accountState.ASID, status, filters)
+		return s.st.UpdateStatus(ctx, txn, storage.ASID(accountState.Asid), status, filters)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unable to update status: %w", err)

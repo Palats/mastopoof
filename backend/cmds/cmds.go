@@ -21,9 +21,9 @@ func CmdUsers(ctx context.Context, st *storage.Storage) error {
 	for _, userEntry := range userList {
 		fmt.Printf("uid=%d,asid=%d: username=%s id=%s server=%s stream=%d\n",
 			userEntry.UserState.Uid,
-			userEntry.AccountState.ASID,
+			userEntry.AccountState.Asid,
 			userEntry.AccountState.Username,
-			userEntry.AccountState.AccountID,
+			userEntry.AccountState.AccountId,
 			userEntry.AccountState.ServerAddr,
 			userEntry.UserState.DefaultStid)
 	}
@@ -45,7 +45,7 @@ func CmdMe(ctx context.Context, st *storage.Storage, uid storage.UID, showAccoun
 		return err
 	}
 	fmt.Println("# Server address:", accountState.ServerAddr)
-	fmt.Println("# Last home status ID:", accountState.LastHomeStatusID)
+	fmt.Println("# Last home status ID:", accountState.LastHomeStatusId)
 
 	appRegistry := server.NewAppRegistry(st)
 

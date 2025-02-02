@@ -10,13 +10,18 @@ import (
 	mpdata "github.com/Palats/mastopoof/proto/data"
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	settingspb "github.com/Palats/mastopoof/proto/gen/mastopoof/settings"
+	stpb "github.com/Palats/mastopoof/proto/gen/mastopoof/storage"
 	"github.com/mattn/go-mastodon"
 )
 
 // SID is the type of status IDs in `statuses` and `streamcontent` databases.
 type SID int64
 
+// UID is a UserState ID.
 type UID int64
+
+// ASID is an AccountState ID.
+type ASID int64
 
 func SettingListCount(s *settingspb.Settings) int64 {
 	if s.GetListCount().GetOverride() {
@@ -32,53 +37,10 @@ func SettingSeenReblogs(s *settingspb.Settings) settingspb.SettingSeenReblogs_Va
 	return mpdata.SettingsInfo().GetSeenReblogs().Default
 }
 
-type ASID int64
-
-// AccountState represents information about a mastodon account in the DB.
-type AccountState struct {
-	// AccountState ASID within storage. Just an arbitrary number for primary key.
-	ASID ASID `json:"asid"`
-
-	// The Mastodon server this account is part of.
-	// E.g., `https://mastodon.social`
-	ServerAddr string `json:"server_addr"`
-	// The Mastodon account ID on the server.
-	// E.g., `123456789765432132`
-	AccountID mastodon.ID `json:"account_id"`
-	// The Mastodon username
-	// E.g., `foobar`
-	Username string `json:"username"`
-
-	AccessToken string `json:"access_token"`
-
-	// The user using this mastodon account.
-	UID UID `json:"uid"`
-	// Last home status ID fetched.
-	LastHomeStatusID mastodon.ID `json:"last_home_status_id"`
-}
-
-// Scan implements the [Scanner] interface.
-func (a *AccountState) Scan(src any) error {
-	s, ok := src.(string)
-	if !ok {
-		return fmt.Errorf("expected a string for AccountState json, got %T", src)
-	}
-	return json.Unmarshal([]byte(s), a)
-}
-
-// Value implements the [driver.Valuer] interface.
-func (a *AccountState) Value() (driver.Value, error) {
-	data, err := json.Marshal(a)
-	if err != nil {
-		return nil, err
-	}
-	return string(data), err
-}
-
-func (accountState *AccountState) ToAccountProto() *pb.Account {
+func AccountStateToAccountProto(accountState *stpb.AccountState) *pb.Account {
 	return &pb.Account{
 		ServerAddr: accountState.ServerAddr,
-		AccountId:  string(accountState.AccountID),
+		AccountId:  string(accountState.AccountId),
 		Username:   accountState.Username,
 	}
 }

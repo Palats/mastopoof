@@ -112,7 +112,7 @@ func TestNoCrossUserStatuses(t *testing.T) {
 	for i := int64(0); i < 10; i++ {
 		statuses = append(statuses, testserver.NewFakeStatus(mastodon.ID(strconv.FormatInt(i+10, 10)), "123"))
 	}
-	env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, accountState1.ASID, streamState1, statuses, []*mastodon.Filter{})
+	env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, ASID(accountState1.Asid), streamState1, statuses, []*mastodon.Filter{})
 
 	// Create a second user
 	userState2, _, streamState2, err := env.st.CreateUser(ctx, nil, "localhost", "456", "user2")
@@ -140,7 +140,7 @@ func TestPick(t *testing.T) {
 	for i := int64(0); i < 4; i++ {
 		statuses = append(statuses, testserver.NewFakeStatus(mastodon.ID(strconv.FormatInt(i+10, 10)), "123"))
 	}
-	env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, accountState1.ASID, streamState1, statuses, []*mastodon.Filter{})
+	env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, ASID(accountState1.Asid), streamState1, statuses, []*mastodon.Filter{})
 
 	// Make sure the statuses that were inserted are available.
 	foundIDs := map[mastodon.ID]int{}
@@ -188,10 +188,10 @@ func TestCreateStreamStateIncreases(t *testing.T) {
 		}
 		seenUIDs[UID(userState.Uid)] = true
 
-		if seenASIDs[accountState.ASID] {
-			t.Errorf("duplicate ASID %d", accountState.ASID)
+		if seenASIDs[ASID(accountState.Asid)] {
+			t.Errorf("duplicate ASID %d", accountState.Asid)
 		}
-		seenASIDs[accountState.ASID] = true
+		seenASIDs[ASID(accountState.Asid)] = true
 
 		if seenStIDs[streamState.StID] {
 			t.Errorf("duplicate StID %d", streamState.StID)
@@ -210,7 +210,7 @@ func TestSearchStatusID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, accountState1.ASID, streamState1, []*mastodon.Status{
+	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, ASID(accountState1.Asid), streamState1, []*mastodon.Status{
 		testserver.NewFakeStatus(mastodon.ID("100"), "123"),
 		testserver.NewFakeStatus(mastodon.ID("101"), "123"),
 		testserver.NewFakeStatus(mastodon.ID("102"), "123"),
@@ -223,7 +223,7 @@ func TestSearchStatusID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, accountState2.ASID, streamState2, []*mastodon.Status{
+	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, ASID(accountState2.Asid), streamState2, []*mastodon.Status{
 		testserver.NewFakeStatus(mastodon.ID("200"), "456"),
 		testserver.NewFakeStatus(mastodon.ID("201"), "456"),
 	}, []*mastodon.Filter{})
@@ -281,7 +281,7 @@ func TestFilters(t *testing.T) {
 
 	f1 := mastodon.Filter{"123", "content", []string{"home"}, false, time.Unix(0, 0), true}
 	f2 := mastodon.Filter{"456", "smurf", []string{"home"}, false, time.Unix(0, 0), true}
-	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, accountState1.ASID, streamState1, []*mastodon.Status{
+	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, ASID(accountState1.Asid), streamState1, []*mastodon.Status{
 		testserver.NewFakeStatus(mastodon.ID("100"), "123"),
 		testserver.NewFakeStatus(mastodon.ID("101"), "123"),
 		testserver.NewFakeStatus(mastodon.ID("102"), "123"),
@@ -384,7 +384,7 @@ func TestAlreadySeenActive(t *testing.T) {
 	status5 := testserver.NewFakeStatus(mastodon.ID("105"), "123")
 	status5.Reblog = status4
 
-	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, accountState1.ASID, streamState1, []*mastodon.Status{
+	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, ASID(accountState1.Asid), streamState1, []*mastodon.Status{
 		status1, status2, status3, status4, status5,
 	}, []*mastodon.Filter{})
 	if err != nil {
@@ -447,7 +447,7 @@ func TestAlreadySeenInactive(t *testing.T) {
 	status4 := testserver.NewFakeStatus(mastodon.ID("104"), "123")
 	status4.Reblog = status3
 
-	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, accountState1.ASID, streamState1, []*mastodon.Status{
+	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, ASID(accountState1.Asid), streamState1, []*mastodon.Status{
 		status1, status2, status3, status4,
 	}, []*mastodon.Filter{})
 	if err != nil {
