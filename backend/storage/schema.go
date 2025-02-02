@@ -52,7 +52,7 @@ func StatusMetaToStatusMetaProto(ss *stpb.StatusMeta) *pb.StatusMeta {
 	var filters []*pb.FilterStateMatch
 	for _, filter := range ss.Filters {
 		filters = append(filters, &pb.FilterStateMatch{
-			Desc:    filter.Id,
+			Desc:    filter.Phrase,
 			Matched: filter.Matched,
 		})
 	}

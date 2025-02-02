@@ -230,7 +230,7 @@ export class MastStatus extends LitElement {
             <div>
               ${!!filtered ? html`<span class="tag-filter">filter(${filtered})</span>` : nothing}
               ${alreadySeen ? html`<span class="tag-reblog">reblog</span>` : nothing}
-              ${s.sensitive ? expandEmojis(s.spoiler_text) : nothing}
+              ${(!filtered || isOpen) && s.sensitive ? expandEmojis(s.spoiler_text) : nothing}
             </div>
             <div>
               <button @click=${() => this.forceShow = !isOpen}>

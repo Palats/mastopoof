@@ -1423,24 +1423,24 @@ func (st *Storage) UpdateStatus(ctx context.Context, txn SQLReadWrite, asid ASID
 
 // computeStatusMeta calculate whether a status matches filters or not.
 func computeStatusMeta(status *mastodon.Status, filters []*mastodon.Filter) *stpb.StatusMeta {
-	var content string
-	var tags []mastodon.Tag
+
+	s := status
 	if status.Reblog != nil {
-		content = strings.ToLower(status.Reblog.Content)
-		tags = status.Reblog.Tags
-	} else {
-		content = strings.ToLower(status.Content)
-		tags = status.Tags
+		s = status.Reblog
 	}
 
 	state := &stpb.StatusMeta{}
 
+	content := strings.ToLower(s.Content)
+	tags := s.Tags
+	spoiler := strings.ToLower(s.SpoilerText)
+
 	// Note: we lower-case ALL THE THINGS (oh the irony) to normalize
 	for _, filter := range filters {
-		var phrase = strings.ToLower(filter.Phrase)
+		phrase := strings.ToLower(filter.Phrase)
 		// TODO filters are actually fancier than that. but let's try this first!
-		// first we check if the phrase is, case-insensitively, in the content (if it is, we're done)
-		matched := strings.Contains(content, phrase)
+		// first we check if the phrase is, case-insensitively, in the content or the spoiler (if it is, we're done)
+		matched := strings.Contains(content, phrase) || strings.Contains(spoiler, phrase)
 
 		// otherwise we check tags; tags are formatted in the post (to add links and whatnot), which trips the
 		// stupid "let's just check for strings". if we're actually looking for a tag, we could either drop the # to
@@ -1455,7 +1455,7 @@ func computeStatusMeta(status *mastodon.Status, filters []*mastodon.Filter) *stp
 				}
 			}
 		}
-		state.Filters = append(state.Filters, &stpb.FilterStateMatch{Id: string(filter.ID), Matched: matched})
+		state.Filters = append(state.Filters, &stpb.FilterStateMatch{Id: string(filter.ID), Matched: matched, Phrase: phrase})
 	}
 	return state
 }
