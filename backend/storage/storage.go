@@ -985,7 +985,7 @@ func (st *Storage) ClearPoolAndStream(ctx context.Context, uid UID) (retErr erro
 type Item struct {
 	// Position in the stream.
 	Position          int64
-	StreamStatusState StreamStatusState
+	StreamStatusState *stpb.StreamStatusState
 	Status            mastodon.Status
 	StatusMeta        *stpb.StatusMeta
 }
@@ -1062,8 +1062,8 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userStat
 		selstatustate = &stpb.StatusMeta{}
 	}
 
-	streamStatusState := &StreamStatusState{
-		AlreadySeen: StreamStatusState_AlreadySeen_Unknown,
+	streamStatusState := &stpb.StreamStatusState{
+		AlreadySeen: stpb.StreamStatusState_UNKNOWN,
 	}
 
 	// We've got a status, let's check if that's a reblog of something we've seen
@@ -1094,9 +1094,9 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userStat
 			alreadySeen = err == nil
 		}
 		if alreadySeen {
-			streamStatusState.AlreadySeen = StreamStatusState_AlreadySeen_Yes
+			streamStatusState.AlreadySeen = stpb.StreamStatusState_YES
 		} else {
-			streamStatusState.AlreadySeen = StreamStatusState_AlreadySeen_No
+			streamStatusState.AlreadySeen = stpb.StreamStatusState_NO
 		}
 	}
 
@@ -1126,14 +1126,14 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userStat
 		WHERE
 			stid = ?
 			AND sid = ?;`
-	_, err = txn.Exec(ctx, "pick-next-in-txn", stmt, position, streamStatusState, streamState.Stid, selectedID)
+	_, err = txn.Exec(ctx, "pick-next-in-txn", stmt, position, SQLProto{streamStatusState}, streamState.Stid, selectedID)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Item{
 		Position:          position,
-		StreamStatusState: *streamStatusState,
+		StreamStatusState: streamStatusState,
 		Status:            *selected,
 		StatusMeta:        selstatustate,
 	}, nil
@@ -1198,10 +1198,10 @@ func (st *Storage) ListBackward(ctx context.Context, userState *stpb.UserState, 
 		var reverseItems []*Item
 		for rows.Next() {
 			var position int64
-			var streamStatusState StreamStatusState
+			streamStatusState := &stpb.StreamStatusState{}
 			var status sqlStatus
 			statusMeta := &stpb.StatusMeta{}
-			if err := rows.Scan(&position, &streamStatusState, &status, SQLProto{statusMeta}); err != nil {
+			if err := rows.Scan(&position, SQLProto{streamStatusState}, &status, SQLProto{statusMeta}); err != nil {
 				return err
 			}
 			reverseItems = append(reverseItems, &Item{
@@ -1293,10 +1293,10 @@ func (st *Storage) ListForward(ctx context.Context, userState *stpb.UserState, s
 
 		for rows.Next() {
 			var position int64
-			var streamStatusState StreamStatusState
+			streamStatusState := &stpb.StreamStatusState{}
 			var status sqlStatus
 			statusMeta := &stpb.StatusMeta{}
-			if err := rows.Scan(&position, &streamStatusState, &status, SQLProto{statusMeta}); err != nil {
+			if err := rows.Scan(&position, SQLProto{streamStatusState}, &status, SQLProto{statusMeta}); err != nil {
 				return err
 			}
 			result.Items = append(result.Items, &Item{

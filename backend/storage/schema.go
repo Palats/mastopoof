@@ -92,59 +92,6 @@ func StreamStateToStreamInfo(ss *stpb.StreamState) *pb.StreamInfo {
 	}
 }
 
-// StreamState is the state of a single stream, stored as JSON.
-type StreamStatusState struct {
-	AlreadySeen StreamStatusState_AlreadySeen `json:"already_seen"`
-}
-
-func (sss *StreamStatusState) ToProto() *pb.StreamStatusState {
-	return &pb.StreamStatusState{
-		AlreadySeen: sss.AlreadySeen.ToProto(),
-	}
-}
-
-// Scan implements the [Scanner] interface.
-func (sss *StreamStatusState) Scan(src any) error {
-	s, ok := src.(string)
-	if !ok {
-		return fmt.Errorf("expected a string for StreamStatusState json, got %T", src)
-	}
-	return json.Unmarshal([]byte(s), sss)
-}
-
-// Value implements the [driver.Valuer] interface.
-func (sss *StreamStatusState) Value() (driver.Value, error) {
-	data, err := json.Marshal(sss)
-	if err != nil {
-		return nil, err
-	}
-	return string(data), err
-}
-
-type StreamStatusState_AlreadySeen int
-
-func (v StreamStatusState_AlreadySeen) ToProto() pb.StreamStatusState_AlreadySeen {
-	switch v {
-	case StreamStatusState_AlreadySeen_Unknown:
-		return pb.StreamStatusState_UNKNOWN
-	case StreamStatusState_AlreadySeen_Yes:
-		return pb.StreamStatusState_YES
-	case StreamStatusState_AlreadySeen_No:
-		return pb.StreamStatusState_NO
-	default:
-		return pb.StreamStatusState_UNKNOWN
-	}
-}
-
-// Setting to detect "already seen" was not enabled.
-const StreamStatusState_AlreadySeen_Unknown StreamStatusState_AlreadySeen = 0
-
-// That status is a reblog of a status that was already triaged in the stream.
-const StreamStatusState_AlreadySeen_Yes StreamStatusState_AlreadySeen = 1
-
-// That status is either not a reblog, or a reblog of something never seen before.
-const StreamStatusState_AlreadySeen_No StreamStatusState_AlreadySeen = 2
-
 // sqlStatus encapsulate a mastodon status to allow for easier SQL
 // serialization, as it is not possible to add it on the original type
 // on the Mastodon library.

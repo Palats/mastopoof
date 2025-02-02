@@ -341,15 +341,15 @@ func TestComputeState(t *testing.T) {
 
 }
 
-func getStreamStatusState(ctx context.Context, env *DBTestEnv, withID string) *StreamStatusState {
-	var streamStatusState StreamStatusState
+func getStreamStatusState(ctx context.Context, env *DBTestEnv, withID string) *stpb.StreamStatusState {
+	streamStatusState := &stpb.StreamStatusState{}
 	row := env.roDB.QueryRowContext(ctx, `
 		SELECT stream_status_state FROM streamcontent WHERE status_id = ?
 	`, withID)
-	if err := row.Scan(&streamStatusState); err != nil {
+	if err := row.Scan(SQLProto{streamStatusState}); err != nil {
 		env.t.Fatal(err)
 	}
-	return &streamStatusState
+	return streamStatusState
 }
 
 // Verify that the feature hiding already-seen status detects things properly.
@@ -392,27 +392,27 @@ func TestAlreadySeenActive(t *testing.T) {
 	}
 
 	env.mustPickNext(ctx, userState1, streamState1)
-	if got, want := getStreamStatusState(ctx, env, "101").AlreadySeen, StreamStatusState_AlreadySeen_No; got != want {
+	if got, want := getStreamStatusState(ctx, env, "101").AlreadySeen, stpb.StreamStatusState_NO; got != want {
 		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
 	}
 
 	env.mustPickNext(ctx, userState1, streamState1)
-	if got, want := getStreamStatusState(ctx, env, "102").AlreadySeen, StreamStatusState_AlreadySeen_No; got != want {
+	if got, want := getStreamStatusState(ctx, env, "102").AlreadySeen, stpb.StreamStatusState_NO; got != want {
 		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
 	}
 
 	env.mustPickNext(ctx, userState1, streamState1)
-	if got, want := getStreamStatusState(ctx, env, "103").AlreadySeen, StreamStatusState_AlreadySeen_Yes; got != want {
+	if got, want := getStreamStatusState(ctx, env, "103").AlreadySeen, stpb.StreamStatusState_YES; got != want {
 		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
 	}
 
 	env.mustPickNext(ctx, userState1, streamState1)
-	if got, want := getStreamStatusState(ctx, env, "104").AlreadySeen, StreamStatusState_AlreadySeen_No; got != want {
+	if got, want := getStreamStatusState(ctx, env, "104").AlreadySeen, stpb.StreamStatusState_NO; got != want {
 		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
 	}
 
 	env.mustPickNext(ctx, userState1, streamState1)
-	if got, want := getStreamStatusState(ctx, env, "105").AlreadySeen, StreamStatusState_AlreadySeen_Yes; got != want {
+	if got, want := getStreamStatusState(ctx, env, "105").AlreadySeen, stpb.StreamStatusState_YES; got != want {
 		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
 	}
 }
@@ -455,22 +455,22 @@ func TestAlreadySeenInactive(t *testing.T) {
 	}
 
 	env.mustPickNext(ctx, userState1, streamState1)
-	if got, want := getStreamStatusState(ctx, env, "101").AlreadySeen, StreamStatusState_AlreadySeen_Unknown; got != want {
+	if got, want := getStreamStatusState(ctx, env, "101").AlreadySeen, stpb.StreamStatusState_UNKNOWN; got != want {
 		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
 	}
 
 	env.mustPickNext(ctx, userState1, streamState1)
-	if got, want := getStreamStatusState(ctx, env, "102").AlreadySeen, StreamStatusState_AlreadySeen_Unknown; got != want {
+	if got, want := getStreamStatusState(ctx, env, "102").AlreadySeen, stpb.StreamStatusState_UNKNOWN; got != want {
 		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
 	}
 
 	env.mustPickNext(ctx, userState1, streamState1)
-	if got, want := getStreamStatusState(ctx, env, "103").AlreadySeen, StreamStatusState_AlreadySeen_Unknown; got != want {
+	if got, want := getStreamStatusState(ctx, env, "103").AlreadySeen, stpb.StreamStatusState_UNKNOWN; got != want {
 		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
 	}
 
 	env.mustPickNext(ctx, userState1, streamState1)
-	if got, want := getStreamStatusState(ctx, env, "104").AlreadySeen, StreamStatusState_AlreadySeen_Unknown; got != want {
+	if got, want := getStreamStatusState(ctx, env, "104").AlreadySeen, stpb.StreamStatusState_UNKNOWN; got != want {
 		t.Errorf("Got AlreadySeen = %v, wanted %v", got, want)
 	}
 }

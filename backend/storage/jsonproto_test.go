@@ -202,3 +202,21 @@ func TestStatusMetaConv(t *testing.T) {
 		},
 	})
 }
+
+type OldStreamStatusState struct {
+	AlreadySeen OldStreamStatusState_AlreadySeen `json:"already_seen"`
+}
+
+type OldStreamStatusState_AlreadySeen int
+
+const OldStreamStatusState_AlreadySeen_Unknown OldStreamStatusState_AlreadySeen = 0
+const OldStreamStatusState_AlreadySeen_Yes OldStreamStatusState_AlreadySeen = 1
+const OldStreamStatusState_AlreadySeen_No OldStreamStatusState_AlreadySeen = 2
+
+func TestStreamStatusStateConv(t *testing.T) {
+	testGoToProto(t, &OldStreamStatusState{
+		AlreadySeen: OldStreamStatusState_AlreadySeen_Yes,
+	}, &stpb.StreamStatusState{
+		AlreadySeen: stpb.StreamStatusState_YES,
+	})
+}

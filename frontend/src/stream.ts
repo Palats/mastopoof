@@ -24,7 +24,7 @@ interface StatusItem {
   // The account where this status was obtained from.
   account: pb.Account;
   statusMeta: pb.StatusMeta;
-  streamStatusState: pb.StreamStatusState;
+  streamStatusState: storagepb.StreamStatusState;
 
   // HTML element used to represent this status.
   elt?: Element;

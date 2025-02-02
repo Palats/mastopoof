@@ -512,7 +512,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 			// TODO: account is potentially per status, while it is currently considered per user.
 			Account:           accountStateProto,
 			Meta:              storage.StatusMetaToStatusMetaProto(item.StatusMeta),
-			StreamStatusState: item.StreamStatusState.ToProto(),
+			StreamStatusState: item.StreamStatusState,
 		})
 	}
 

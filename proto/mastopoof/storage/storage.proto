@@ -108,3 +108,16 @@ message FilterStateMatch {
 	// Word on which the filter matches
 	string phrase = 3 [json_name = "phrase"];
 }
+
+// StreamStatusState is the state of a status in a single stream.
+message StreamStatusState {
+  enum AlreadySeen {
+    // Setting to detect "already seen" was not enabled.
+    UNKNOWN = 0;
+    // That status is a reblog of a status that was already triaged in the stream.
+    YES = 1;
+    // That status is either not a reblog, or a reblog of something never seen before.
+    NO = 2;
+  }
+  AlreadySeen already_seen = 1 [json_name = "already_seen"];
+}

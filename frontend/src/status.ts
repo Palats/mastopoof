@@ -3,6 +3,7 @@ import { customElement, state, property } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { classMap } from 'lit/directives/class-map.js';
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
+import * as storagepb from "mastopoof-proto/gen/mastopoof/storage/storage_pb";
 import dayjs from 'dayjs';
 
 import * as common from "./common";
@@ -17,7 +18,7 @@ export interface StatusItem {
   // The account where this status was obtained from.
   account: pb.Account;
   statusMeta: pb.StatusMeta;
-  streamStatusState: pb.StreamStatusState;
+  streamStatusState: storagepb.StreamStatusState;
 }
 
 function qualifiedAccount(account: mastodon.Account): string {
@@ -174,7 +175,7 @@ export class MastStatus extends LitElement {
     }
     const filtered = filteredAr.join(", ");
 
-    const alreadySeen = this.item.streamStatusState.alreadySeen === pb.StreamStatusState_AlreadySeen.YES;
+    const alreadySeen = this.item.streamStatusState.alreadySeen === storagepb.StreamStatusState_AlreadySeen.YES;
 
     const isOpen = this.forceShow === undefined ? (!filtered && !alreadySeen) : this.forceShow;
 

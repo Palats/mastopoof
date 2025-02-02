@@ -96,6 +96,7 @@ CREATE TABLE "streamcontent" (
   status_in_reply_to_id TEXT,
 
   -- Information about that status with the stream - e.g., tags.
+  -- Protobuf mastopoof.storage.StreamStatusState as JSON
   stream_status_state TEXT NOT NULL DEFAULT "{}",
 
   PRIMARY KEY (stid, sid),

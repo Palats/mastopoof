@@ -126,7 +126,7 @@ message Item {
     // The mastodon account this status was fetched from.
     Account account = 3;
     StatusMeta meta = 4;
-    StreamStatusState stream_status_state = 5;
+    mastopoof.storage.StreamStatusState stream_status_state = 5;
 }
 
 // A single mastodon status.
@@ -161,15 +161,6 @@ message FilterStateMatch {
     string desc = 1;
     // Whether the filter matched the status
     bool matched = 2;
-}
-
-message StreamStatusState {
-  enum AlreadySeen {
-    UNKNOWN = 0;
-    YES = 1;
-    NO = 2;
-  }
-  AlreadySeen already_seen = 1;
 }
 
 message ListRequest {
