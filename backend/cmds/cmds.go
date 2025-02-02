@@ -108,7 +108,7 @@ func CmdCheckStreamState(ctx context.Context, st *storage.Storage, stid storage.
 		}
 
 		fmt.Println("### Stream state in database")
-		fmt.Println("Stream ID:", dbStreamState.StID)
+		fmt.Println("Stream ID:", dbStreamState.Stid)
 		fmt.Println("First position:", dbStreamState.FirstPosition)
 		fmt.Println("Last position:", dbStreamState.LastPosition)
 		fmt.Println("Remaining:", dbStreamState.Remaining)
@@ -121,7 +121,7 @@ func CmdCheckStreamState(ctx context.Context, st *storage.Storage, stid storage.
 		}
 
 		fmt.Println("### Calculated stream state")
-		fmt.Println("Stream ID:", computeStreamState.StID)
+		fmt.Println("Stream ID:", computeStreamState.Stid)
 		fmt.Printf("First position: %d [diff: %+d]\n", computeStreamState.FirstPosition, computeStreamState.FirstPosition-dbStreamState.FirstPosition)
 		fmt.Printf("Last position: %d [diff: %+d]\n", computeStreamState.LastPosition, computeStreamState.LastPosition-dbStreamState.LastPosition)
 		fmt.Printf("Remaining: %d [diff: %+d]\n", computeStreamState.Remaining, computeStreamState.Remaining-dbStreamState.Remaining)

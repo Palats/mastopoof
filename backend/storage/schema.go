@@ -23,6 +23,9 @@ type UID int64
 // ASID is an AccountState ID.
 type ASID int64
 
+// StID is a StreamState ID.
+type StID int64
+
 func SettingListCount(s *settingspb.Settings) int64 {
 	if s.GetListCount().GetOverride() {
 		return s.GetListCount().GetValue()
@@ -107,57 +110,9 @@ func (nfo *AppRegInfo) Key() string {
 	return nfo.ServerAddr + "--" + nfo.RedirectURI + "--" + nfo.Scopes
 }
 
-type StID int64
-
-// StreamState is the state of a single stream, stored as JSON.
-type StreamState struct {
-	// Stream ID.
-	StID StID `json:"stid"`
-	// User ID this stream belongs to.
-	UID UID `json:"uid"`
-	// Position of the latest read status in this stream.
-	LastRead int64 `json:"last_read"`
-	// Position of the first status, if any. Usually == 1.
-	// 0 if there is no status yet in the stream.
-	// TODO: using 0 is a bit risky as it would be very easy to accidentely end up with
-	// first status to be at zero. Should either have cleaner semantic of LastPosition
-	// (e.g., have it not include the last status - thus having a diff when there are status)
-	// or have an explicit signal.
-	FirstPosition int64 `json:"first_position"`
-	// Position of the last status, if any.
-	LastPosition int64 `json:"last_position"`
-	// Remaining statuses in the pool which are not yet added in the stream.
-	Remaining int64 `json:"remaining"`
-
-	// Last time a fetch from mastodon finished, as unix timestamp in seconds.
-	LastFetchSecs int64 `json:"last_fetch_secs"`
-
-	NotificationsState pb.StreamInfo_NotificationsState `json:"notifications_state"`
-	// Number of unread notifications
-	NotificationsCount int64 `json:"notifications_count"`
-}
-
-// Scan implements the [Scanner] interface.
-func (ss *StreamState) Scan(src any) error {
-	s, ok := src.(string)
-	if !ok {
-		return fmt.Errorf("expected a string for StreamState json, got %T", src)
-	}
-	return json.Unmarshal([]byte(s), ss)
-}
-
-// Value implements the [driver.Valuer] interface.
-func (ss *StreamState) Value() (driver.Value, error) {
-	data, err := json.Marshal(ss)
-	if err != nil {
-		return nil, err
-	}
-	return string(data), err
-}
-
-func (ss *StreamState) ToStreamInfo() *pb.StreamInfo {
+func StreamStateToStreamInfo(ss *stpb.StreamState) *pb.StreamInfo {
 	return &pb.StreamInfo{
-		Stid:               int64(ss.StID),
+		Stid:               ss.Stid,
 		LastRead:           ss.LastRead,
 		FirstPosition:      ss.FirstPosition,
 		LastPosition:       ss.LastPosition,

@@ -18,6 +18,7 @@ import (
 	mpdata "github.com/Palats/mastopoof/proto/data"
 	pb "github.com/Palats/mastopoof/proto/gen/mastopoof"
 	settingspb "github.com/Palats/mastopoof/proto/gen/mastopoof/settings"
+	stpb "github.com/Palats/mastopoof/proto/gen/mastopoof/storage"
 	"github.com/mattn/go-mastodon"
 	"golang.org/x/net/publicsuffix"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -571,7 +572,7 @@ func TestNotifs(t *testing.T) {
 	resp := MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
 		Stid: userInfo.DefaultStid,
 	})
-	if got, want := resp.StreamInfo.NotificationState, pb.StreamInfo_NOTIF_EXACT; got != want {
+	if got, want := resp.StreamInfo.NotificationState, stpb.StreamState_NOTIF_EXACT; got != want {
 		t.Errorf("Got notif state %v, wanted %v", got, want)
 	}
 	if got, want := resp.StreamInfo.NotificationsCount, int64(0); got != want {
@@ -591,7 +592,7 @@ func TestNotifs(t *testing.T) {
 	resp = MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
 		Stid: userInfo.DefaultStid,
 	})
-	if got, want := resp.StreamInfo.NotificationState, pb.StreamInfo_NOTIF_EXACT; got != want {
+	if got, want := resp.StreamInfo.NotificationState, stpb.StreamState_NOTIF_EXACT; got != want {
 		t.Errorf("Got notif state %v, wanted %v", got, want)
 	}
 	if got, want := resp.StreamInfo.NotificationsCount, int64(5); got != want {
@@ -607,7 +608,7 @@ func TestNotifs(t *testing.T) {
 	resp = MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
 		Stid: userInfo.DefaultStid,
 	})
-	if got, want := resp.StreamInfo.NotificationState, pb.StreamInfo_NOTIF_MORE; got != want {
+	if got, want := resp.StreamInfo.NotificationState, stpb.StreamState_NOTIF_MORE; got != want {
 		t.Errorf("Got notif state %v, wanted %v", got, want)
 	}
 
@@ -616,7 +617,7 @@ func TestNotifs(t *testing.T) {
 	resp = MustCall[pb.FetchResponse](env, "Fetch", &pb.FetchRequest{
 		Stid: userInfo.DefaultStid,
 	})
-	if got, want := resp.StreamInfo.NotificationState, pb.StreamInfo_NOTIF_EXACT; got != want {
+	if got, want := resp.StreamInfo.NotificationState, stpb.StreamState_NOTIF_EXACT; got != want {
 		t.Errorf("Got notif state %v, wanted %v", got, want)
 	}
 	if got, want := resp.StreamInfo.NotificationsCount, int64(0); got != want {

@@ -141,3 +141,41 @@ func TestAccountStateConv(t *testing.T) {
 		LastHomeStatusId: "eee",
 	})
 }
+
+type OldStreamState struct {
+	StID               StID                                `json:"stid"`
+	UID                UID                                 `json:"uid"`
+	LastRead           int64                               `json:"last_read"`
+	FirstPosition      int64                               `json:"first_position"`
+	LastPosition       int64                               `json:"last_position"`
+	Remaining          int64                               `json:"remaining"`
+	LastFetchSecs      int64                               `json:"last_fetch_secs"`
+	NotificationsState stpb.StreamState_NotificationsState `json:"notifications_state"`
+	NotificationsCount int64                               `json:"notifications_count"`
+}
+
+func TestStreamStateConv(t *testing.T) {
+	// Do not test proto->go. Int64 are encoded to string in protojson, which is not readable by json.Unmarshal.
+	// However, protojson.Unmarshal is able to use integers in json fields for proto int64.
+	testGoToProto(t, &OldStreamState{
+		StID:               12,
+		UID:                13,
+		LastRead:           14,
+		FirstPosition:      15,
+		LastPosition:       16,
+		Remaining:          17,
+		LastFetchSecs:      18,
+		NotificationsState: stpb.StreamState_NOTIF_MORE,
+		NotificationsCount: 19,
+	}, &stpb.StreamState{
+		Stid:               12,
+		Uid:                13,
+		LastRead:           14,
+		FirstPosition:      15,
+		LastPosition:       16,
+		Remaining:          17,
+		LastFetchSecs:      18,
+		NotificationsState: stpb.StreamState_NOTIF_MORE,
+		NotificationsCount: 19,
+	})
+}

@@ -39,22 +39,57 @@ message AppRegState {
 // AccountState represents information about a mastodon account in the DB.
 message AccountState {
 	// AccountState ASID within storage. Just an arbitrary number for primary key.
-	int64 asid = 1 [json_name ="asid"];
+	int64 asid = 1 [json_name = "asid"];
 
 	// The Mastodon server this account is part of.
 	// E.g., `https://mastodon.social`
-	string server_addr = 2 [json_name ="server_addr"];
+	string server_addr = 2 [json_name = "server_addr"];
 	// The Mastodon account ID on the server.
 	// E.g., `123456789765432132`
-	string account_id = 3 [json_name ="account_id"];
+	string account_id = 3 [json_name = "account_id"];
 	// The Mastodon username
 	// E.g., `foobar`
-	string username = 4 [json_name ="username"];
+	string username = 4 [json_name = "username"];
 
-	string access_token = 5 [json_name ="access_token"];
+	string access_token = 5 [json_name = "access_token"];
 
 	// The user using this mastodon account.
-	int64 uid = 6 [json_name ="uid"];
+	int64 uid = 6 [json_name = "uid"];
 	// Last home status ID fetched.
-	string last_home_status_id = 7 [json_name ="last_home_status_id"];
+	string last_home_status_id = 7 [json_name = "last_home_status_id"];
+}
+
+// StreamState is the state of a single stream, stored as JSON.
+message StreamState {
+	// Stream ID.
+	int64 stid = 1 [json_name = "stid"];
+	// User ID this stream belongs to.
+	int64 uid = 2 [json_name = "uid"];
+	// Position of the latest read status in this stream.
+	int64 last_read = 3 [json_name = "last_read"];
+	// Position of the first status, if any. Usually == 1.
+	// 0 if there is no status yet in the stream.
+	// TODO: using 0 is a bit risky as it would be very easy to accidentely end up with
+	// first status to be at zero. Should either have cleaner semantic of LastPosition
+	// (e.g., have it not include the last status - thus having a diff when there are status)
+	// or have an explicit signal.
+	int64 first_position = 4 [json_name = "first_position"];
+	// Position of the last status, if any.
+	int64 last_position = 5 [json_name = "last_position"];
+	// Remaining statuses in the pool which are not yet added in the stream.
+	int64 remaining = 6 [json_name = "remaining"];
+
+	// Last time a fetch from mastodon finished, as unix timestamp in seconds.
+	int64 last_fetch_secs = 7 [json_name = "last_fetch_secs"];
+
+  // Unread notifications available in Mastodon.
+  enum NotificationsState {
+    NOTIF_UNKNOWN = 0;  // Notifications were not looked up.
+    NOTIF_EXACT = 1; // The notifications count is exact.
+    NOTIF_MORE = 2; // Notifications count is under counted.
+  };
+	NotificationsState notifications_state = 8 [json_name = "notifications_state"];
+
+	// Number of unread notifications
+	int64 notifications_count = 9 [json_name = "notifications_count"];
 }

@@ -446,11 +446,11 @@ func (st *Storage) ListUsers(ctx context.Context) (_ []*ListUserEntry, retErr er
 }
 
 // CreateUser creates a new mastopoof user, with all the necessary bit and pieces.
-func (st *Storage) CreateUser(ctx context.Context, txn SQLReadWrite, serverAddr string, accountID mastodon.ID, username string) (_ *stpb.UserState, _ *stpb.AccountState, _ *StreamState, retErr error) {
+func (st *Storage) CreateUser(ctx context.Context, txn SQLReadWrite, serverAddr string, accountID mastodon.ID, username string) (_ *stpb.UserState, _ *stpb.AccountState, _ *stpb.StreamState, retErr error) {
 	defer recordAction("create-user")(retErr)
 	var userState *stpb.UserState
 	var accountState *stpb.AccountState
-	var streamState *StreamState
+	var streamState *stpb.StreamState
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		// Create the local user.
 		var err error
@@ -469,7 +469,7 @@ func (st *Storage) CreateUser(ctx context.Context, txn SQLReadWrite, serverAddr 
 		if err != nil {
 			return err
 		}
-		userState.DefaultStid = int64(streamState.StID)
+		userState.DefaultStid = streamState.Stid
 		return st.SetUserState(ctx, txn, userState)
 	})
 	if err != nil {
@@ -684,9 +684,9 @@ func (st *Storage) SetUserState(ctx context.Context, txn SQLReadWrite, userState
 }
 
 // CreateStreamState creates a new stream for the given user and return the stream ID (stid).
-func (st *Storage) CreateStreamState(ctx context.Context, txn SQLReadWrite, uid UID) (_ *StreamState, retErr error) {
+func (st *Storage) CreateStreamState(ctx context.Context, txn SQLReadWrite, uid UID) (_ *stpb.StreamState, retErr error) {
 	defer recordAction("create-stream-state")(retErr)
-	var streamState *StreamState
+	var streamState *stpb.StreamState
 
 	err := st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		var stid sql.Null[StID]
@@ -695,10 +695,10 @@ func (st *Storage) CreateStreamState(ctx context.Context, txn SQLReadWrite, uid 
 			return err
 		}
 
-		streamState = &StreamState{
+		streamState = &stpb.StreamState{
 			// Pick the largest existing (or 0) stream ID and just add one to create a new one.
-			StID: stid.V + 1,
-			UID:  uid,
+			Stid: int64(stid.V + 1),
+			Uid:  int64(uid),
 		}
 		return st.SetStreamState(ctx, txn, streamState)
 	})
@@ -708,11 +708,11 @@ func (st *Storage) CreateStreamState(ctx context.Context, txn SQLReadWrite, uid 
 	return streamState, nil
 }
 
-func (st *Storage) StreamState(ctx context.Context, txn SQLReadOnly, stid StID) (_ *StreamState, retErr error) {
+func (st *Storage) StreamState(ctx context.Context, txn SQLReadOnly, stid StID) (_ *stpb.StreamState, retErr error) {
 	defer recordAction("stream-state")(retErr)
-	streamState := &StreamState{}
+	streamState := &stpb.StreamState{}
 	err := st.inTxnRO(ctx, txn, func(ctx context.Context, txn SQLReadOnly) error {
-		err := txn.QueryRow(ctx, "stream-state", "SELECT state FROM streamstate WHERE stid = ?", stid).Scan(streamState)
+		err := txn.QueryRow(ctx, "stream-state", "SELECT state FROM streamstate WHERE stid = ?", stid).Scan(SQLProto{streamState})
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("stream with stid=%d not found", stid)
 		}
@@ -724,18 +724,18 @@ func (st *Storage) StreamState(ctx context.Context, txn SQLReadOnly, stid StID) 
 	return streamState, nil
 }
 
-func (st *Storage) SetStreamState(ctx context.Context, txn SQLReadWrite, streamState *StreamState) (retErr error) {
+func (st *Storage) SetStreamState(ctx context.Context, txn SQLReadWrite, streamState *stpb.StreamState) (retErr error) {
 	defer recordAction("set-stream-state")(retErr)
 	return st.inTxnRW(ctx, txn, func(ctx context.Context, txn SQLReadWrite) error {
 		stmt := `INSERT INTO streamstate(stid, state) VALUES(?, ?) ON CONFLICT(stid) DO UPDATE SET state = excluded.state`
-		_, err := txn.Exec(ctx, "set-stream-state", stmt, streamState.StID, streamState)
+		_, err := txn.Exec(ctx, "set-stream-state", stmt, streamState.Stid, SQLProto{streamState})
 		return err
 	})
 }
 
 // RecomputeStreamState recreates what it can about StreamState from
 // the state of the DB.
-func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLReadOnly, stid StID) (_ *StreamState, retErr error) {
+func (st *Storage) RecomputeStreamState(ctx context.Context, txn SQLReadOnly, stid StID) (_ *stpb.StreamState, retErr error) {
 	defer recordAction("recompute-stream-state")(retErr)
 	if txn == nil {
 		return nil, errors.New("missing transaction")
@@ -865,7 +865,7 @@ func (st *Storage) FixCrossStatuses(ctx context.Context, txn SQLReadWrite, stid 
 	if err != nil {
 		return fmt.Errorf("unable to get streamstate from DB: %w", err)
 	}
-	accountState, err := st.FirstAccountStateByUID(ctx, txn, streamState.UID)
+	accountState, err := st.FirstAccountStateByUID(ctx, txn, UID(streamState.Uid))
 	if err != nil {
 		return err
 	}
@@ -992,7 +992,7 @@ type Item struct {
 
 // pickNextInTxn adds a new status from the pool to the stream.
 // It updates streamState IN PLACE.
-func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userState *stpb.UserState, streamState *StreamState) (*Item, error) {
+func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userState *stpb.UserState, streamState *stpb.StreamState) (*Item, error) {
 	// List all statuses which do not have a position yet.
 	rows, err := txn.Query(ctx, "pick-next-statuses", `
 		SELECT
@@ -1006,7 +1006,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userStat
 			streamcontent.position IS NULL
 			AND streamcontent.stid = ?
 		;
-	`, streamState.StID)
+	`, streamState.Stid)
 	if err != nil {
 		return nil, err
 	}
@@ -1081,7 +1081,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userStat
 					AND position IS NOT NULL
 					AND (status_id = ? OR status_reblog_id = ?)
 				LIMIT 1;`,
-				streamState.StID,
+				streamState.Stid,
 				selected.Reblog.ID,
 				selected.Reblog.ID,
 			)
@@ -1125,7 +1125,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userStat
 		WHERE
 			stid = ?
 			AND sid = ?;`
-	_, err = txn.Exec(ctx, "pick-next-in-txn", stmt, position, streamStatusState, streamState.StID, selectedID)
+	_, err = txn.Exec(ctx, "pick-next-in-txn", stmt, position, streamStatusState, streamState.Stid, selectedID)
 	if err != nil {
 		return nil, err
 	}
@@ -1140,7 +1140,7 @@ func (st *Storage) pickNextInTxn(ctx context.Context, txn SQLReadWrite, userStat
 
 type ListResult struct {
 	Items       []*Item
-	StreamState *StreamState
+	StreamState *stpb.StreamState
 }
 
 // ListBackward get statuses before the provided position.
@@ -1337,7 +1337,7 @@ func (st *Storage) ListForward(ctx context.Context, userState *stpb.UserState, s
 
 // InsertStatuses add the given statuses to the user storage.
 // It updates `streamState` IN PLACE.
-func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid ASID, streamState *StreamState, statuses []*mastodon.Status, filters []*mastodon.Filter) (retErr error) {
+func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid ASID, streamState *stpb.StreamState, statuses []*mastodon.Status, filters []*mastodon.Filter) (retErr error) {
 	defer recordAction("insert-statuses")(retErr)
 	for _, status := range statuses {
 		// TODO: batching
@@ -1358,7 +1358,7 @@ func (st *Storage) InsertStatuses(ctx context.Context, txn SQLReadWrite, asid AS
 		_, err := txn.Exec(ctx, "insert-statuses",
 			stmt,
 			asid, &sqlStatus{*status}, &statusMeta,
-			streamState.StID,
+			streamState.Stid,
 			status.ID, reblogID, status.InReplyToID,
 		)
 		if err != nil {

@@ -76,7 +76,7 @@ func (env *DBTestEnv) Close() {
 	}
 }
 
-func (env *DBTestEnv) pickNext(ctx context.Context, userState *stpb.UserState, streamState *StreamState) (*Item, error) {
+func (env *DBTestEnv) pickNext(ctx context.Context, userState *stpb.UserState, streamState *stpb.StreamState) (*Item, error) {
 	var item *Item
 	err := env.st.InTxnRW(ctx, func(ctx context.Context, txn SQLReadWrite) error {
 		var err error
@@ -86,7 +86,7 @@ func (env *DBTestEnv) pickNext(ctx context.Context, userState *stpb.UserState, s
 	return item, err
 }
 
-func (env *DBTestEnv) mustPickNext(ctx context.Context, userState *stpb.UserState, streamState *StreamState) *Item {
+func (env *DBTestEnv) mustPickNext(ctx context.Context, userState *stpb.UserState, streamState *stpb.StreamState) *Item {
 	env.t.Helper()
 	item, err := env.pickNext(ctx, userState, streamState)
 	if err != nil {
@@ -193,10 +193,10 @@ func TestCreateStreamStateIncreases(t *testing.T) {
 		}
 		seenASIDs[ASID(accountState.Asid)] = true
 
-		if seenStIDs[streamState.StID] {
-			t.Errorf("duplicate StID %d", streamState.StID)
+		if seenStIDs[StID(streamState.Stid)] {
+			t.Errorf("duplicate StID %d", streamState.Stid)
 		}
-		seenStIDs[streamState.StID] = true
+		seenStIDs[StID(streamState.Stid)] = true
 	}
 }
 

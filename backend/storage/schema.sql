@@ -43,7 +43,7 @@ CREATE TABLE appregstate (
 CREATE TABLE "streamstate" (
   -- Unique id for this stream.
   stid INTEGER PRIMARY KEY,
-  -- Serialized StreamState JSON.
+  -- Protobuf mastopoof.storage.StreamState as JSON
   state TEXT NOT NULL
 ) STRICT;
 

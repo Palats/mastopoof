@@ -487,7 +487,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 		return nil, fmt.Errorf("unknown direction %v", req.Msg.Direction)
 	}
 
-	resp.StreamInfo = listResult.StreamState.ToStreamInfo()
+	resp.StreamInfo = storage.StreamStateToStreamInfo(listResult.StreamState)
 
 	if len(listResult.Items) > 0 {
 		resp.BackwardPosition = listResult.Items[0].Position
@@ -525,7 +525,7 @@ func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadReq
 		return nil, err
 	}
 
-	var streamState *storage.StreamState
+	var streamState *stpb.StreamState
 	err := s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
 		var err error
 		streamState, err = s.st.StreamState(ctx, txn, stid)
@@ -563,7 +563,7 @@ func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadReq
 	}
 
 	return connect.NewResponse(&pb.SetReadResponse{
-		StreamInfo: streamState.ToStreamInfo(),
+		StreamInfo: storage.StreamStateToStreamInfo(streamState),
 	}), nil
 }
 
@@ -587,7 +587,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 
 		// For support for having multiple Mastodon account, this would
 		// need to list the accounts and do the fetching from each account.
-		accountState, err = s.st.FirstAccountStateByUID(ctx, txn, streamState.UID)
+		accountState, err = s.st.FirstAccountStateByUID(ctx, txn, storage.UID(streamState.Uid))
 		if err != nil {
 			return err
 		}
@@ -673,9 +673,9 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		return nil, fmt.Errorf("unable to list notifications: %v", err)
 	}
 	notifsCount := int64(len(notifs))
-	notifsState := pb.StreamInfo_NOTIF_EXACT
+	notifsState := stpb.StreamState_NOTIF_EXACT
 	if notifsCount >= maxNotifs {
-		notifsState = pb.StreamInfo_NOTIF_MORE
+		notifsState = stpb.StreamState_NOTIF_MORE
 	}
 
 	// Record a timestamp for reference.
@@ -700,7 +700,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		streamState.NotificationsState = notifsState
 		streamState.NotificationsCount = notifsCount
 
-		currentAccountState, err := s.st.FirstAccountStateByUID(ctx, txn, streamState.UID)
+		currentAccountState, err := s.st.FirstAccountStateByUID(ctx, txn, storage.UID(streamState.Uid))
 		if err != nil {
 			return fmt.Errorf("unable to verify for race conditions: %w", err)
 		}
@@ -717,7 +717,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		if err := s.st.InsertStatuses(ctx, txn, storage.ASID(accountState.Asid), streamState, timeline, filters); err != nil {
 			return err
 		}
-		resp.StreamInfo = streamState.ToStreamInfo()
+		resp.StreamInfo = storage.StreamStateToStreamInfo(streamState)
 		return nil
 	})
 	if err != nil {
