@@ -5,6 +5,7 @@ import { classMap } from 'lit/directives/class-map.js';
 import { ref } from 'lit/directives/ref.js';
 
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
+import * as storagepb from "mastopoof-proto/gen/mastopoof/storage/storage_pb";
 import { StreamUpdateEvent, fuzzy } from "./backend";
 import * as common from "./common";
 import * as mastodon from "./mastodon";
@@ -403,9 +404,9 @@ export class MastStream extends LitElement {
 
     let notifs = this.streamInfo.notificationsCount.toString();
     let notifsAlert = this.streamInfo.notificationsCount > 0;
-    if (this.streamInfo.notificationState === pb.StreamInfo_NotificationsState.NOTIF_UNKNOWN) {
+    if (this.streamInfo.notificationState === storagepb.StreamState_NotificationsState.NOTIF_UNKNOWN) {
       notifs = "";
-    } else if (this.streamInfo.notificationState === pb.StreamInfo_NotificationsState.NOTIF_MORE) {
+    } else if (this.streamInfo.notificationState === storagepb.StreamState_NotificationsState.NOTIF_MORE) {
       notifs = notifs + "+";
     }
     // TODO: support multiple account

@@ -2,6 +2,7 @@
 import { ConnectError, createPromiseClient, PromiseClient, Code, Transport } from "@connectrpc/connect";
 import { Mastopoof } from "mastopoof-proto/gen/mastopoof/mastopoof_connect";
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
+import * as settingspb from "mastopoof-proto/gen/mastopoof/settings/settings_pb";
 import * as protobuf from "@bufbuild/protobuf";
 
 
@@ -141,7 +142,7 @@ export class Backend {
     return await this.client.setStatus({ statusId: statusID, action: action });
   }
 
-  public async updateSettings(settings: pb.Settings): Promise<pb.UpdateSettingsResponse> {
+  public async updateSettings(settings: settingspb.Settings): Promise<pb.UpdateSettingsResponse> {
     return await this.client.updateSettings({ settings: settings });
   }
 }

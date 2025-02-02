@@ -2,6 +2,7 @@ import { unsafeCSS } from 'lit'
 
 import { Backend } from "./backend";
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
+import * as settingspb from "mastopoof-proto/gen/mastopoof/settings/settings_pb";
 import * as mastodon from "./mastodon";
 import { createConnectTransport } from "@connectrpc/connect-web";
 
@@ -23,7 +24,7 @@ console.log("Display timezone:", displayTimezone);
 // Get the settings meta info, which have been generated
 // from a textproto.
 import settingsInfoJSON from "mastopoof-proto/gen/settings.json?raw";
-export const settingsInfo = new pb.SettingsInfo();
+export const settingsInfo = new settingspb.SettingsInfo();
 settingsInfo.fromJsonString(settingsInfoJSON);
 
 // Create a global backend access.
