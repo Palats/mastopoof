@@ -1424,11 +1424,9 @@ func (st *Storage) UpdateStatus(ctx context.Context, txn SQLReadWrite, asid ASID
 // computeStatusMeta calculate whether a status matches filters or not.
 func computeStatusMeta(status *mastodon.Status, filters []*mastodon.Filter) *stpb.StatusMeta {
 
-	var s *mastodon.Status
+	var s = status
 	if status.Reblog != nil {
 		s = status.Reblog
-	} else {
-		s = status
 	}
 
 	state := &stpb.StatusMeta{}
