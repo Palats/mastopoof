@@ -1,4 +1,4 @@
-import { expect } from '@esm-bundle/chai';
+import { expect, test, beforeAll } from 'vitest';
 import { html, render } from 'lit';
 import './auth';
 import { Code, ConnectError } from '@connectrpc/connect';
@@ -6,12 +6,12 @@ import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import { waitFor } from '@testing-library/dom'
 import * as testlib from './testlib';
 
-before(() => {
+beforeAll(() => {
   testlib.setMastopoofConfig();
 });
 
 
-it('basic element construction test', async () => {
+test('basic element construction test', async () => {
   // const elt = document.createElement('mast-login');
   // document.body.appendChild(elt);
   // await expect($(elem)).toHaveText('Hello, WebdriverIO!')
@@ -22,7 +22,7 @@ it('basic element construction test', async () => {
   expect(elt!.shadowRoot!.innerHTML).to.contain("Mastodon server");
 });
 
-it('calls authorize', async () => {
+test('calls authorize', async () => {
   const server = new testlib.TestServer();
   server.setAsBackend();
 

@@ -7,8 +7,8 @@
     "dev": "vite --clearScreen=false",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "web-test-runner --node-resolve",
-    "test-watch": "web-test-runner --node-resolve --watch"
+    "test": "vitest run --watch=false",
+    "test-watch": "vitest watch --ui"
   },
   "dependencies": {
     "@bufbuild/protobuf": "1.10.0",
@@ -24,9 +24,13 @@
     "@remcovaes/web-test-runner-vite-plugin": "1.2.1",
     "@testing-library/dom": "10.4.0",
     "@types/mocha": "10.0.10",
+    "@vitest/browser": "^3.0.4",
+    "@vitest/ui": "^3.0.4",
     "@web/test-runner": "0.18.3",
+    "playwright": "^1.50.1",
     "typescript": "5.5.4",
     "vite": "5.4.3",
-    "vite-bundle-analyzer": "^0.16.0"
+    "vite-bundle-analyzer": "^0.16.0",
+    "vitest": "^3.0.4"
   }
 }

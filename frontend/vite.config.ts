@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from 'vite'
 
 export default defineConfig({
@@ -10,5 +11,20 @@ export default defineConfig({
       '/oauth': 'http://localhost:8079/',
       '/api': 'http://localhost:8079/'
     },
-  }
+  },
+
+  test: {
+    browser: {
+      enabled: true,
+      provider: 'playwright',
+      headless: true,
+      instances: [
+        { browser: 'chromium' },
+      ],
+      // https://vitest.dev/guide/browser/playwright
+      /*configs: [
+      ],*/
+    },
+  },
+
 })

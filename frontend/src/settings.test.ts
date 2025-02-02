@@ -1,14 +1,14 @@
-import { expect } from '@esm-bundle/chai';
+import { expect, test, beforeAll } from 'vitest';
 import { html, render } from 'lit';
 import * as testlib from './testlib';
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import './settings';
 
-before(() => {
+beforeAll(() => {
   testlib.setMastopoofConfig();
 });
 
-it('basic element construction', async () => {
+test('basic element construction', async () => {
   const server = new testlib.TestServer();
   server.setAsBackend();
 
@@ -17,7 +17,7 @@ it('basic element construction', async () => {
   expect(elt.innerHTML).to.contain("Number of statuses");
 });
 
-it('saves override', async () => {
+test('saves override', async () => {
   const server = new testlib.TestServer();
   server.setAsBackend();
 
