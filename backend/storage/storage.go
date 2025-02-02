@@ -1424,20 +1424,20 @@ func (st *Storage) UpdateStatus(ctx context.Context, txn SQLReadWrite, asid ASID
 // computeStatusMeta calculate whether a status matches filters or not.
 func computeStatusMeta(status *mastodon.Status, filters []*mastodon.Filter) *stpb.StatusMeta {
 
-	var s = status
+	s := status
 	if status.Reblog != nil {
 		s = status.Reblog
 	}
 
 	state := &stpb.StatusMeta{}
 
-	var content = strings.ToLower(s.Content)
-	var tags = s.Tags
-	var spoiler = strings.ToLower(s.SpoilerText)
+	content := strings.ToLower(s.Content)
+	tags := s.Tags
+	spoiler := strings.ToLower(s.SpoilerText)
 
 	// Note: we lower-case ALL THE THINGS (oh the irony) to normalize
 	for _, filter := range filters {
-		var phrase = strings.ToLower(filter.Phrase)
+		phrase := strings.ToLower(filter.Phrase)
 		// TODO filters are actually fancier than that. but let's try this first!
 		// first we check if the phrase is, case-insensitively, in the content or the spoiler (if it is, we're done)
 		matched := strings.Contains(content, phrase) || strings.Contains(spoiler, phrase)
