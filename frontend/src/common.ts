@@ -5,6 +5,7 @@ import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import * as settingspb from "mastopoof-proto/gen/mastopoof/settings/settings_pb";
 import * as mastodon from "./mastodon";
 import { createConnectTransport } from "@connectrpc/connect-web";
+import * as protobuf from '@bufbuild/protobuf';
 
 import normalizeCSSstr from "./normalize.css?inline";
 import baseCSSstr from "./base.css?inline";
@@ -24,8 +25,8 @@ console.log("Display timezone:", displayTimezone);
 // Get the settings meta info, which have been generated
 // from a textproto.
 import settingsInfoJSON from "mastopoof-proto/gen/settings.json?raw";
-export const settingsInfo = new settingspb.SettingsInfo();
-settingsInfo.fromJsonString(settingsInfoJSON);
+
+export const settingsInfo = protobuf.fromJsonString(settingspb.SettingsInfoSchema, settingsInfoJSON);
 
 // Create a global backend access.
 // TODO: use context https://lit.dev/docs/data/context/

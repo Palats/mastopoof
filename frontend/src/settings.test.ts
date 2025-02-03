@@ -2,6 +2,7 @@ import { expect, test, beforeAll } from 'vitest';
 import { html, render } from 'lit';
 import * as testlib from './testlib';
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
+import * as protobuf from '@bufbuild/protobuf';
 import './settings';
 
 beforeAll(() => {
@@ -39,5 +40,5 @@ test('saves override', async () => {
   const req1 = await server.updateSettings.expect();
   expect(req1.req.settings?.listCount?.value).to.eq(BigInt(12));
   expect(req1.req.settings?.listCount?.override).to.eq(true);
-  req1.respond(new pb.UpdateSettingsResponse({}));
+  req1.respond(protobuf.create(pb.UpdateSettingsResponseSchema));
 });

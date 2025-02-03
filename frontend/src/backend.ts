@@ -1,9 +1,8 @@
 // Manages the connection from the browser to the Go server.
-import { ConnectError, createPromiseClient, PromiseClient, Code, Transport } from "@connectrpc/connect";
-import { Mastopoof } from "mastopoof-proto/gen/mastopoof/mastopoof_connect";
+import { ConnectError, createClient, Client, Code, Transport } from "@connectrpc/connect";
+import { Mastopoof } from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import * as settingspb from "mastopoof-proto/gen/mastopoof/settings/settings_pb";
-import * as protobuf from "@bufbuild/protobuf";
 
 
 // Return a random value around [ref-delta, ref+delta[, where
@@ -42,11 +41,11 @@ export class Backend {
   // request is in flight or was not reflected here.
   public userInfo?: pb.UserInfo;
 
-  private client: PromiseClient<typeof Mastopoof>;
+  private client: Client<typeof Mastopoof>;
   private streamInfo?: pb.StreamInfo;
 
   constructor(transport: Transport) {
-    this.client = createPromiseClient(Mastopoof, transport);
+    this.client = createClient(Mastopoof, transport);
     this.onEvent = new EventTarget();
   }
 
@@ -80,7 +79,7 @@ export class Backend {
     this.updateStreamInfo(resp.streamInfo);
   }
 
-  public async list(request: protobuf.PartialMessage<pb.ListRequest>) {
+  public async list(request: pb.ListRequest) {
     const resp = await this.client.list(request);
     this.updateStreamInfo(resp.streamInfo);
     return resp;

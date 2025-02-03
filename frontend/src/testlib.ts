@@ -2,9 +2,9 @@ import './auth';
 import * as common from "./common";
 import { createRouterTransport } from '@connectrpc/connect';
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
-import { Mastopoof } from "mastopoof-proto/gen/mastopoof/mastopoof_connect";
+import { Mastopoof } from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import { Backend } from "./backend";
-import { Message } from '@bufbuild/protobuf';
+import * as protobuf from '@bufbuild/protobuf';
 
 export function setMastopoofConfig() {
   globalThis.mastopoofConfig = {
@@ -20,7 +20,7 @@ export type RPCReqInfo<ReqT, RespT> = {
   fail: (err: Error) => void;
 }
 
-export class RPCIntercept<ReqT extends Message, RespT extends Message> {
+export class RPCIntercept<ReqT extends protobuf.Message, RespT extends protobuf.Message> {
   private reqResolve?: (nfo: RPCReqInfo<ReqT, RespT>) => void;
 
   async expect(): Promise<RPCReqInfo<ReqT, RespT>> {
@@ -32,7 +32,7 @@ export class RPCIntercept<ReqT extends Message, RespT extends Message> {
   async dispatch(req: ReqT) {
     return await new Promise<RespT>((resolve, reject) => {
       if (!this.reqResolve) {
-        const msg = `RPC request received, but nothing is expecting it; request=${req.toJsonString()}`;
+        const msg = `RPC request received, but nothing is expecting it`;
         console.error(msg);
         throw new Error(msg);
       }
@@ -92,8 +92,8 @@ export class TestServer {
   async defaultLogin() {
     const login = common.backend.login();
     const reqLogin = await this.login.expect();
-    reqLogin.respond(new pb.LoginResponse({
-      userInfo: new pb.UserInfo(),
+    reqLogin.respond(protobuf.create(pb.LoginResponseSchema, {
+      userInfo: protobuf.create(pb.UserInfoSchema),
     }));
     await login;
   }

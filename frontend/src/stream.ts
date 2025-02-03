@@ -10,6 +10,7 @@ import { StreamUpdateEvent, fuzzy } from "./backend";
 import * as common from "./common";
 import * as mastodon from "./mastodon";
 import * as status from "./status";
+import * as protobuf from '@bufbuild/protobuf';
 
 import "./time";
 import "./status";
@@ -249,10 +250,10 @@ export class MastStream extends LitElement {
       throw new Error("missing stream id");
     }
 
-    if (this.items.length === 0) {
+    if (this.items.length === 0 || this.backwardPosition === undefined) {
       throw new Error("loading previous status without successful forward loading");
     }
-    const resp = await common.backend.list({ stid: stid, position: this.backwardPosition, direction: pb.ListRequest_Direction.BACKWARD })
+    const resp = await common.backend.list(protobuf.create(pb.ListRequestSchema, { stid: stid, position: this.backwardPosition, direction: pb.ListRequest_Direction.BACKWARD }))
     this.backwardPosition = resp.backwardPosition;
 
     const newItems: StatusItem[] = [];
@@ -297,11 +298,11 @@ export class MastStream extends LitElement {
     let resp: pb.ListResponse;
     try {
       this.loadingBarUsers++;
-      resp = await common.backend.list({
+      resp = await common.backend.list(protobuf.create(pb.ListRequestSchema, {
         stid: stid,
-        position: this.forwardPosition,
+        position: this.forwardPosition ?? BigInt(0),
         direction: isInitial ? pb.ListRequest_Direction.INITIAL : pb.ListRequest_Direction.FORWARD,
-      })
+      }));
     } finally {
       this.loadingBarUsers--;
     }

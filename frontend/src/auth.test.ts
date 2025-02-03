@@ -5,6 +5,7 @@ import './auth';
 import { Code, ConnectError } from '@connectrpc/connect';
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import * as testlib from './testlib';
+import * as protobuf from '@bufbuild/protobuf';
 
 beforeAll(() => {
   testlib.setMastopoofConfig();
@@ -46,7 +47,7 @@ test('calls authorize', async () => {
 
   const auth2Req = await server.authorize.expect();
   expect(auth2Req.req.serverAddr).to.eq("https://fakeserver1");
-  await auth2Req.respond(new pb.AuthorizeResponse({
+  await auth2Req.respond(protobuf.create(pb.AuthorizeResponseSchema, {
     authorizeAddr: "https://authaddr",
     // This is absolutely needed - otherwise that generates a redirect,
     // which makes the test continue forever.

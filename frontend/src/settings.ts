@@ -6,12 +6,15 @@ import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import * as settingspb from "mastopoof-proto/gen/mastopoof/settings/settings_pb";
 import { createRef, ref, Ref } from 'lit/directives/ref.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
-import { proto3 } from '@bufbuild/protobuf';
+import * as protobuf from '@bufbuild/protobuf';
+import { tsEnum } from '@bufbuild/protobuf/codegenv1';
+
+const enumInfo = tsEnum(settingspb.SettingSeenReblogs_ValuesSchema);
 
 @customElement('mast-settings')
 export class MastSettings extends LitElement {
   // Currently known settings, incl. modification made through the UI.
-  @state() private currentSettings: settingspb.Settings = new settingspb.Settings();
+  @state() private currentSettings: settingspb.Settings = protobuf.create(settingspb.SettingsSchema);
 
   @state() loadingBarUsers = 0;
 
@@ -40,13 +43,13 @@ export class MastSettings extends LitElement {
 
   // Update currentSettings with the content of the UI.
   updateCurrentSettings() {
-    this.currentSettings.listCount = new settingspb.SettingInt64({
+    this.currentSettings.listCount = protobuf.create(settingspb.SettingInt64Schema, {
       value: BigInt(this.listCountInputRef.value?.value || common.settingsInfo.listCount!.default),
       override: this.listCountCheckBoxRef.value?.checked || false,
     });
     // Get the actual protobuf value from the dropdown.
-    const v = proto3.getEnumType(settingspb.SettingSeenReblogs_Values).findName(this.seenReblogsInputRef.value?.value || "")?.no;
-    this.currentSettings.seenReblogs = new settingspb.SettingSeenReblogs({
+    const v = enumInfo[this.seenReblogsInputRef.value?.value || ""] as number;
+    this.currentSettings.seenReblogs = protobuf.create(settingspb.SettingSeenReblogsSchema, {
       value: v,
       override: this.seenReblogsCheckBoxRef.value?.checked || false,
     });
@@ -96,7 +99,7 @@ export class MastSettings extends LitElement {
             What do with statuses which have been seen before
             <div class="inputs">
               <span>
-                Default: ${proto3.getEnumType(settingspb.SettingSeenReblogs_Values).findNumber(common.settingsInfo.seenReblogs!.default)?.name}
+                Default: ${enumInfo[common.settingsInfo.seenReblogs!.default]}
               </span>
               <span>
                 <label for="s-seen-reblogs-override">Override</label>
@@ -112,10 +115,10 @@ export class MastSettings extends LitElement {
                   value=${ifDefined(this.currentSettings?.seenReblogs?.value.toString())}
                   @change=${this.updateCurrentSettings}
                   ${ref(this.seenReblogsInputRef)}>
-                  ${proto3.getEnumType(settingspb.SettingSeenReblogs_Values).values.map(opt => html`
+                  ${settingspb.SettingSeenReblogs_ValuesSchema.values.map(opt => html`
                     <option
                       value=${opt.name}
-                      ?selected=${opt.no === this.currentSettings.seenReblogs?.value}
+                      ?selected=${opt.number === this.currentSettings.seenReblogs?.value}
                     >${opt.name}
                     </option>
                   `)}
