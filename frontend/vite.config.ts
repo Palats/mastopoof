@@ -21,9 +21,6 @@ export default defineConfig({
       instances: [
         { browser: 'chromium' },
       ],
-      // https://vitest.dev/guide/browser/playwright
-      /*configs: [
-      ],*/
     },
   },
 

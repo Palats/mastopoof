@@ -1,22 +1,16 @@
 import { expect, test, beforeAll } from 'vitest';
+import { page } from '@vitest/browser/context'
 import { html, render } from 'lit';
 import './auth';
 import { Code, ConnectError } from '@connectrpc/connect';
 import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
-import { waitFor } from '@testing-library/dom'
 import * as testlib from './testlib';
 
 beforeAll(() => {
   testlib.setMastopoofConfig();
 });
 
-
 test('basic element construction test', async () => {
-  // const elt = document.createElement('mast-login');
-  // document.body.appendChild(elt);
-  // await expect($(elem)).toHaveText('Hello, WebdriverIO!')
-  // elem.remove();
-
   await render(html`<mast-login></mast-login>`, document.body);
   const elt = document.body.querySelector("mast-login");
   expect(elt!.shadowRoot!.innerHTML).to.contain("Mastodon server");
@@ -52,15 +46,16 @@ test('calls authorize', async () => {
 
   const auth2Req = await server.authorize.expect();
   expect(auth2Req.req.serverAddr).to.eq("https://fakeserver1");
-  auth2Req.respond(new pb.AuthorizeResponse({
+  await auth2Req.respond(new pb.AuthorizeResponse({
     authorizeAddr: "https://authaddr",
+    // This is absolutely needed - otherwise that generates a redirect,
+    // which makes the test continue forever.
+    outOfBand: true,
   }));
 
   // UI should now display how to get to the Mastodon auth.
   // Maybe it will be redirect at some point, but not for now.
-  await waitFor(() => {
-    expect(elt.innerHTML).to.contain("https://fakeserver1");
-  });
+  await expect.element(page.getByText('Get authorization')).toBeInTheDocument();
 
   // At this point, user will go to the Mastodon oauth flow
   // and be redirected to a backend URL - no visible from the UI.

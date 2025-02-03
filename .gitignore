@@ -25,3 +25,4 @@ node_modules/
 proto/node_modules/
 frontend/node_modules/
 frontend/dist/
+frontend/src/__screenshots__/
