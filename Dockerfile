@@ -22,7 +22,7 @@ RUN npm run build
 
 
 # Backend building
-FROM golang:1.22 AS gobuild
+FROM golang:1.23 AS gobuild
 
 RUN groupadd --gid 10001 build && useradd --no-log-init --gid build --uid 10001 --create-home build
 USER build:build
