@@ -48,19 +48,6 @@ func AccountStateToAccountProto(accountState *stpb.AccountState) *pb.Account {
 	}
 }
 
-func StatusMetaToStatusMetaProto(ss *stpb.StatusMeta) *pb.StatusMeta {
-	var filters []*pb.FilterStateMatch
-	for _, filter := range ss.Filters {
-		filters = append(filters, &pb.FilterStateMatch{
-			Desc:    filter.Phrase,
-			Matched: filter.Matched,
-		})
-	}
-	return &pb.StatusMeta{
-		Filterstate: filters,
-	}
-}
-
 // AppRegInfo is what identify a given app registration on a Mastodon server.
 // It is used to identify which app registration is needed when interacting with a Mastodon server.
 // It is not serialized - see AppRegState for that. AppRegState is a strict superset.

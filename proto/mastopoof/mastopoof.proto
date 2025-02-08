@@ -125,7 +125,7 @@ message Item {
     int64 position = 2;
     // The mastodon account this status was fetched from.
     Account account = 3;
-    StatusMeta meta = 4;
+    mastopoof.storage.StatusMeta meta = 4;
     mastopoof.storage.StreamStatusState stream_status_state = 5;
 }
 
@@ -146,21 +146,6 @@ message Account {
 	// The Mastodon username
 	// E.g., `foobar`
   string username = 3;
-}
-
-// A Mastodon status metadata.
-// This is information coming from Mastodon fetching - it has no Mastopoof
-// stream related data.
-message StatusMeta {
-    repeated FilterStateMatch filterstate = 1;
-}
-
-// A Mastodon filter state
-message FilterStateMatch {
-    // description of the filter that can be displayed in the client (right now, just the filter ID)
-    string desc = 1;
-    // Whether the filter matched the status
-    bool matched = 2;
 }
 
 message ListRequest {

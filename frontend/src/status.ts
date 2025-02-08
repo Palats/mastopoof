@@ -17,7 +17,7 @@ export interface StatusItem {
   status: mastodon.Status;
   // The account where this status was obtained from.
   account: pb.Account;
-  statusMeta: pb.StatusMeta;
+  statusMeta: storagepb.StatusMeta;
   streamStatusState: storagepb.StreamStatusState;
 }
 
@@ -168,9 +168,9 @@ export class MastStatus extends LitElement {
     if (!this.item) { return html`<div class="status">oops.</div>`; }
 
     var filteredAr: string[] = [];
-    for (const filter of this.item.statusMeta.filterstate ?? []) {
+    for (const filter of this.item.statusMeta.filters ?? []) {
       if (filter.matched == true) {
-        filteredAr.push(filter.desc);
+        filteredAr.push(filter.phrase);
       }
     }
     const filtered = filteredAr.join(", ");

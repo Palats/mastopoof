@@ -24,7 +24,7 @@ interface StatusItem {
   status: mastodon.Status;
   // The account where this status was obtained from.
   account: pb.Account;
-  statusMeta: pb.StatusMeta;
+  statusMeta: storagepb.StatusMeta;
   streamStatusState: storagepb.StreamStatusState;
 
   // HTML element used to represent this status.
