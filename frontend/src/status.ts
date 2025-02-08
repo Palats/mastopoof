@@ -9,8 +9,9 @@ import dayjs from 'dayjs';
 import * as common from "./common";
 import * as mastodon from "./mastodon";
 
-// StatusItem represents the state in the UI of a given status.
-export interface StatusItem {
+// StatusData represents the information necessary to show a status
+// in the UI..
+export interface StatusData {
   // Position in the stream in the backend.
   position: bigint;
   // status, if loaded.
@@ -38,9 +39,9 @@ function qualifiedAccount(account: mastodon.Account): string {
   return `${account.username}@${u.hostname}`;
 }
 
-function localStatusURL(item: StatusItem): string {
-  const s = item.status.reblog ? item.status.reblog : item.status;
-  return `${item.account.serverAddr}/@${s.account.acct}/${s.id}`;
+function localStatusURL(data: StatusData): string {
+  const s = data.status.reblog ? data.status.reblog : data.status;
+  return `${data.account.serverAddr}/@${s.account.acct}/${s.id}`;
 }
 
 /**
@@ -101,7 +102,7 @@ function expandEmojis(msg: string, emojis?: mastodon.CustomEmoji[]): TemplateRes
 @customElement('mast-status')
 export class MastStatus extends LitElement {
   @property({ attribute: false })
-  item?: StatusItem;
+  data?: StatusData;
 
   @property({ attribute: false })
   stid?: bigint;
@@ -120,7 +121,7 @@ export class MastStatus extends LitElement {
   private forceShow: undefined | boolean;
 
   markUnread() {
-    if (!this.item) {
+    if (!this.data) {
       console.error("missing connection");
       return;
     }
@@ -128,22 +129,22 @@ export class MastStatus extends LitElement {
       throw new Error("missing stream id");
     }
     // Not sure if doing computation on "position" is fine, but... well.
-    common.backend.setLastRead(this.stid, this.item.position - 1n);
+    common.backend.setLastRead(this.stid, this.data.position - 1n);
   }
 
   async runSetStatus(action: pb.SetStatusRequest_Action) {
-    if (!this.item) {
-      throw new Error("missing item");
+    if (!this.data) {
+      throw new Error("missing data");
     }
-    const statusID = this.item.status.id;
+    const statusID = this.data.status.id;
     console.log("updating status", statusID, "; action:", action);
     const resp = await common.backend.setStatus(statusID, action);
     if (!resp.status) {
       throw new Error("no status was returned");
     }
-    // TODO: This is probably wrong to modify the provided item in place without notifying
+    // TODO: This is probably wrong to modify the provided data in place without notifying
     // anything.
-    this.item.status = common.parseStatus(resp.status);
+    this.data.status = common.parseStatus(resp.status);
     this.requestUpdate();
   }
 
@@ -153,7 +154,7 @@ export class MastStatus extends LitElement {
 
   toggleFavourite() {
     let action = pb.SetStatusRequest_Action.FAVOURITE;
-    if (this.item?.status.favourited) {
+    if (this.data?.status.favourited) {
       action = pb.SetStatusRequest_Action.UNFAVOURITE;
     }
     this.runSetStatus(action);
@@ -165,25 +166,25 @@ export class MastStatus extends LitElement {
   }
 
   render() {
-    if (!this.item) { return html`<div class="status">oops.</div>`; }
+    if (!this.data) { return html`<div class="status">oops.</div>`; }
 
     var filteredAr: string[] = [];
-    for (const filter of this.item.statusMeta.filters ?? []) {
+    for (const filter of this.data.statusMeta.filters ?? []) {
       if (filter.matched == true) {
         filteredAr.push(filter.phrase);
       }
     }
     const filtered = filteredAr.join(", ");
 
-    const alreadySeen = this.item.streamStatusState.alreadySeen === storagepb.StreamStatusState_AlreadySeen.YES;
+    const alreadySeen = this.data.streamStatusState.alreadySeen === storagepb.StreamStatusState_AlreadySeen.YES;
 
     const isOpen = this.forceShow === undefined ? (!filtered && !alreadySeen) : this.forceShow;
 
     // This actual status - i.e., the reblogged one when it is a reblog, or
     // the basic one.
-    const s = this.item.status.reblog ?? this.item.status;
-    const reblog = this.item.status.reblog;
-    const account = this.item.status.account;
+    const s = this.data.status.reblog ?? this.data.status;
+    const reblog = this.data.status.reblog;
+    const account = this.data.status.account;
 
     // Main created time is the time of the status or of the reblog content
     // if the status is a reblog.
@@ -191,10 +192,10 @@ export class MastStatus extends LitElement {
     const createdTimeLabel = `${common.displayTimezone}: ${createdTime.tz(common.displayTimezone).format()}\nSource: ${s.created_at}`;
 
     // Reblog time is the time of the main status, as in those case, the real content is in the reblog.
-    const reblogTime = dayjs(this.item.status.created_at);
-    const reblogTimeLabel = `${common.displayTimezone}: ${reblogTime.tz(common.displayTimezone).format()}\nSource: ${this.item.status.created_at}`;
+    const reblogTime = dayjs(this.data.status.created_at);
+    const reblogTimeLabel = `${common.displayTimezone}: ${reblogTime.tz(common.displayTimezone).format()}\nSource: ${this.data.status.created_at}`;
 
-    const openTarget = localStatusURL(this.item);
+    const openTarget = localStatusURL(this.data);
 
     return html`
       <div class="status ${classMap({ read: this.isRead, unread: !this.isRead, hiddenstatus: !isOpen })}">
@@ -322,14 +323,14 @@ export class MastStatus extends LitElement {
   }
 
   renderTools(s: mastodon.Status): TemplateResult {
-    if (!this.item) { return html`<div class="status">oops.</div>`; }
+    if (!this.data) { return html`<div class="status">oops.</div>`; }
 
     return html`
       <div class="tools">
         <div style="flex-grow: 1; display: flex; justify-content: space-evenly;">
           <div>
             <button @click=${() => this.toggleFavourite()}>
-              <span class="material-symbols-outlined ${classMap({ "symbol-filled": !!this.item.status.favourited })}"  title="Favorite">star</span>
+              <span class="material-symbols-outlined ${classMap({ "symbol-filled": !!this.data.status.favourited })}"  title="Favorite">star</span>
             </button>
             <span class="count">${s.favourites_count}</span>
           </div>
@@ -382,14 +383,14 @@ export class MastStatus extends LitElement {
           </div>
 
           <div>
-            <button @click="${() => this.copyRaw(this.item!.status)}" title="Copy raw status to clipboard">
+            <button @click="${() => this.copyRaw(this.data!.status)}" title="Copy raw status to clipboard">
               <span class="material-symbols-outlined">copy_all</span>
             </button>
             <span class="count">Copy</span>
           </div>
         </div>
       `: nothing}
-      ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(this.item.status, null, "  ")}</pre>` : nothing}
+      ${this.showRaw ? html`<pre class="rawcontent">${JSON.stringify(this.data.status, null, "  ")}</pre>` : nothing}
     `;
   }
 

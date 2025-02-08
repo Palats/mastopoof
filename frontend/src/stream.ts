@@ -8,7 +8,6 @@ import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 import * as storagepb from "mastopoof-proto/gen/mastopoof/storage/storage_pb";
 import { StreamUpdateEvent, fuzzy } from "./backend";
 import * as common from "./common";
-import * as mastodon from "./mastodon";
 import * as status from "./status";
 import * as protobuf from '@bufbuild/protobuf';
 
@@ -16,16 +15,9 @@ import "./time";
 import "./status";
 import "./mainview";
 
-// StatusItem represents the state in the UI of a given status.
-interface StatusItem {
-  // Position in the stream in the backend.
-  position: bigint;
-  // status, if loaded.
-  status: mastodon.Status;
-  // The account where this status was obtained from.
-  account: pb.Account;
-  statusMeta: storagepb.StatusMeta;
-  streamStatusState: storagepb.StreamStatusState;
+// StreamItem represents the state in the UI of a given status.
+interface StreamItem {
+  statusData: status.StatusData;
 
   // HTML element used to represent this status.
   elt?: Element;
@@ -37,10 +29,6 @@ interface StatusItem {
   disappeared: boolean;
 }
 
-// Ensure that StatusItem can act as status.StatusItem.
-function assertSubtype(): status.StatusItem { return {} as StatusItem; }
-assertSubtype();
-
 // Page displaying the main mastodon stream.
 @customElement('mast-stream')
 export class MastStream extends LitElement {
@@ -51,8 +39,8 @@ export class MastStream extends LitElement {
   // TODO: support changing it.
   @property({ attribute: false }) stid?: bigint;
 
-  private items: StatusItem[] = [];
-  private perEltItem = new Map<Element, StatusItem>();
+  private items: StreamItem[] = [];
+  private perEltItem = new Map<Element, StreamItem>();
 
   // Set to true when the first list of status (after auth) is done.
   private firstListDone = false;
@@ -219,9 +207,9 @@ export class MastStream extends LitElement {
     for (const item of this.items) {
       if (item.isVisible) {
         if (firstVisiblePosition === undefined) {
-          firstVisiblePosition = item.position;
+          firstVisiblePosition = item.statusData.position;
         }
-        lastVisiblePosition = item.position;
+        lastVisiblePosition = item.statusData.position;
       }
     }
     this.lastVisiblePosition = lastVisiblePosition;
@@ -233,7 +221,7 @@ export class MastStream extends LitElement {
       if (!item.disappeared) {
         break;
       }
-      disappearedPosition = item.position;
+      disappearedPosition = item.statusData.position;
     }
     if (this.streamInfo !== undefined && disappearedPosition > this.streamInfo.lastRead) {
       if (!this.stid) {
@@ -256,17 +244,19 @@ export class MastStream extends LitElement {
     const resp = await common.backend.list(protobuf.create(pb.ListRequestSchema, { stid: stid, position: this.backwardPosition, direction: pb.ListRequest_Direction.BACKWARD }))
     this.backwardPosition = resp.backwardPosition;
 
-    const newItems: StatusItem[] = [];
+    const newItems: StreamItem[] = [];
     for (let i = 0; i < resp.items.length; i++) {
       const item = resp.items[i];
       const position = item.position;
       const status = common.parseStatus(item.status!);
       newItems.push({
-        status: status,
-        position: position,
-        account: item.account!,
-        statusMeta: item.meta!,   // TODO: check presence
-        streamStatusState: item.streamStatusState!,
+        statusData: {
+          status: status,
+          position: position,
+          account: item.account!,
+          statusMeta: item.meta!,   // TODO: check presence
+          streamStatusState: item.streamStatusState!,
+        },
         isVisible: false,
         wasSeen: false,
         disappeared: false,
@@ -277,11 +267,11 @@ export class MastStream extends LitElement {
     let prevPosition: bigint | undefined;
     for (const item of this.items) {
       if (prevPosition !== undefined) {
-        if (prevPosition + 1n != item.position) {
-          console.error(`out of order items: prev=${prevPosition}, item=${item.position}`);
+        if (prevPosition + 1n != item.statusData.position) {
+          console.error(`out of order items: prev=${prevPosition}, item=${item.statusData.position}`);
         }
       }
-      prevPosition = item.position;
+      prevPosition = item.statusData.position;
     }
     this.requestUpdate();
   }
@@ -315,18 +305,20 @@ export class MastStream extends LitElement {
       const item = resp.items[i];
       const position = item.position;
       if (this.items.length > 0) {
-        const prevPosition = this.items[this.items.length - 1].position;
+        const prevPosition = this.items[this.items.length - 1].statusData.position;
         if (position != prevPosition + 1n) {
           console.error(`missing position; previous=${prevPosition}, item=${position}`);
         }
       }
       const status = common.parseStatus(item.status!);
       this.items.push({
-        status: status,
-        position: position,
-        account: item.account!,
-        statusMeta: item.meta!,  // TODO: check presence
-        streamStatusState: item.streamStatusState!,
+        statusData: {
+          status: status,
+          position: position,
+          account: item.account!,
+          statusMeta: item.meta!,  // TODO: check presence
+          streamStatusState: item.streamStatusState!,
+        },
         isVisible: false,
         wasSeen: false,
         disappeared: false,
@@ -360,7 +352,7 @@ export class MastStream extends LitElement {
     }
   }
 
-  updateStatusRef(item: StatusItem, elt?: Element) {
+  updateStatusRef(item: StreamItem, elt?: Element) {
     if (!this.observer) {
       return;
     }
@@ -391,7 +383,7 @@ export class MastStream extends LitElement {
       // Initial loading was done, so if items is empty, it means nothing is available.
       availableCount = this.streamInfo.remainingPool;
     } else {
-      const lastPosition = this.items[this.items.length - 1].position;
+      const lastPosition = this.items[this.items.length - 1].statusData.position;
       const lastVisible = this.lastVisiblePosition ?? 0n;
 
       // loadedCount are statuses available in the browser, but not yet displayed.
@@ -451,7 +443,7 @@ export class MastStream extends LitElement {
 
     // This function is called only if the initial loading is done - so if there is no items, it means that
     // the stream was empty at that time, and thus we're at its beginning.
-    const isBeginning = this.items.length == 0 || (this.items[0].position === this.streamInfo.firstPosition)
+    const isBeginning = this.items.length == 0 || (this.items[0].statusData.position === this.streamInfo.firstPosition)
 
     const buttonName = (this.streamInfo.remainingPool === 0n) ? "Look for statuses" : "Load more statuses";
 
@@ -469,7 +461,7 @@ export class MastStream extends LitElement {
       `}
       </div>
 
-      ${repeat(this.items, item => item.position, (item, _) => this.renderStatus(item))}
+      ${repeat(this.items, item => item.statusData.position, (item, _) => this.renderStatus(item))}
 
       <div class="noanchor stream-end">
         <div class="centered">
@@ -483,12 +475,12 @@ export class MastStream extends LitElement {
     `;
   }
 
-  renderStatus(item: StatusItem): TemplateResult[] {
+  renderStatus(item: StreamItem): TemplateResult[] {
     const lastRead = this.streamInfo?.lastRead ?? 0;
-    const pos = item.position;
+    const pos = item.statusData.position;
     const content: TemplateResult[] = [];
-    content.push(html`<mast-status ?isRead=${pos <= lastRead} ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .stid=${this.stid} .item=${item as any}></mast-status>`);
-    if (item.position == lastRead) {
+    content.push(html`<mast-status .data=${item.statusData as any} ?isRead=${pos <= lastRead} ${ref((elt?: Element) => this.updateStatusRef(item, elt))} .stid=${this.stid}></mast-status>`);
+    if (item.statusData.position == lastRead) {
       content.push(html`<div class="lastread centered">The bookmark</div>`);
     }
     return content;

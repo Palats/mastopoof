@@ -8,7 +8,7 @@ import * as pb from "mastopoof-proto/gen/mastopoof/mastopoof_pb";
 
 @customElement('mast-search')
 export class MastSearch extends LitElement {
-  @state() private items: statuslib.StatusItem[] = [];
+  @state() private items: statuslib.StatusData[] = [];
   @state() loadingBarUsers = 0;
   @state() searchMsg = "No search.";
 
@@ -59,7 +59,7 @@ export class MastSearch extends LitElement {
           </div>
 
           ${this.items.map(item => html`
-            <mast-status .item=${item as any}></mast-status>
+            <mast-status .data=${item as any}></mast-status>
           `)}
         </div>
         <div slot="footer" class="centered">${this.searchMsg}</div>
