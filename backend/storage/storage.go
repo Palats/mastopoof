@@ -5,7 +5,6 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -21,8 +20,6 @@ import (
 	"github.com/mattn/go-mastodon"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -57,31 +54,6 @@ func recordAction(name string) func(error) {
 		d := time.Since(start)
 		actionLatency.With(prometheus.Labels{"action": name, "code": errToCode(err)}).Observe(d.Seconds())
 	}
-}
-
-// SQLProto encapsulate a protobuf message to make suitable as value
-// of SQL queries - both as source data and as destination data.
-// E.g.,:  SQLProto{myMsg}
-type SQLProto struct {
-	proto.Message
-}
-
-// Scan implements the [sql.Scanner] interface.
-func (m SQLProto) Scan(src any) error {
-	s, ok := src.(string)
-	if !ok {
-		return fmt.Errorf("expected a string for proto json, got %T", src)
-	}
-	return protojson.Unmarshal([]byte(s), m)
-}
-
-// Value implements the [driver.Valuer] interface.
-func (m SQLProto) Value() (driver.Value, error) {
-	data, err := protojson.Marshal(m)
-	if err != nil {
-		return nil, err
-	}
-	return string(data), err
 }
 
 type SQLReadOnly interface {

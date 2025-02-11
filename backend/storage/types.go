@@ -12,6 +12,8 @@ import (
 	settingspb "github.com/Palats/mastopoof/proto/gen/mastopoof/settings"
 	stpb "github.com/Palats/mastopoof/proto/gen/mastopoof/storage"
 	"github.com/mattn/go-mastodon"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 // SID is the type of status IDs in `statuses` and `streamcontent` databases.
@@ -98,6 +100,31 @@ func (ss *sqlStatus) Scan(src any) error {
 // Value implements the [driver.Valuer] interface.
 func (ss *sqlStatus) Value() (driver.Value, error) {
 	data, err := json.Marshal(ss)
+	if err != nil {
+		return nil, err
+	}
+	return string(data), err
+}
+
+// SQLProto encapsulate a protobuf message to make suitable as value
+// of SQL queries - both as source data and as destination data.
+// E.g.,:  SQLProto{myMsg}
+type SQLProto struct {
+	proto.Message
+}
+
+// Scan implements the [sql.Scanner] interface.
+func (m SQLProto) Scan(src any) error {
+	s, ok := src.(string)
+	if !ok {
+		return fmt.Errorf("expected a string for proto json, got %T", src)
+	}
+	return protojson.Unmarshal([]byte(s), m)
+}
+
+// Value implements the [driver.Valuer] interface.
+func (m SQLProto) Value() (driver.Value, error) {
+	data, err := protojson.Marshal(m)
 	if err != nil {
 		return nil, err
 	}
