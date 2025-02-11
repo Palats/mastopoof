@@ -1,5 +1,5 @@
 // Package storage manages Mastopoof persistence.
-// This file is about the various structure representing the stored state.
+// This file is about some types helpers.
 package storage
 
 import (
