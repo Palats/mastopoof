@@ -1,6 +1,5 @@
-// Package storage manages Mastopoof persistence.
-// This file is about some types helpers.
-package storage
+// Package types contains common types used across the backend.
+package types
 
 import (
 	"database/sql/driver"
@@ -81,15 +80,15 @@ func StreamStateToStreamInfo(ss *stpb.StreamState) *pb.StreamInfo {
 	}
 }
 
-// sqlStatus encapsulate a mastodon status to allow for easier SQL
+// SQLStatus encapsulate a mastodon status to allow for easier SQL
 // serialization, as it is not possible to add it on the original type
 // on the Mastodon library.
-type sqlStatus struct {
+type SQLStatus struct {
 	mastodon.Status
 }
 
 // Scan implements the [Scanner] interface.
-func (ss *sqlStatus) Scan(src any) error {
+func (ss *SQLStatus) Scan(src any) error {
 	s, ok := src.(string)
 	if !ok {
 		return fmt.Errorf("expected a string for Status json, got %T", src)
@@ -98,7 +97,7 @@ func (ss *sqlStatus) Scan(src any) error {
 }
 
 // Value implements the [driver.Valuer] interface.
-func (ss *sqlStatus) Value() (driver.Value, error) {
+func (ss *SQLStatus) Value() (driver.Value, error) {
 	data, err := json.Marshal(ss)
 	if err != nil {
 		return nil, err

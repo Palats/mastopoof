@@ -19,6 +19,7 @@ import (
 	"github.com/Palats/mastopoof/backend/cmds"
 	"github.com/Palats/mastopoof/backend/server"
 	"github.com/Palats/mastopoof/backend/storage"
+	"github.com/Palats/mastopoof/backend/types"
 	"github.com/Palats/mastopoof/frontend"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -28,12 +29,12 @@ func FlagPort(fs *pflag.FlagSet) *int {
 	return fs.Int("port", 8079, "Port to listen on for the 'serve' command")
 }
 
-func FlagUserID(fs *pflag.FlagSet) *storage.UID {
-	return (*storage.UID)(fs.Int64("uid", 0, "User ID to use for commands. With 'serve' will auto login that user."))
+func FlagUserID(fs *pflag.FlagSet) *types.UID {
+	return (*types.UID)(fs.Int64("uid", 0, "User ID to use for commands. With 'serve' will auto login that user."))
 }
 
-func FlagStreamID(fs *pflag.FlagSet) *storage.StID {
-	return (*storage.StID)(fs.Int64("stream_id", 0, "Stream to use"))
+func FlagStreamID(fs *pflag.FlagSet) *types.StID {
+	return (*types.StID)(fs.Int64("stream_id", 0, "Stream to use"))
 }
 
 func FlagDBFilename(fs *pflag.FlagSet) *string {
@@ -50,7 +51,7 @@ func FlagInsecure(fs *pflag.FlagSet) *bool {
 	return fs.Bool("insecure", false, "If true, mark cookies as insecure, allowing serving without https")
 }
 
-func getStreamID(ctx context.Context, st *storage.Storage, streamID storage.StID, userID storage.UID) (storage.StID, error) {
+func getStreamID(ctx context.Context, st *storage.Storage, streamID types.StID, userID types.UID) (types.StID, error) {
 	if streamID != 0 {
 		return streamID, nil
 	}
@@ -59,7 +60,7 @@ func getStreamID(ctx context.Context, st *storage.Storage, streamID storage.StID
 		if err != nil {
 			return 0, err
 		}
-		return storage.StID(userState.DefaultStid), nil
+		return types.StID(userState.DefaultStid), nil
 	}
 	return 0, errors.New("no streamID / user ID specified")
 }
@@ -78,7 +79,7 @@ func getMux(s *server.Server) (*http.ServeMux, error) {
 	return mux, nil
 }
 
-func getServer(st *storage.Storage, autoLogin storage.UID, inviteCode string, insecure bool, selfURL string) (*server.Server, error) {
+func getServer(st *storage.Storage, autoLogin types.UID, inviteCode string, insecure bool, selfURL string) (*server.Server, error) {
 	// Run the backend RPC server.
 	sessionManager := server.NewSessionManager(st)
 	if insecure {
@@ -272,13 +273,13 @@ func cmdTestServe() *cobra.Command {
 		}
 		defer st.Close()
 
-		uid := storage.UID(0)
+		uid := types.UID(0)
 		if *autoLogin {
 			userState, _, _, err := st.CreateUser(ctx, nil, serverAddr, "1234", "testuser1")
 			if err != nil {
 				return fmt.Errorf("unable to create testuser: %w", err)
 			}
-			uid = storage.UID(userState.Uid)
+			uid = types.UID(userState.Uid)
 		}
 
 		s, err := getServer(st, uid, *inviteCode, *insecure, *selfURL)

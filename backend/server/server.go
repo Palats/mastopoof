@@ -12,6 +12,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/Palats/mastopoof/backend/storage"
+	"github.com/Palats/mastopoof/backend/types"
 	"github.com/alexedwards/scs/v2"
 	"github.com/golang/glog"
 	"github.com/mattn/go-mastodon"
@@ -91,7 +92,7 @@ func (appreg *AppRegistry) MastodonClient(appRegState *stpb.AppRegState, accessT
 	return client
 }
 
-func (appreg *AppRegistry) appRegInfo(serverAddr string, selfURL *url.URL) *storage.AppRegInfo {
+func (appreg *AppRegistry) appRegInfo(serverAddr string, selfURL *url.URL) *types.AppRegInfo {
 	redirectURI := OutOfBandURI
 
 	if selfURL != nil {
@@ -105,7 +106,7 @@ func (appreg *AppRegistry) appRegInfo(serverAddr string, selfURL *url.URL) *stor
 		redirectURI = u.String()
 	}
 
-	return &storage.AppRegInfo{
+	return &types.AppRegInfo{
 		ServerAddr:  serverAddr,
 		RedirectURI: redirectURI,
 		Scopes:      AppMastodonScopes,
@@ -113,7 +114,7 @@ func (appreg *AppRegistry) appRegInfo(serverAddr string, selfURL *url.URL) *stor
 }
 
 // callRegister register Mastopoof on the specified mastodon server, with the provided scopes and redirect URI.
-func (appreg *AppRegistry) callRegister(ctx context.Context, nfo *storage.AppRegInfo) (*stpb.AppRegState, error) {
+func (appreg *AppRegistry) callRegister(ctx context.Context, nfo *types.AppRegInfo) (*stpb.AppRegState, error) {
 	// TODO: rate limiting to avoid abuse.
 	// TODO: garbage collection of unused ones.
 	// TODO: update redirect URIs as needed.
@@ -163,13 +164,13 @@ type Server struct {
 
 	st             *storage.Storage
 	inviteCode     string
-	autoLogin      storage.UID
+	autoLogin      types.UID
 	sessionManager *scs.SessionManager
 	selfURL        *url.URL
 	appRegistry    *AppRegistry
 }
 
-func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode string, autoLogin storage.UID, selfURL *url.URL, appRegistry *AppRegistry) *Server {
+func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode string, autoLogin types.UID, selfURL *url.URL, appRegistry *AppRegistry) *Server {
 	s := &Server{
 		FrontendConfig: MastopoofConfig{
 			Src:       "server",
@@ -186,14 +187,14 @@ func New(st *storage.Storage, sessionManager *scs.SessionManager, inviteCode str
 	return s
 }
 
-func (s *Server) setSessionUserID(ctx context.Context, uid storage.UID) {
+func (s *Server) setSessionUserID(ctx context.Context, uid types.UID) {
 	// `uid`` must be converted from `UID` to `int64`, otherwise session manager
 	// has trouble serializing it.
 	s.sessionManager.Put(ctx, "userid", int64(uid))
 }
 
-func (s *Server) isLogged(ctx context.Context) (storage.UID, error) {
-	userID := storage.UID(s.sessionManager.GetInt64(ctx, "userid"))
+func (s *Server) isLogged(ctx context.Context) (types.UID, error) {
+	userID := types.UID(s.sessionManager.GetInt64(ctx, "userid"))
 	if userID == 0 {
 		return 0, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("oh noes"))
 	}
@@ -206,12 +207,12 @@ func (s *Server) getUserInfo(ctx context.Context, userState *stpb.UserState) (*p
 		DefaultStid: userState.DefaultStid,
 	}
 
-	accountStates, err := s.st.AllAccountStateByUID(ctx, nil, storage.UID(userState.Uid))
+	accountStates, err := s.st.AllAccountStateByUID(ctx, nil, types.UID(userState.Uid))
 	if err != nil {
 		return nil, err
 	}
 	for _, accountState := range accountStates {
-		userInfo.Accounts = append(userInfo.Accounts, storage.AccountStateToAccountProto(accountState))
+		userInfo.Accounts = append(userInfo.Accounts, types.AccountStateToAccountProto(accountState))
 	}
 
 	userInfo.Settings = userState.Settings
@@ -221,7 +222,7 @@ func (s *Server) getUserInfo(ctx context.Context, userState *stpb.UserState) (*p
 
 // verifyStdID checks that the logged in user is allowed access to that
 // stream.
-func (s *Server) verifyStID(ctx context.Context, stid storage.StID) (*stpb.UserState, error) {
+func (s *Server) verifyStID(ctx context.Context, stid types.StID) (*stpb.UserState, error) {
 	userID, err := s.isLogged(ctx)
 	if err != nil {
 		return nil, err
@@ -230,7 +231,7 @@ func (s *Server) verifyStID(ctx context.Context, stid storage.StID) (*stpb.UserS
 	if err != nil {
 		return nil, err
 	}
-	if storage.StID(userState.DefaultStid) != stid {
+	if types.StID(userState.DefaultStid) != stid {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("stream access denied"))
 	}
 	return userState, nil
@@ -415,7 +416,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 
 		// Get the userState
 		// TODO: don't re-read it if it was just created
-		userState, err = s.st.UserState(ctx, txn, storage.UID(accountState.Uid))
+		userState, err = s.st.UserState(ctx, txn, types.UID(accountState.Uid))
 		if err != nil {
 			return fmt.Errorf("unable to load userstate for UID %d: %w", accountState.Uid, err)
 		}
@@ -437,7 +438,7 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 	if err != nil {
 		return nil, fmt.Errorf("unable to renew token: %w", err)
 	}
-	s.setSessionUserID(ctx, storage.UID(userState.Uid))
+	s.setSessionUserID(ctx, types.UID(userState.Uid))
 
 	userInfo, err := s.getUserInfo(ctx, userState)
 	if err != nil {
@@ -450,17 +451,17 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 }
 
 func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest]) (*connect.Response[pb.ListResponse], error) {
-	stid := storage.StID(req.Msg.Stid)
+	stid := types.StID(req.Msg.Stid)
 	userState, err := s.verifyStID(ctx, stid)
 	if err != nil {
 		return nil, err
 	}
 
-	accountState, err := s.st.FirstAccountStateByUID(ctx, nil, storage.UID(userState.Uid))
+	accountState, err := s.st.FirstAccountStateByUID(ctx, nil, types.UID(userState.Uid))
 	if err != nil {
 		return nil, err
 	}
-	accountStateProto := storage.AccountStateToAccountProto(accountState)
+	accountStateProto := types.AccountStateToAccountProto(accountState)
 
 	resp := &pb.ListResponse{}
 
@@ -487,7 +488,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 		return nil, fmt.Errorf("unknown direction %v", req.Msg.Direction)
 	}
 
-	resp.StreamInfo = storage.StreamStateToStreamInfo(listResult.StreamState)
+	resp.StreamInfo = types.StreamStateToStreamInfo(listResult.StreamState)
 
 	if len(listResult.Items) > 0 {
 		resp.BackwardPosition = listResult.Items[0].Position
@@ -520,7 +521,7 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 }
 
 func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadRequest]) (*connect.Response[pb.SetReadResponse], error) {
-	stid := storage.StID(req.Msg.Stid)
+	stid := types.StID(req.Msg.Stid)
 	if _, err := s.verifyStID(ctx, stid); err != nil {
 		return nil, err
 	}
@@ -563,13 +564,13 @@ func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadReq
 	}
 
 	return connect.NewResponse(&pb.SetReadResponse{
-		StreamInfo: storage.StreamStateToStreamInfo(streamState),
+		StreamInfo: types.StreamStateToStreamInfo(streamState),
 	}), nil
 }
 
 func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {
 	// Check for credentials.
-	stid := storage.StID(req.Msg.Stid)
+	stid := types.StID(req.Msg.Stid)
 	if _, err := s.verifyStID(ctx, stid); err != nil {
 		return nil, err
 	}
@@ -587,7 +588,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 
 		// For support for having multiple Mastodon account, this would
 		// need to list the accounts and do the fetching from each account.
-		accountState, err = s.st.FirstAccountStateByUID(ctx, txn, storage.UID(streamState.Uid))
+		accountState, err = s.st.FirstAccountStateByUID(ctx, txn, types.UID(streamState.Uid))
 		if err != nil {
 			return err
 		}
@@ -700,7 +701,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		streamState.NotificationsState = notifsState
 		streamState.NotificationsCount = notifsCount
 
-		currentAccountState, err := s.st.FirstAccountStateByUID(ctx, txn, storage.UID(streamState.Uid))
+		currentAccountState, err := s.st.FirstAccountStateByUID(ctx, txn, types.UID(streamState.Uid))
 		if err != nil {
 			return fmt.Errorf("unable to verify for race conditions: %w", err)
 		}
@@ -714,10 +715,10 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		}
 
 		// InsertStatuses updates streamState IN PLACE and persists it.
-		if err := s.st.InsertStatuses(ctx, txn, storage.ASID(accountState.Asid), streamState, timeline, filters); err != nil {
+		if err := s.st.InsertStatuses(ctx, txn, types.ASID(accountState.Asid), streamState, timeline, filters); err != nil {
 			return err
 		}
-		resp.StreamInfo = storage.StreamStateToStreamInfo(streamState)
+		resp.StreamInfo = types.StreamStateToStreamInfo(streamState)
 		return nil
 	})
 	if err != nil {
@@ -766,7 +767,7 @@ func (s *Server) Search(ctx context.Context, req *connect.Request[pb.SearchReque
 	}
 
 	// TODO: account is potentially per status, while it is currently considered per user.
-	accountStateProto := storage.AccountStateToAccountProto(accountState)
+	accountStateProto := types.AccountStateToAccountProto(accountState)
 	resp := &pb.SearchResponse{}
 	for _, item := range results {
 		raw, err := json.Marshal(item.Status)
@@ -827,7 +828,7 @@ func (s *Server) SetStatus(ctx context.Context, req *connect.Request[pb.SetStatu
 		return nil, fmt.Errorf("unable to get filters: %w", err)
 	}
 	err = s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
-		return s.st.UpdateStatus(ctx, txn, storage.ASID(accountState.Asid), status, filters)
+		return s.st.UpdateStatus(ctx, txn, types.ASID(accountState.Asid), status, filters)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unable to update status: %w", err)

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Palats/mastopoof/backend/mastodon/testserver"
+	"github.com/Palats/mastopoof/backend/types"
 	settingspb "github.com/Palats/mastopoof/proto/gen/mastopoof/settings"
 	stpb "github.com/Palats/mastopoof/proto/gen/mastopoof/storage"
 	"github.com/mattn/go-mastodon"
@@ -112,7 +113,7 @@ func TestNoCrossUserStatuses(t *testing.T) {
 	for i := int64(0); i < 10; i++ {
 		statuses = append(statuses, testserver.NewFakeStatus(mastodon.ID(strconv.FormatInt(i+10, 10)), "123"))
 	}
-	env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, ASID(accountState1.Asid), streamState1, statuses, []*mastodon.Filter{})
+	env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, types.ASID(accountState1.Asid), streamState1, statuses, []*mastodon.Filter{})
 
 	// Create a second user
 	userState2, _, streamState2, err := env.st.CreateUser(ctx, nil, "localhost", "456", "user2")
@@ -140,7 +141,7 @@ func TestPick(t *testing.T) {
 	for i := int64(0); i < 4; i++ {
 		statuses = append(statuses, testserver.NewFakeStatus(mastodon.ID(strconv.FormatInt(i+10, 10)), "123"))
 	}
-	env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, ASID(accountState1.Asid), streamState1, statuses, []*mastodon.Filter{})
+	env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, types.ASID(accountState1.Asid), streamState1, statuses, []*mastodon.Filter{})
 
 	// Make sure the statuses that were inserted are available.
 	foundIDs := map[mastodon.ID]int{}
@@ -174,29 +175,29 @@ func TestCreateStreamStateIncreases(t *testing.T) {
 	env := (&DBTestEnv{}).Init(ctx, t)
 	defer env.Close()
 
-	seenUIDs := map[UID]bool{}
-	seenASIDs := map[ASID]bool{}
-	seenStIDs := map[StID]bool{}
+	seenUIDs := map[types.UID]bool{}
+	seenASIDs := map[types.ASID]bool{}
+	seenStIDs := map[types.StID]bool{}
 	for i := 1; i < 5; i++ {
 		userState, accountState, streamState, err := env.st.CreateUser(ctx, nil, "localhost", mastodon.ID(fmt.Sprintf("%d", i)), fmt.Sprintf("user%d", i))
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if seenUIDs[UID(userState.Uid)] {
+		if seenUIDs[types.UID(userState.Uid)] {
 			t.Errorf("duplicate UID %d", userState.Uid)
 		}
-		seenUIDs[UID(userState.Uid)] = true
+		seenUIDs[types.UID(userState.Uid)] = true
 
-		if seenASIDs[ASID(accountState.Asid)] {
+		if seenASIDs[types.ASID(accountState.Asid)] {
 			t.Errorf("duplicate ASID %d", accountState.Asid)
 		}
-		seenASIDs[ASID(accountState.Asid)] = true
+		seenASIDs[types.ASID(accountState.Asid)] = true
 
-		if seenStIDs[StID(streamState.Stid)] {
+		if seenStIDs[types.StID(streamState.Stid)] {
 			t.Errorf("duplicate StID %d", streamState.Stid)
 		}
-		seenStIDs[StID(streamState.Stid)] = true
+		seenStIDs[types.StID(streamState.Stid)] = true
 	}
 }
 
@@ -210,7 +211,7 @@ func TestSearchStatusID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, ASID(accountState1.Asid), streamState1, []*mastodon.Status{
+	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, types.ASID(accountState1.Asid), streamState1, []*mastodon.Status{
 		testserver.NewFakeStatus(mastodon.ID("100"), "123"),
 		testserver.NewFakeStatus(mastodon.ID("101"), "123"),
 		testserver.NewFakeStatus(mastodon.ID("102"), "123"),
@@ -223,7 +224,7 @@ func TestSearchStatusID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, ASID(accountState2.Asid), streamState2, []*mastodon.Status{
+	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, types.ASID(accountState2.Asid), streamState2, []*mastodon.Status{
 		testserver.NewFakeStatus(mastodon.ID("200"), "456"),
 		testserver.NewFakeStatus(mastodon.ID("201"), "456"),
 	}, []*mastodon.Filter{})
@@ -233,7 +234,7 @@ func TestSearchStatusID(t *testing.T) {
 
 	err = env.st.InTxnRO(ctx, func(ctx context.Context, txn SQLReadOnly) error {
 		// Make sure the statuses that were inserted are available.
-		results, err := env.st.SearchByStatusID(ctx, txn, UID(userState1.Uid), "101")
+		results, err := env.st.SearchByStatusID(ctx, txn, types.UID(userState1.Uid), "101")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -245,7 +246,7 @@ func TestSearchStatusID(t *testing.T) {
 		}
 
 		// Search for an unknown status.
-		results, err = env.st.SearchByStatusID(ctx, txn, UID(userState1.Uid), "199")
+		results, err = env.st.SearchByStatusID(ctx, txn, types.UID(userState1.Uid), "199")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -254,7 +255,7 @@ func TestSearchStatusID(t *testing.T) {
 		}
 
 		// Check that searchs look only for the provided user statuses.
-		results, err = env.st.SearchByStatusID(ctx, txn, UID(userState2.Uid), "101")
+		results, err = env.st.SearchByStatusID(ctx, txn, types.UID(userState2.Uid), "101")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -281,7 +282,7 @@ func TestFilters(t *testing.T) {
 
 	f1 := mastodon.Filter{"123", "content", []string{"home"}, false, time.Unix(0, 0), true}
 	f2 := mastodon.Filter{"456", "smurf", []string{"home"}, false, time.Unix(0, 0), true}
-	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, ASID(accountState1.Asid), streamState1, []*mastodon.Status{
+	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, types.ASID(accountState1.Asid), streamState1, []*mastodon.Status{
 		testserver.NewFakeStatus(mastodon.ID("100"), "123"),
 		testserver.NewFakeStatus(mastodon.ID("101"), "123"),
 		testserver.NewFakeStatus(mastodon.ID("102"), "123"),
@@ -346,7 +347,7 @@ func getStreamStatusState(ctx context.Context, env *DBTestEnv, withID string) *s
 	row := env.roDB.QueryRowContext(ctx, `
 		SELECT stream_status_state FROM streamcontent WHERE status_id = ?
 	`, withID)
-	if err := row.Scan(SQLProto{streamStatusState}); err != nil {
+	if err := row.Scan(types.SQLProto{streamStatusState}); err != nil {
 		env.t.Fatal(err)
 	}
 	return streamStatusState
@@ -384,7 +385,7 @@ func TestAlreadySeenActive(t *testing.T) {
 	status5 := testserver.NewFakeStatus(mastodon.ID("105"), "123")
 	status5.Reblog = status4
 
-	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, ASID(accountState1.Asid), streamState1, []*mastodon.Status{
+	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, types.ASID(accountState1.Asid), streamState1, []*mastodon.Status{
 		status1, status2, status3, status4, status5,
 	}, []*mastodon.Filter{})
 	if err != nil {
@@ -447,7 +448,7 @@ func TestAlreadySeenInactive(t *testing.T) {
 	status4 := testserver.NewFakeStatus(mastodon.ID("104"), "123")
 	status4.Reblog = status3
 
-	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, ASID(accountState1.Asid), streamState1, []*mastodon.Status{
+	err = env.st.InsertStatuses(ctx, sqlAdapter{env.rwDB}, types.ASID(accountState1.Asid), streamState1, []*mastodon.Status{
 		status1, status2, status3, status4,
 	}, []*mastodon.Filter{})
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/Palats/mastopoof/backend/server"
 	"github.com/Palats/mastopoof/backend/storage"
+	"github.com/Palats/mastopoof/backend/types"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -30,7 +31,7 @@ func CmdUsers(ctx context.Context, st *storage.Storage) error {
 	return nil
 }
 
-func CmdMe(ctx context.Context, st *storage.Storage, uid storage.UID, showAccount bool) error {
+func CmdMe(ctx context.Context, st *storage.Storage, uid types.UID, showAccount bool) error {
 	fmt.Println("# User ID:", uid)
 
 	userState, err := st.UserState(ctx, nil, uid)
@@ -38,7 +39,7 @@ func CmdMe(ctx context.Context, st *storage.Storage, uid storage.UID, showAccoun
 		return err
 	}
 	fmt.Println("# Default stream ID:", userState.DefaultStid)
-	stid := storage.StID(userState.DefaultStid)
+	stid := types.StID(userState.DefaultStid)
 
 	accountState, err := st.FirstAccountStateByUID(ctx, nil, uid)
 	if err != nil {
@@ -85,7 +86,7 @@ func CmdMe(ctx context.Context, st *storage.Storage, uid storage.UID, showAccoun
 	return nil
 }
 
-func CmdCheckStreamState(ctx context.Context, st *storage.Storage, stid storage.StID, doFix bool) error {
+func CmdCheckStreamState(ctx context.Context, st *storage.Storage, stid types.StID, doFix bool) error {
 	return st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
 		// Stream content - check for duplicates
 		fmt.Println("### Duplicate statuses in stream")

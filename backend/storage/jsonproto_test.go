@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/Palats/mastopoof/backend/types"
 	settingspb "github.com/Palats/mastopoof/proto/gen/mastopoof/settings"
 	stpb "github.com/Palats/mastopoof/proto/gen/mastopoof/storage"
 	"github.com/google/go-cmp/cmp"
@@ -87,8 +88,8 @@ func TestAppRegStateConv(t *testing.T) {
 }
 
 type OldUserState struct {
-	UID         UID                  `json:"uid"`
-	DefaultStID StID                 `json:"default_stid"`
+	UID         types.UID            `json:"uid"`
+	DefaultStID types.StID           `json:"default_stid"`
 	Settings    *settingspb.Settings `json:"settings"`
 }
 
@@ -111,12 +112,12 @@ func TestUserStateConv(t *testing.T) {
 }
 
 type OldAccountState struct {
-	ASID             ASID        `json:"asid"`
+	ASID             types.ASID  `json:"asid"`
 	ServerAddr       string      `json:"server_addr"`
 	AccountID        mastodon.ID `json:"account_id"`
 	Username         string      `json:"username"`
 	AccessToken      string      `json:"access_token"`
-	UID              UID         `json:"uid"`
+	UID              types.UID   `json:"uid"`
 	LastHomeStatusID mastodon.ID `json:"last_home_status_id"`
 }
 
@@ -143,8 +144,8 @@ func TestAccountStateConv(t *testing.T) {
 }
 
 type OldStreamState struct {
-	StID               StID                                `json:"stid"`
-	UID                UID                                 `json:"uid"`
+	StID               types.StID                          `json:"stid"`
+	UID                types.UID                           `json:"uid"`
 	LastRead           int64                               `json:"last_read"`
 	FirstPosition      int64                               `json:"first_position"`
 	LastPosition       int64                               `json:"last_position"`

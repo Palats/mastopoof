@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Palats/mastopoof/backend/types"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -382,7 +383,7 @@ func TestV13ToV14(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := UID(userState.Uid), UID(2); got != want {
+	if got, want := types.UID(userState.Uid), types.UID(2); got != want {
 		t.Errorf("Got uid %d, wanted %d", got, want)
 	}
 
@@ -390,7 +391,7 @@ func TestV13ToV14(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := UID(userState.Uid), UID(3); got != want {
+	if got, want := types.UID(userState.Uid), types.UID(3); got != want {
 		t.Errorf("Got uid %d, wanted %d", got, want)
 	}
 }
