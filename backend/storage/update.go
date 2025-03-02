@@ -25,47 +25,24 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 	if targetVersion > maxSchemaVersion {
 		return fmt.Errorf("target version (%d) is higher than max known version (%d)", targetVersion, maxSchemaVersion)
 	}
-	// Prepare update of the database schema.
-	txn, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("unable to update DB schema: %w", err)
-	}
-	defer txn.Rollback()
 
-	// Get version of the storage.
-	row := txn.QueryRow("PRAGMA user_version")
-	if row == nil {
-		return fmt.Errorf("unable to find user_version")
-
-	}
-	var version int
-	if err := row.Scan(&version); err != nil {
-		return fmt.Errorf("error parsing user_version: %w", err)
-	}
-	glog.Infof("PRAGMA user_version is %d (target=%v)", version, targetVersion)
-	if version > targetVersion {
-		return fmt.Errorf("user_version of DB (%v) is higher than target schema version (%v)", version, targetVersion)
-	}
-	if version == targetVersion {
-		return nil
-	}
-
-	glog.Infof("updating database schema...")
-
-	for i := version; i < targetVersion; i++ {
-		err := allSteps[i].Apply(ctx, txn)
+	for {
+		version, err := getCurrentVersion(ctx, db)
 		if err != nil {
-			return fmt.Errorf("unable to update from version %d to version %d: %w", i, i+1, err)
+			return err
 		}
-	}
 
-	if _, err := txn.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d;`, targetVersion)); err != nil {
-		return fmt.Errorf("unable to set user_version: %w", err)
-	}
+		if version > targetVersion {
+			return fmt.Errorf("user_version of DB (%v) is higher than target schema version (%v)", version, targetVersion)
+		}
+		if version == targetVersion {
+			break
+		}
 
-	// And commit the change.
-	if err := txn.Commit(); err != nil {
-		return fmt.Errorf("unable to update DB schema: %w", err)
+		step := allSteps[version]
+		if err := prepareDBSingleStep(ctx, db, step, version); err != nil {
+			return err
+		}
 	}
 
 	// Some update can create a lot of old table, recover space.
@@ -81,9 +58,87 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 	return nil
 }
 
+// prepareDBSingleStep applies the next change on the DB.
+// Return true if there is no more changes needed.
+func prepareDBSingleStep(ctx context.Context, db *sql.DB, step UpdateStep, expectedVersion int) (returnedErr error) {
+	if step.DisableForeignKeys {
+		// Prepare update of the database schema.
+		// See https://www.sqlite.org/lang_altertable.html,
+		//   "Making Other Kinds Of Table Schema Changes"
+		if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=OFF;`); err != nil {
+			return fmt.Errorf("unable to deactivate foreign_keys: %w", err)
+		}
+
+		defer func() {
+			if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = true;`); err != nil {
+				glog.Errorf("unable to re-enable foreign keys: %v", err)
+				if returnedErr == nil {
+					returnedErr = err
+				}
+			}
+		}()
+	}
+
+	txn, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("unable to update DB schema: %w", err)
+	}
+	defer txn.Rollback()
+
+	// Get version of the storage.
+	version, err := getCurrentVersion(ctx, txn)
+	if err != nil {
+		return err
+	}
+	glog.Infof("PRAGMA user_version is %d", version)
+
+	if version != expectedVersion {
+		return fmt.Errorf("concurrency error; expected version %d, got %d", expectedVersion, version)
+	}
+
+	stepVersion := version + 1
+
+	glog.Infof("updating database schema from %d to %d...", version, stepVersion)
+
+	// Apply the actual changes.
+	if err := step.Apply(ctx, txn); err != nil {
+		return fmt.Errorf("unable to update from version %d to version %d: %w", version, stepVersion, err)
+	}
+
+	if _, err := txn.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d;`, stepVersion)); err != nil {
+		return fmt.Errorf("unable to set user_version: %w", err)
+	}
+
+	// Verify integrity.
+	if _, err := txn.ExecContext(ctx, `PRAGMA foreign_key_check;`); err != nil {
+		return fmt.Errorf("unable to check foreign keys db: %w", err)
+	}
+
+	// And commit the change.
+	if err := txn.Commit(); err != nil {
+		return fmt.Errorf("unable to update DB schema: %w", err)
+	}
+
+	return nil
+}
+
+func getCurrentVersion(ctx context.Context, txn txnInterface) (int, error) {
+	row := txn.QueryRowContext(ctx, "PRAGMA user_version")
+	if row == nil {
+		return -1, fmt.Errorf("unable to find user_version")
+
+	}
+	var version int
+	if err := row.Scan(&version); err != nil {
+		return -1, fmt.Errorf("error parsing user_version: %w", err)
+	}
+	return version, nil
+}
+
 // UpdateStep represents a specific update of the DB schema.
 type UpdateStep struct {
-	Apply updateFunc
+	Apply              updateFunc
+	DisableForeignKeys bool
 }
 
 var allSteps []UpdateStep
@@ -98,7 +153,7 @@ type updateFunc func(context.Context, txnInterface) error
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
-const maxSchemaVersion = 30
+const maxSchemaVersion = 31
 
 func init() {
 	if len(allSteps) != maxSchemaVersion {
@@ -978,6 +1033,41 @@ func v29Tov30(ctx context.Context, txn txnInterface) error {
 	sqlStmt := `
 		CREATE INDEX streamcontent_status_id ON streamcontent(status_id);
 		CREATE INDEX streamcontent_status_reblog_id ON streamcontent(status_reblog_id);
+	`
+	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
+		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)
+	}
+	return nil
+}
+
+var _ = RegisterStep(UpdateStep{
+	Apply:              v30Tov31,
+	DisableForeignKeys: true,
+})
+
+func v30Tov31(ctx context.Context, txn txnInterface) error {
+	// Fix type of uid column.
+	sqlStmt := `
+		-- State of a Mastodon account.
+		CREATE TABLE accountstate_new (
+			-- Unique id.
+			asid INTEGER PRIMARY KEY,
+			-- Protobuf mastopoof.storage.AccountState as JSON
+			state TEXT NOT NULL,
+			-- The user which owns this account.
+			-- Immutable - even if another user ends up configuring that account,
+			-- a new account state would be created.
+			uid INTEGER NOT NULL,
+
+			FOREIGN KEY(uid) REFERENCES userstate(uid)
+		) STRICT;
+
+		INSERT INTO accountstate_new (asid, state, uid)
+			SELECT asid, state, uid FROM accountstate;
+
+		DROP TABLE accountstate;
+
+		ALTER TABLE accountstate_new RENAME TO accountstate;
 	`
 	if _, err := txn.ExecContext(ctx, sqlStmt); err != nil {
 		return fmt.Errorf("unable to run %q: %w", sqlStmt, err)

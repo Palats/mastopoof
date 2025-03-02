@@ -21,7 +21,7 @@ CREATE TABLE accountstate (
   -- The user which owns this account.
   -- Immutable - even if another user ends up configuring that account,
   -- a new account state would be created.
-  uid TEXT NOT NULL,
+  uid INTEGER NOT NULL,
 
   FOREIGN KEY(uid) REFERENCES userstate(uid)
 ) STRICT;

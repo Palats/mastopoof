@@ -759,3 +759,46 @@ func TestV27ToV28(t *testing.T) {
 		t.Errorf("data mismatch (-want +got):\n%s", diff)
 	}
 }
+
+func TestV30ToV31(t *testing.T) {
+	ctx := context.Background()
+
+	env := (&DBTestEnv{
+		targetVersion: 30,
+		sqlInit: `
+      INSERT INTO userstate (uid, state) VALUES (47, "");
+			INSERT INTO accountstate (asid, state, uid) VALUES (2, "", "47");
+			INSERT INTO statuses (sid, asid, status) VALUES	(4, 2, "{id: 'a'}");
+		`,
+	}).Init(ctx, t)
+	defer env.Close()
+
+	if err := prepareDB(ctx, env.rwDB, 31); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the IDs got injected
+	type Row struct {
+		UID int64
+	}
+
+	got := []*Row{}
+	rows, err := env.roDB.QueryContext(ctx, `SELECT uid FROM accountstate;`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		row := &Row{}
+		if err := rows.Scan(&row.UID); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, row)
+	}
+
+	want := []*Row{
+		{UID: 47},
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("data mismatch (-want +got):\n%s", diff)
+	}
+}
