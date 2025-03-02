@@ -53,7 +53,7 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 	glog.Infof("updating database schema...")
 
 	for i := version; i < targetVersion; i++ {
-		err := updateFunctions[i](ctx, txn)
+		err := allSteps[i].Apply(ctx, txn)
 		if err != nil {
 			return fmt.Errorf("unable to update from version %d to version %d: %w", i, i+1, err)
 		}
@@ -81,51 +81,34 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 	return nil
 }
 
-type updateFunc func(context.Context, txnInterface) error
+// UpdateStep represents a specific update of the DB schema.
+type UpdateStep struct {
+	Apply updateFunc
+}
+
+var allSteps []UpdateStep
 
 // If adding anything, do not forget to increment the schema version.
-var updateFunctions = []updateFunc{
-	v0Tov1,
-	v1Tov2,
-	v2Tov3,
-	v3Tov4,
-	v4Tov5,
-	v5Tov6,
-	v6Tov7,
-	v7Tov8,
-	v8Tov9,
-	v9Tov10,
-	v10Tov11,
-	v11Tov12,
-	v12Tov13,
-	v13Tov14,
-	v14Tov15,
-	v15Tov16,
-	v16Tov17,
-	v17Tov18,
-	v18Tov19,
-	v19Tov20,
-	v20Tov21,
-	v21Tov22,
-	v22Tov23,
-	v23Tov24,
-	v24Tov25,
-	v25Tov26,
-	v26Tov27,
-	v27Tov28,
-	v28Tov29,
-	v29Tov30,
+func RegisterStep(step UpdateStep) UpdateStep {
+	allSteps = append(allSteps, step)
+	return step
 }
+
+type updateFunc func(context.Context, txnInterface) error
 
 // maxSchemaVersion indicates up to which version the database schema was configured.
 // It is incremented everytime a change is made.
 const maxSchemaVersion = 30
 
 func init() {
-	if len(updateFunctions) != maxSchemaVersion {
-		panic(fmt.Sprintf("Got %d update functions for schema version %d", len(updateFunctions), maxSchemaVersion))
+	if len(allSteps) != maxSchemaVersion {
+		panic(fmt.Sprintf("Got %d update functions for schema version %d", len(allSteps), maxSchemaVersion))
 	}
 }
+
+var _ = RegisterStep(UpdateStep{
+	Apply: v0Tov1,
+})
 
 func v0Tov1(ctx context.Context, txn txnInterface) error {
 	sqlStmt := `
@@ -141,6 +124,10 @@ func v0Tov1(ctx context.Context, txn txnInterface) error {
 	}
 	return nil
 }
+
+var _ = RegisterStep(UpdateStep{
+	Apply: v1Tov2,
+})
 
 func v1Tov2(ctx context.Context, txn txnInterface) error {
 	sqlStmt := `
@@ -165,6 +152,10 @@ func v1Tov2(ctx context.Context, txn txnInterface) error {
 	}
 	return nil
 }
+
+var _ = RegisterStep(UpdateStep{
+	Apply: v2Tov3,
+})
 
 func v2Tov3(ctx context.Context, txn txnInterface) error {
 	// Do backfill of status key
@@ -200,6 +191,10 @@ func v2Tov3(ctx context.Context, txn txnInterface) error {
 	return nil
 }
 
+var _ = RegisterStep(UpdateStep{
+	Apply: v3Tov4,
+})
+
 func v3Tov4(ctx context.Context, txn txnInterface) error {
 	sqlStmt := `
 			CREATE TABLE listingstate (
@@ -224,6 +219,10 @@ func v3Tov4(ctx context.Context, txn txnInterface) error {
 	return nil
 }
 
+var _ = RegisterStep(UpdateStep{
+	Apply: v4Tov5,
+})
+
 func v4Tov5(ctx context.Context, txn txnInterface) error {
 	sqlStmt := `
 			ALTER TABLE listingstate RENAME TO streamstate;
@@ -237,6 +236,10 @@ func v4Tov5(ctx context.Context, txn txnInterface) error {
 	}
 	return nil
 }
+
+var _ = RegisterStep(UpdateStep{
+	Apply: v5Tov6,
+})
 
 func v5Tov6(ctx context.Context, txn txnInterface) error {
 	// Rename field 'lid' in JSON to 'stid'.
@@ -256,6 +259,10 @@ func v5Tov6(ctx context.Context, txn txnInterface) error {
 	}
 	return nil
 }
+
+var _ = RegisterStep(UpdateStep{
+	Apply: v6Tov7,
+})
 
 func v6Tov7(ctx context.Context, txn txnInterface) error {
 	// Rename 'authinfo' to 'accountstate'.
@@ -279,6 +286,10 @@ func v6Tov7(ctx context.Context, txn txnInterface) error {
 	return nil
 }
 
+var _ = RegisterStep(UpdateStep{
+	Apply: v7Tov8,
+})
+
 func v7Tov8(ctx context.Context, txn txnInterface) error {
 	// Move last_home_status_id from userstate to accountstate;
 	sqlStmt := `
@@ -298,6 +309,10 @@ func v7Tov8(ctx context.Context, txn txnInterface) error {
 	}
 	return nil
 }
+
+var _ = RegisterStep(UpdateStep{
+	Apply: v8Tov9,
+})
 
 func v8Tov9(ctx context.Context, txn txnInterface) error {
 	// Split server info.
@@ -338,6 +353,10 @@ func v8Tov9(ctx context.Context, txn txnInterface) error {
 	return nil
 }
 
+var _ = RegisterStep(UpdateStep{
+	Apply: v9Tov10,
+})
+
 func v9Tov10(ctx context.Context, txn txnInterface) error {
 	// Add session persistence
 	sqlStmt := `
@@ -355,6 +374,10 @@ func v9Tov10(ctx context.Context, txn txnInterface) error {
 	return nil
 }
 
+var _ = RegisterStep(UpdateStep{
+	Apply: v10Tov11,
+})
+
 func v10Tov11(ctx context.Context, txn txnInterface) error {
 	// Change key for server state.
 	// Just drop all existing server registration - that will force a re-login.
@@ -369,6 +392,10 @@ func v10Tov11(ctx context.Context, txn txnInterface) error {
 	return nil
 }
 
+var _ = RegisterStep(UpdateStep{
+	Apply: v11Tov12,
+})
+
 func v11Tov12(ctx context.Context, txn txnInterface) error {
 	// Nuke session state - the update in serverstate warrants it.
 	sqlStmt := `
@@ -379,6 +406,10 @@ func v11Tov12(ctx context.Context, txn txnInterface) error {
 	}
 	return nil
 }
+
+var _ = RegisterStep(UpdateStep{
+	Apply: v12Tov13,
+})
 
 func v12Tov13(ctx context.Context, txn txnInterface) error {
 	// Recreate the accountstate table to:
@@ -411,6 +442,10 @@ func v12Tov13(ctx context.Context, txn txnInterface) error {
 	return nil
 }
 
+var _ = RegisterStep(UpdateStep{
+	Apply: v13Tov14,
+})
+
 func v13Tov14(ctx context.Context, txn txnInterface) error {
 	// Convert userstate to STRICT.
 	sqlStmt := `
@@ -434,6 +469,10 @@ func v13Tov14(ctx context.Context, txn txnInterface) error {
 	}
 	return nil
 }
+
+var _ = RegisterStep(UpdateStep{
+	Apply: v14Tov15,
+})
 
 func v14Tov15(ctx context.Context, txn txnInterface) error {
 	// Convert statuses to STRICT.
@@ -485,6 +524,10 @@ func v14Tov15(ctx context.Context, txn txnInterface) error {
 	return nil
 }
 
+var _ = RegisterStep(UpdateStep{
+	Apply: v15Tov16,
+})
+
 func v15Tov16(ctx context.Context, txn txnInterface) error {
 	// Convert streamcontent to STRICT and remove NOT NULL on `position`.
 
@@ -509,6 +552,10 @@ func v15Tov16(ctx context.Context, txn txnInterface) error {
 	return nil
 }
 
+var _ = RegisterStep(UpdateStep{
+	Apply: v16Tov17,
+})
+
 func v16Tov17(ctx context.Context, txn txnInterface) error {
 	// Change stream management - directly insert in streamcontent, but without position.
 	sqlStmt := `
@@ -530,6 +577,10 @@ func v16Tov17(ctx context.Context, txn txnInterface) error {
 	}
 	return nil
 }
+
+var _ = RegisterStep(UpdateStep{
+	Apply: v17Tov18,
+})
 
 func v17Tov18(ctx context.Context, txn txnInterface) error {
 	// Convert streamstate to STRICT.
@@ -558,6 +609,10 @@ func v17Tov18(ctx context.Context, txn txnInterface) error {
 	return nil
 }
 
+var _ = RegisterStep(UpdateStep{
+	Apply: v18Tov19,
+})
+
 func v18Tov19(ctx context.Context, txn txnInterface) error {
 	// Convert serverstate to STRICT.
 	// Rename it to appregstate
@@ -584,6 +639,10 @@ func v18Tov19(ctx context.Context, txn txnInterface) error {
 	return nil
 }
 
+var _ = RegisterStep(UpdateStep{
+	Apply: v19Tov20,
+})
+
 func v19Tov20(ctx context.Context, txn txnInterface) error {
 	// add a "statusstate" column to status with default value {}
 	sqlStmt := `
@@ -594,6 +653,10 @@ func v19Tov20(ctx context.Context, txn txnInterface) error {
 	}
 	return nil
 }
+
+var _ = RegisterStep(UpdateStep{
+	Apply: v20Tov21,
+})
 
 func v20Tov21(ctx context.Context, txn txnInterface) error {
 	// Set foreign key on accountstate.
@@ -677,6 +740,10 @@ func v20Tov21(ctx context.Context, txn txnInterface) error {
 	return nil
 }
 
+var _ = RegisterStep(UpdateStep{
+	Apply: v21Tov22,
+})
+
 func v21Tov22(ctx context.Context, txn txnInterface) error {
 	// Add indices on streamcontent.
 	sqlStmt := `
@@ -688,6 +755,10 @@ func v21Tov22(ctx context.Context, txn txnInterface) error {
 	}
 	return nil
 }
+
+var _ = RegisterStep(UpdateStep{
+	Apply: v22Tov23,
+})
 
 func v22Tov23(ctx context.Context, txn txnInterface) error {
 	// Add virtual columns on statuses to hold status IDs.
@@ -752,6 +823,10 @@ func v22Tov23(ctx context.Context, txn txnInterface) error {
 	return nil
 }
 
+var _ = RegisterStep(UpdateStep{
+	Apply: v23Tov24,
+})
+
 func v23Tov24(ctx context.Context, txn txnInterface) error {
 	// Add index on statuses.
 	sqlStmt := `
@@ -762,6 +837,10 @@ func v23Tov24(ctx context.Context, txn txnInterface) error {
 	}
 	return nil
 }
+
+var _ = RegisterStep(UpdateStep{
+	Apply: v24Tov25,
+})
 
 func v24Tov25(ctx context.Context, txn txnInterface) error {
 	// Change streamcontent indices.
@@ -774,6 +853,10 @@ func v24Tov25(ctx context.Context, txn txnInterface) error {
 	}
 	return nil
 }
+
+var _ = RegisterStep(UpdateStep{
+	Apply: v25Tov26,
+})
 
 func v25Tov26(ctx context.Context, txn txnInterface) error {
 	// Add more indices to find existing statuses.
@@ -788,6 +871,10 @@ func v25Tov26(ctx context.Context, txn txnInterface) error {
 	return nil
 }
 
+var _ = RegisterStep(UpdateStep{
+	Apply: v26Tov27,
+})
+
 func v26Tov27(ctx context.Context, txn txnInterface) error {
 	// Rename statusstate to status_meta
 	sqlStmt := `
@@ -798,6 +885,10 @@ func v26Tov27(ctx context.Context, txn txnInterface) error {
 	}
 	return nil
 }
+
+var _ = RegisterStep(UpdateStep{
+	Apply: v27Tov28,
+})
 
 func v27Tov28(ctx context.Context, txn txnInterface) error {
 	// Add statuses IDs in the stream table.
@@ -863,6 +954,10 @@ func v27Tov28(ctx context.Context, txn txnInterface) error {
 	return nil
 }
 
+var _ = RegisterStep(UpdateStep{
+	Apply: v28Tov29,
+})
+
 func v28Tov29(ctx context.Context, txn txnInterface) error {
 	// Add triage info
 	sqlStmt := `
@@ -873,6 +968,10 @@ func v28Tov29(ctx context.Context, txn txnInterface) error {
 	}
 	return nil
 }
+
+var _ = RegisterStep(UpdateStep{
+	Apply: v29Tov30,
+})
 
 func v29Tov30(ctx context.Context, txn txnInterface) error {
 	// Add some indexes.
