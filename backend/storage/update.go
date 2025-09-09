@@ -26,6 +26,8 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 		return fmt.Errorf("target version (%d) is higher than max known version (%d)", targetVersion, maxSchemaVersion)
 	}
 
+	updateCount := 0
+
 	for {
 		version, err := getCurrentVersion(ctx, db)
 		if err != nil {
@@ -39,22 +41,43 @@ func prepareDB(ctx context.Context, db *sql.DB, targetVersion int) error {
 			break
 		}
 
+		updateCount++
 		step := allSteps[version]
 		if err := prepareDBSingleStep(ctx, db, step, version); err != nil {
 			return err
 		}
 	}
 
-	// Some update can create a lot of old table, recover space.
-	if _, err := db.ExecContext(ctx, `VACUUM;`); err != nil {
-		return fmt.Errorf("unable to vacuum db: %w", err)
+	// Log ground truth about version
+	version, err := getCurrentVersion(ctx, db)
+	if err != nil {
+		return err
 	}
-	// And optimize.
-	if _, err := db.ExecContext(ctx, `PRAGMA optimize;`); err != nil {
-		return fmt.Errorf("unable to vacuum db: %w", err)
+	glog.Infof("db is at version %d", version)
+
+	// Some update can create a lot of old table, recover space.
+	// However, vacuuming is slow, so only do it by default on updates.
+	if updateCount > 0 {
+		glog.Infof("db vacuum started")
+		if _, err := db.ExecContext(ctx, `VACUUM;`); err != nil {
+			return fmt.Errorf("unable to vacuum db: %w", err)
+		}
+		glog.Infof("db vacuum done, checkpointing")
+		// For some reason, there is never any checkpointing after vacuuming, leading
+		// to permanently large WAL file.
+		if _, err := db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE);`); err != nil {
+			return fmt.Errorf("unable to vacuum db: %w", err)
+		}
+		glog.Infof("db checkpointing done")
 	}
 
-	glog.Infof("update done.")
+	// And optimize.
+	if _, err := db.ExecContext(ctx, `PRAGMA optimize;`); err != nil {
+		return fmt.Errorf("unable to optimize db: %w", err)
+	}
+	glog.Infof("db optimize done")
+
+	glog.Infof("db prep done.")
 	return nil
 }
 
