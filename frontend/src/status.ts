@@ -227,6 +227,12 @@ export class MastStatus extends LitElement {
           </div>
         ` : nothing}
 
+        ${s.quote ? html`
+          <div class="quote">
+            There is a quote, fancy that. State = ${s.quote.state}
+          </div>
+        `: nothing}
+
         ${s.sensitive || !!filtered || alreadySeen ? html`
           <div class=${classMap({ "spoilerbar": true, "sb-default": !isOpen || !s.sensitive, "sb-open-sensitive": isOpen && s.sensitive })}>
             <div>
@@ -460,6 +466,16 @@ export class MastStatus extends LitElement {
       .sb-open-sensitive {
         background-color: var(--color-purple-200);
       }
+
+      .quote {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-sizing: border-box;
+        padding: 2px 2px 2px 4px;
+        background-color: var(--color-grey-300);
+      }
+
 
       .tag-filter {
         border-radius: 8px;
