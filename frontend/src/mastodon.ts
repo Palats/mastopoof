@@ -31,6 +31,11 @@ export interface Status {
   bookmarked?: boolean;
   pinned?: boolean;
   filtered?: FilterResult[];
+
+  // Not documented as nullable, but does not exists before 4.5.0.
+  quotes_count?: number;
+  quote?: Quote | ShallowQuote | null;
+  quote_approval?: QuoteApproval;
 }
 
 // https://docs.joinmastodon.org/entities/Status/#Mention
@@ -148,6 +153,40 @@ export interface PreviewHistory {
 
 // https://docs.joinmastodon.org/entities/FilterResult/
 export interface FilterResult { }
+
+// Possible state of a quote post. As future version of the protocol
+// might add new values, the type is set to generic string.
+export type knownQuoteState = "pending" | "accepted" | "rejected" | "revoked" | "deleted" | "unauthorized";
+
+// https://docs.joinmastodon.org/entities/Quote/
+export interface Quote {
+  // As string to support future value. See knownQuoteState for known values in this code.
+  state: string,
+  quoted_status: Status | null,
+}
+
+// https://docs.joinmastodon.org/entities/ShallowQuote/
+export interface ShallowQuote {
+  // As string to support future value. See knownQuoteState for known values in this code.
+  state: string,
+  quoted_status_id: string | null;
+}
+
+export type knownQuoteApproval = "public" | "followers" | "following" | "unsupported_policy";
+export type knownQuoteCurrentUser = "automatic" | "manual" | "denied" | "unknown";
+
+// https://docs.joinmastodon.org/entities/QuoteApproval/
+export interface QuoteApproval {
+  // As string for future compatibility; see knownQuoteApproval for current
+  // possible values.
+  automatic: string[],
+  // As string for future compatibility; see knownQuoteApproval for current
+  // possible values.
+  manual: string[],
+  // As string for future compatibility; see knownQuoteCurrentUser for current
+  // possible values.
+  current_user: string,
+}
 
 export function newFakeStatus(content?: string): Status {
   const username = "fakeuser" + (100 + Math.floor(Math.random() * 800)).toString();
