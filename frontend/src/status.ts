@@ -10,16 +10,16 @@ import * as common from "./common";
 import * as mastodon from "./mastodon";
 
 // StatusData represents the information necessary to show a status
-// in the UI..
+// in the UI.
 export interface StatusData {
   // Position in the stream in the backend.
-  position: bigint;
+  position?: bigint;
   // status, if loaded.
   status: mastodon.Status;
   // The account where this status was obtained from.
   account: pb.Account;
-  statusMeta: storagepb.StatusMeta;
-  streamStatusState: storagepb.StreamStatusState;
+  statusMeta?: storagepb.StatusMeta;
+  streamStatusState?: storagepb.StreamStatusState;
 }
 
 function qualifiedAccount(account: mastodon.Account): string {
@@ -104,6 +104,9 @@ export class MastStatus extends LitElement {
   @property({ attribute: false })
   data?: StatusData;
 
+  @property({ type: Boolean })
+  hideTools: boolean = false;
+
   @property({ attribute: false })
   stid?: bigint;
 
@@ -128,6 +131,7 @@ export class MastStatus extends LitElement {
     if (!this.stid) {
       throw new Error("missing stream id");
     }
+    if (this.data.position === undefined) { return; }
     // Not sure if doing computation on "position" is fine, but... well.
     common.backend.setLastRead(this.stid, this.data.position - 1n);
   }
@@ -169,14 +173,14 @@ export class MastStatus extends LitElement {
     if (!this.data) { return html`<div class="status">oops.</div>`; }
 
     var filteredAr: string[] = [];
-    for (const filter of this.data.statusMeta.filters ?? []) {
+    for (const filter of this.data.statusMeta?.filters ?? []) {
       if (filter.matched == true) {
         filteredAr.push(filter.phrase);
       }
     }
     const filtered = filteredAr.join(", ");
 
-    const alreadySeen = this.data.streamStatusState.alreadySeen === storagepb.StreamStatusState_AlreadySeen.YES;
+    const alreadySeen = this.data.streamStatusState?.alreadySeen === storagepb.StreamStatusState_AlreadySeen.YES;
 
     const isOpen = this.forceShow === undefined ? (!filtered && !alreadySeen) : this.forceShow;
 
@@ -227,12 +231,6 @@ export class MastStatus extends LitElement {
           </div>
         ` : nothing}
 
-        ${s.quote ? html`
-          <div class="quote">
-            There is a quote, fancy that. State = ${s.quote.state}
-          </div>
-        `: nothing}
-
         ${s.sensitive || !!filtered || alreadySeen ? html`
           <div class=${classMap({ "spoilerbar": true, "sb-default": !isOpen || !s.sensitive, "sb-open-sensitive": isOpen && s.sensitive })}>
             <div>
@@ -256,12 +254,44 @@ export class MastStatus extends LitElement {
             <div class="content">
               ${expandEmojis(s.content, s.emojis)}
             </div>
+            ${this.renderQuote(s)}
             ${this.renderPoll(s)}
             ${this.renderPreview(s)}
             ${this.renderAttachments(s)}
             ${this.renderTools(s)}
         `: nothing}
       </div>`;
+  }
+
+  renderQuote(s: mastodon.Status) {
+    if (!s.quote) { return nothing; }
+    if (!this.data) { return html`<div class="status">oops.</div>`; }
+
+    if (mastodon.isShallowQuote(s.quote)) {
+      return html`
+        <div class="quote shallow">
+          Unsupported shallow quote, state = ${s.quote.state}, id = ${s.quote.quoted_status_id}
+        </div>`;
+    }
+
+    if (!s.quote.quoted_status) {
+      console.error(`missing quoted_status on status ${s.id}`);
+      return;
+    }
+
+    const statusData: StatusData = {
+      status: s.quote.quoted_status,
+      account: this.data?.account,
+    }
+
+    return html`
+      <div class="quote">
+        Quote, state = ${s.quote.state}
+      </div>
+      <div class="quotedstatus">
+        <mast-status .data=${statusData as any} ?hideTools=${true}></mast-status>
+      </div>
+    `;
   }
 
   renderPoll(s: mastodon.Status) {
@@ -328,8 +358,9 @@ export class MastStatus extends LitElement {
     return html`<div class="attachments">${attachments}</div>`;
   }
 
-  renderTools(s: mastodon.Status): TemplateResult {
+  renderTools(s: mastodon.Status) {
     if (!this.data) { return html`<div class="status">oops.</div>`; }
+    if (this.hideTools) { return nothing; }
 
     return html`
       <div class="tools">
@@ -476,6 +507,15 @@ export class MastStatus extends LitElement {
         background-color: var(--color-grey-300);
       }
 
+      .shallow {
+        background-color: var(--color-red-100);
+      }
+
+      .quotedstatus {
+        border-width: 0 0 0 10px;
+        border-color: var(--color-grey-300);
+        border-style: solid;
+      }
 
       .tag-filter {
         border-radius: 8px;

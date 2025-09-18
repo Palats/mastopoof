@@ -17,7 +17,7 @@ import "./mainview";
 
 // StreamItem represents the state in the UI of a given status.
 interface StreamItem {
-  statusData: status.StatusData;
+  statusData: Required<status.StatusData>;
 
   // HTML element used to represent this status.
   elt?: Element;

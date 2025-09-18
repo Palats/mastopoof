@@ -172,6 +172,10 @@ export interface ShallowQuote {
   quoted_status_id: string | null;
 }
 
+export function isShallowQuote(x: Quote | ShallowQuote): x is ShallowQuote {
+  return 'quoted_status_id' in x && !!x.quoted_status_id;
+}
+
 export type knownQuoteApproval = "public" | "followers" | "following" | "unsupported_policy";
 export type knownQuoteCurrentUser = "automatic" | "manual" | "denied" | "unknown";
 
