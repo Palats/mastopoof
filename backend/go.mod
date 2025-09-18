@@ -46,4 +46,4 @@ replace github.com/Palats/mastopoof/proto v0.0.0 => ../proto
 
 replace github.com/Palats/mastopoof/frontend v0.0.0 => ../frontend
 
-replace github.com/mattn/go-mastodon => github.com/Palats/go-mastodon v0.0.0-20250918185219-89e4a6cb291a
+replace github.com/mattn/go-mastodon => github.com/Palats/go-mastodon v0.0.0-20250918200916-52db62a39c9b
