@@ -37,7 +37,7 @@ require (
 	github.com/prometheus/common v0.55.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/tomnomnom/linkheader v0.0.0-20180905144013-02ca5825eb80 // indirect
+	github.com/tomnomnom/linkheader v0.0.0-20250811210735-e5fe3b51442e // indirect
 	golang.org/x/sys v0.26.0 // indirect
 	golang.org/x/text v0.19.0 // indirect
 )
@@ -46,4 +46,4 @@ replace github.com/Palats/mastopoof/proto v0.0.0 => ../proto
 
 replace github.com/Palats/mastopoof/frontend v0.0.0 => ../frontend
 
-replace github.com/mattn/go-mastodon => github.com/Palats/go-mastodon v0.0.0-20250205204958-1d0588503fd1
+replace github.com/mattn/go-mastodon => github.com/Palats/go-mastodon v0.0.0-20250918185219-89e4a6cb291a
