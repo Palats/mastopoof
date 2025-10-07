@@ -113,6 +113,9 @@ export class MastStatus extends LitElement {
   @property({ type: Boolean })
   isRead: boolean = false;
 
+  @property({ type: Boolean })
+  isQuote: boolean = false;
+
   @state()
   private accessor showRaw = false;
 
@@ -202,7 +205,7 @@ export class MastStatus extends LitElement {
     const openTarget = localStatusURL(this.data);
 
     return html`
-      <div class="status ${classMap({ read: this.isRead, unread: !this.isRead, hiddenstatus: !isOpen })}">
+      <div class="status ${classMap({ read: this.isRead, unread: !this.isRead, hiddenstatus: !isOpen, quote: this.isQuote })}">
         <div class="account">
           <span class="centered">
             <img class="avatar" src=${s.account.avatar}></img>
@@ -254,10 +257,10 @@ export class MastStatus extends LitElement {
             <div class="content">
               ${expandEmojis(s.content, s.emojis)}
             </div>
-            ${this.renderQuote(s)}
             ${this.renderPoll(s)}
             ${this.renderPreview(s)}
             ${this.renderAttachments(s)}
+            ${this.renderQuote(s)}
             ${this.renderTools(s)}
         `: nothing}
       </div>`;
@@ -269,7 +272,7 @@ export class MastStatus extends LitElement {
 
     if (mastodon.isShallowQuote(s.quote)) {
       return html`
-        <div class="quote shallow">
+        <div class="quotebox shallow">
           Unsupported shallow quote, state = ${s.quote.state}, id = ${s.quote.quoted_status_id}
         </div>`;
     }
@@ -285,11 +288,11 @@ export class MastStatus extends LitElement {
     }
 
     return html`
-      <div class="quote">
-        Quote, state = ${s.quote.state}
-      </div>
-      <div class="quotedstatus">
-        <mast-status .data=${statusData as any} ?hideTools=${true}></mast-status>
+      <div class="quotebox">
+        <div>
+          ${s.quote.state != "accepted" ? html`Quote, state = ${s.quote.state}` : nothing}
+        </div>
+        <mast-status .data=${statusData as any} ?hideTools=${true} isQuote></mast-status>
       </div>
     `;
   }
@@ -444,6 +447,10 @@ export class MastStatus extends LitElement {
         flex-direction: column;
       }
 
+      .quote {
+        border-style: dashed;
+      }
+
       .hiddenstatus {
         filter: grayscale(100%);
       }
@@ -469,6 +476,10 @@ export class MastStatus extends LitElement {
         background-color: var(--color-blue-100);
 
         height: 40px;
+      }
+
+      .quote .account {
+        background-color: var(--color-grey-300);
       }
 
       .namebox .address {
@@ -498,23 +509,17 @@ export class MastStatus extends LitElement {
         background-color: var(--color-purple-200);
       }
 
-      .quote {
+      .quotebox {
         display: flex;
+        flex-direction: column;
         justify-content: space-between;
         align-items: center;
         box-sizing: border-box;
-        padding: 2px 2px 2px 4px;
-        background-color: var(--color-grey-300);
+        padding: 2px 4px 2px 4px;
       }
 
       .shallow {
         background-color: var(--color-red-100);
-      }
-
-      .quotedstatus {
-        border-width: 0 0 0 10px;
-        border-color: var(--color-grey-300);
-        border-style: solid;
       }
 
       .tag-filter {
@@ -537,6 +542,10 @@ export class MastStatus extends LitElement {
         font-style: italic;
         justify-content: space-between;
         background-color: var(--color-blue-50);
+      }
+
+      .quote .reblog {
+        background-color: var(--color-grey-150);
       }
 
       .avatar {
