@@ -18,7 +18,6 @@ import (
 	stpb "github.com/Palats/mastopoof/proto/gen/mastopoof/storage"
 	"github.com/alexedwards/scs/sqlite3store"
 	"github.com/golang/glog"
-	"github.com/mattn/go-mastodon"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -1407,13 +1406,17 @@ func computeStatusMeta(status *mastodon.Status, filters []*mastodon.Filter) *stp
 	content := strings.ToLower(s.Content)
 	tags := s.Tags
 	spoiler := strings.ToLower(s.SpoilerText)
+	alts := ""
+	for _, att := range s.MediaAttachments {
+		alts = alts + strings.ToLower(att.Description)
+	}
 
 	// Note: we lower-case ALL THE THINGS (oh the irony) to normalize
 	for _, filter := range filters {
 		phrase := strings.ToLower(filter.Phrase)
 		// TODO filters are actually fancier than that. but let's try this first!
 		// first we check if the phrase is, case-insensitively, in the content or the spoiler (if it is, we're done)
-		matched := strings.Contains(content, phrase) || strings.Contains(spoiler, phrase)
+		matched := strings.Contains(content, phrase) || strings.Contains(spoiler, phrase) || strings.Contains(alts, phrase)
 
 		// otherwise we check tags; tags are formatted in the post (to add links and whatnot), which trips the
 		// stupid "let's just check for strings". if we're actually looking for a tag, we could either drop the # to
