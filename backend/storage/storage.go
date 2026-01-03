@@ -18,6 +18,7 @@ import (
 	stpb "github.com/Palats/mastopoof/proto/gen/mastopoof/storage"
 	"github.com/alexedwards/scs/sqlite3store"
 	"github.com/golang/glog"
+	"github.com/mattn/go-mastodon"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
