@@ -22,7 +22,6 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "types": [
-      "@vitest/browser/providers/playwright",
       "@vitest/browser/matchers"
     ],
   },

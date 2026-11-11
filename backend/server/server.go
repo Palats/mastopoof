@@ -10,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/Palats/mastopoof/backend/storage"
 	"github.com/Palats/mastopoof/backend/types"
 	"github.com/alexedwards/scs/v2"
@@ -196,7 +197,7 @@ func (s *Server) setSessionUserID(ctx context.Context, uid types.UID) {
 func (s *Server) isLogged(ctx context.Context) (types.UID, error) {
 	userID := types.UID(s.sessionManager.GetInt64(ctx, "userid"))
 	if userID == 0 {
-		return 0, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("oh noes"))
+		return 0, connect.Errorf(connect.CodePermissionDenied, "oh noes")
 	}
 	return userID, nil
 }
@@ -232,12 +233,12 @@ func (s *Server) verifyStID(ctx context.Context, stid types.StID) (*stpb.UserSta
 		return nil, err
 	}
 	if types.StID(userState.DefaultStid) != stid {
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("stream access denied"))
+		return nil, connect.NewError(connect.CodePermissionDenied, "stream access denied")
 	}
 	return userState, nil
 }
 
-func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest]) (*connect.Response[pb.LoginResponse], error) {
+func (s *Server) Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResponse, error) {
 	err := s.sessionManager.RenewToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to renew token: %w", err)
@@ -252,7 +253,7 @@ func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest
 	uid, err := s.isLogged(ctx)
 	if err != nil {
 		// Not logged - do not return an error, but just no information.
-		return connect.NewResponse(&pb.LoginResponse{}), nil
+		return &pb.LoginResponse{}, nil
 	}
 
 	userState, err := s.st.UserState(ctx, nil, uid)
@@ -264,21 +265,21 @@ func (s *Server) Login(ctx context.Context, req *connect.Request[pb.LoginRequest
 		return nil, err
 	}
 
-	return connect.NewResponse(&pb.LoginResponse{
+	return &pb.LoginResponse{
 		UserInfo: userInfo,
-	}), nil
+	}, nil
 }
 
-func (s *Server) Logout(ctx context.Context, req *connect.Request[pb.LogoutRequest]) (*connect.Response[pb.LogoutResponse], error) {
+func (s *Server) Logout(ctx context.Context, req *pb.LogoutRequest) (*pb.LogoutResponse, error) {
 	s.sessionManager.Remove(ctx, "userid")
 	err := s.sessionManager.RenewToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to renew token: %w", err)
 	}
-	return connect.NewResponse(&pb.LogoutResponse{}), nil
+	return &pb.LogoutResponse{}, nil
 }
 
-func (s *Server) UpdateSettings(ctx context.Context, req *connect.Request[pb.UpdateSettingsRequest]) (*connect.Response[pb.UpdateSettingsResponse], error) {
+func (s *Server) UpdateSettings(ctx context.Context, req *pb.UpdateSettingsRequest) (*pb.UpdateSettingsResponse, error) {
 	userID, err := s.isLogged(ctx)
 	if err != nil {
 		return nil, err
@@ -286,16 +287,16 @@ func (s *Server) UpdateSettings(ctx context.Context, req *connect.Request[pb.Upd
 
 	// Clone the settings - not sure what is the lifecycle of the one provided
 	// for the RPC, and it will be used in userstate.
-	settings := proto.Clone(req.Msg.GetSettings()).(*settingspb.Settings)
+	settings := proto.Clone(req.GetSettings()).(*settingspb.Settings)
 	if settings == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("missing settings"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, "missing settings")
 	}
 
 	if v, min := settings.GetListCount().GetValue(), mpdata.SettingsInfo().GetListCount().GetMin(); v < min {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("DefaultListCount must be at least %d; got: %d", min, v))
+		return nil, connect.Errorf(connect.CodeInvalidArgument, "DefaultListCount must be at least %d; got: %d", min, v)
 	}
 	if v, max := settings.GetListCount().GetValue(), mpdata.SettingsInfo().GetListCount().GetMax(); v > max {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("DefaultListCount must be less or equal to %d; got: %d", max, v))
+		return nil, connect.Errorf(connect.CodeInvalidArgument, "DefaultListCount must be less or equal to %d; got: %d", max, v)
 	}
 
 	err = s.st.InTxnRW(ctx, func(ctx context.Context, txn storage.SQLReadWrite) error {
@@ -311,19 +312,19 @@ func (s *Server) UpdateSettings(ctx context.Context, req *connect.Request[pb.Upd
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(&pb.UpdateSettingsResponse{}), nil
+	return &pb.UpdateSettingsResponse{}, nil
 }
 
-func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.AuthorizeRequest]) (*connect.Response[pb.AuthorizeResponse], error) {
+func (s *Server) Authorize(ctx context.Context, req *pb.AuthorizeRequest) (*pb.AuthorizeResponse, error) {
 	if s.inviteCode != "" {
-		if req.Msg.InviteCode != s.inviteCode {
-			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("invalid invite code"))
+		if req.InviteCode != s.inviteCode {
+			return nil, connect.NewError(connect.CodePermissionDenied, "invalid invite code")
 		}
 		// TODO: make it less hacky
 		s.sessionManager.Put(ctx, "invitecheck", true)
 	}
 
-	serverAddr := req.Msg.ServerAddr
+	serverAddr := req.ServerAddr
 	if err := validateAddress(serverAddr); err != nil {
 		return nil, err
 	}
@@ -335,7 +336,7 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 
 	authAddr, err := url.Parse(appRegState.ServerAddr)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unable to parse %s: %w", appRegState.ServerAddr, err))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unable to parse %s: %w", appRegState.ServerAddr, err).Error())
 	}
 	authAddr.Path = "/oauth/authorize"
 	q := authAddr.Query()
@@ -347,29 +348,29 @@ func (s *Server) Authorize(ctx context.Context, req *connect.Request[pb.Authoriz
 	q.Set("scope", "read write")
 	authAddr.RawQuery = q.Encode()
 
-	return connect.NewResponse(&pb.AuthorizeResponse{
+	return &pb.AuthorizeResponse{
 		AuthorizeAddr: authAddr.String(),
 		OutOfBand:     appRegState.RedirectUri == OutOfBandURI,
-	}), nil
+	}, nil
 }
 
-func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest]) (*connect.Response[pb.TokenResponse], error) {
+func (s *Server) Token(ctx context.Context, req *pb.TokenRequest) (*pb.TokenResponse, error) {
 	if s.inviteCode != "" {
 		// TODO: make it less hacky
 		if !s.sessionManager.GetBool(ctx, "invitecheck") {
-			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("missing invite code"))
+			return nil, connect.NewError(connect.CodePermissionDenied, "missing invite code")
 		}
 	}
 
 	// TODO: sanitization of server addr to be factorized with Authorize.
-	serverAddr := req.Msg.ServerAddr
+	serverAddr := req.ServerAddr
 	if err := validateAddress(serverAddr); err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unable to validate address %s: %w", serverAddr, err))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unable to validate address %s: %w", serverAddr, err).Error())
 	}
 
-	authCode := req.Msg.AuthCode
+	authCode := req.AuthCode
 	if authCode == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("missing authcode"))
+		return nil, connect.Errorf(connect.CodeInvalidArgument, "missing authcode")
 	}
 
 	// This can write to the DB. However, this is just about mastodon client registration, which is independent
@@ -445,13 +446,13 @@ func (s *Server) Token(ctx context.Context, req *connect.Request[pb.TokenRequest
 		return nil, err
 	}
 
-	return connect.NewResponse(&pb.TokenResponse{
+	return &pb.TokenResponse{
 		UserInfo: userInfo,
-	}), nil
+	}, nil
 }
 
-func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest]) (*connect.Response[pb.ListResponse], error) {
-	stid := types.StID(req.Msg.Stid)
+func (s *Server) List(ctx context.Context, req *pb.ListRequest) (*pb.ListResponse, error) {
+	stid := types.StID(req.Stid)
 	userState, err := s.verifyStID(ctx, stid)
 	if err != nil {
 		return nil, err
@@ -466,26 +467,26 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 	resp := &pb.ListResponse{}
 
 	var listResult *storage.ListResult
-	switch req.Msg.Direction {
+	switch req.Direction {
 	case pb.ListRequest_DEFAULT:
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("missing direction specification"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, "missing direction specification")
 	case pb.ListRequest_INITIAL:
-		listResult, err = s.st.ListForward(ctx, userState, stid, req.Msg.Position, true /* isInitial */)
+		listResult, err = s.st.ListForward(ctx, userState, stid, req.Position, true /* isInitial */)
 		if err != nil {
 			return nil, err
 		}
 	case pb.ListRequest_FORWARD:
-		listResult, err = s.st.ListForward(ctx, userState, stid, req.Msg.Position, false /* isInitial */)
+		listResult, err = s.st.ListForward(ctx, userState, stid, req.Position, false /* isInitial */)
 		if err != nil {
 			return nil, err
 		}
 	case pb.ListRequest_BACKWARD:
-		listResult, err = s.st.ListBackward(ctx, userState, stid, req.Msg.Position)
+		listResult, err = s.st.ListBackward(ctx, userState, stid, req.Position)
 		if err != nil {
 			return nil, err
 		}
 	default:
-		return nil, fmt.Errorf("unknown direction %v", req.Msg.Direction)
+		return nil, fmt.Errorf("unknown direction %v", req.Direction)
 	}
 
 	resp.StreamInfo = types.StreamStateToStreamInfo(listResult.StreamState)
@@ -517,11 +518,11 @@ func (s *Server) List(ctx context.Context, req *connect.Request[pb.ListRequest])
 		})
 	}
 
-	return connect.NewResponse(resp), nil
+	return resp, nil
 }
 
-func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadRequest]) (*connect.Response[pb.SetReadResponse], error) {
-	stid := types.StID(req.Msg.Stid)
+func (s *Server) SetRead(ctx context.Context, req *pb.SetReadRequest) (*pb.SetReadResponse, error) {
+	stid := types.StID(req.Stid)
 	if _, err := s.verifyStID(ctx, stid); err != nil {
 		return nil, err
 	}
@@ -536,12 +537,12 @@ func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadReq
 
 		oldValue := streamState.LastRead
 
-		requestedValue := req.Msg.GetLastRead()
+		requestedValue := req.GetLastRead()
 		if requestedValue < streamState.FirstPosition-1 || requestedValue > streamState.LastPosition {
-			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("position %d is invalid; first=%d, last=%d", requestedValue, streamState.FirstPosition, streamState.LastPosition))
+			return connect.Errorf(connect.CodeInvalidArgument, "position %d is invalid; first=%d, last=%d", requestedValue, streamState.FirstPosition, streamState.LastPosition)
 		}
 
-		switch req.Msg.Mode {
+		switch req.Mode {
 		case pb.SetReadRequest_ABSOLUTE:
 			streamState.LastRead = requestedValue
 		case pb.SetReadRequest_ADVANCE:
@@ -549,7 +550,7 @@ func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadReq
 				streamState.LastRead = requestedValue
 			}
 		default:
-			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid SetRead mode %v", req.Msg.Mode))
+			return connect.Errorf(connect.CodeInvalidArgument, "invalid SetRead mode %v", req.Mode)
 		}
 
 		if streamState.LastRead != oldValue {
@@ -563,14 +564,14 @@ func (s *Server) SetRead(ctx context.Context, req *connect.Request[pb.SetReadReq
 		return nil, err
 	}
 
-	return connect.NewResponse(&pb.SetReadResponse{
+	return &pb.SetReadResponse{
 		StreamInfo: types.StreamStateToStreamInfo(streamState),
-	}), nil
+	}, nil
 }
 
-func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest]) (*connect.Response[pb.FetchResponse], error) {
+func (s *Server) Fetch(ctx context.Context, req *pb.FetchRequest) (*pb.FetchResponse, error) {
 	// Check for credentials.
-	stid := types.StID(req.Msg.Stid)
+	stid := types.StID(req.Stid)
 	if _, err := s.verifyStID(ctx, stid); err != nil {
 		return nil, err
 	}
@@ -706,7 +707,7 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 			return fmt.Errorf("unable to verify for race conditions: %w", err)
 		}
 		if currentAccountState.LastHomeStatusId != accountState.LastHomeStatusId {
-			return connect.NewError(connect.CodeUnavailable, errors.New("concurrent fetch of Mastodon statuses - aborting"))
+			return connect.NewError(connect.CodeUnavailable, "concurrent fetch of Mastodon statuses - aborting")
 		}
 
 		currentAccountState.LastHomeStatusId = string(newStatusID)
@@ -741,10 +742,10 @@ func (s *Server) Fetch(ctx context.Context, req *connect.Request[pb.FetchRequest
 		// Nothing was returned, assume it is because we've reached the end.
 		resp.Status = pb.FetchResponse_DONE
 	}
-	return connect.NewResponse(resp), nil
+	return resp, nil
 }
 
-func (s *Server) Search(ctx context.Context, req *connect.Request[pb.SearchRequest]) (*connect.Response[pb.SearchResponse], error) {
+func (s *Server) Search(ctx context.Context, req *pb.SearchRequest) (*pb.SearchResponse, error) {
 	uid, err := s.isLogged(ctx)
 	if err != nil {
 		return nil, err
@@ -759,7 +760,7 @@ func (s *Server) Search(ctx context.Context, req *connect.Request[pb.SearchReque
 			return err
 		}
 
-		results, err = s.st.SearchByStatusID(ctx, txn, uid, mastodon.ID(req.Msg.GetStatusId()))
+		results, err = s.st.SearchByStatusID(ctx, txn, uid, mastodon.ID(req.GetStatusId()))
 		return err
 	})
 	if err != nil {
@@ -781,10 +782,10 @@ func (s *Server) Search(ctx context.Context, req *connect.Request[pb.SearchReque
 			Meta:     item.StatusMeta,
 		})
 	}
-	return connect.NewResponse(resp), nil
+	return resp, nil
 }
 
-func (s *Server) SetStatus(ctx context.Context, req *connect.Request[pb.SetStatusRequest]) (*connect.Response[pb.SetStatusResponse], error) {
+func (s *Server) SetStatus(ctx context.Context, req *pb.SetStatusRequest) (*pb.SetStatusResponse, error) {
 	uid, err := s.isLogged(ctx)
 	if err != nil {
 		return nil, err
@@ -807,19 +808,19 @@ func (s *Server) SetStatus(ctx context.Context, req *connect.Request[pb.SetStatu
 	client := s.appRegistry.MastodonClient(appRegState, accountState.AccessToken)
 
 	var status *mastodon.Status
-	switch action := req.Msg.GetAction(); action {
+	switch action := req.GetAction(); action {
 	case pb.SetStatusRequest_FAVOURITE:
-		status, err = client.Favourite(ctx, mastodon.ID(req.Msg.StatusId))
+		status, err = client.Favourite(ctx, mastodon.ID(req.StatusId))
 	case pb.SetStatusRequest_UNFAVOURITE:
-		status, err = client.Unfavourite(ctx, mastodon.ID(req.Msg.StatusId))
+		status, err = client.Unfavourite(ctx, mastodon.ID(req.StatusId))
 	case pb.SetStatusRequest_REFRESH:
-		status, err = client.GetStatus(ctx, mastodon.ID(req.Msg.StatusId))
+		status, err = client.GetStatus(ctx, mastodon.ID(req.StatusId))
 	default:
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid action %v", action))
+		return nil, connect.Errorf(connect.CodeInvalidArgument, "invalid action %v", action)
 	}
 
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnknown, fmt.Errorf("unable to set favourite status for %s: %w", req.Msg.StatusId, err))
+		return nil, connect.NewError(connect.CodeUnknown, fmt.Errorf("unable to set favourite status for %s: %w", req.StatusId, err).Error())
 	}
 
 	// Update status in DB.
@@ -842,7 +843,7 @@ func (s *Server) SetStatus(ctx context.Context, req *connect.Request[pb.SetStatu
 	resp := &pb.SetStatusResponse{
 		Status: &pb.MastodonStatus{Content: string(raw)},
 	}
-	return connect.NewResponse(resp), nil
+	return resp, nil
 }
 
 const redirectPath = "/_redirect"
@@ -872,10 +873,10 @@ func (s *Server) RedirectHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	glog.Infof("redirect for serverAddr: %v", serverAddr)
 
-	_, err := s.Token(ctx, connect.NewRequest(&pb.TokenRequest{
+	_, err := s.Token(ctx, &pb.TokenRequest{
 		ServerAddr: serverAddr,
 		AuthCode:   authCode,
-	}))
+	})
 	if err != nil {
 		msg := fmt.Sprintf("unable to identify: %v", err)
 		glog.Errorf(msg)
@@ -916,7 +917,9 @@ func (s *Server) ConfigHandler(w http.ResponseWriter, req *http.Request) {
 
 func (s *Server) RegisterOn(mux *http.ServeMux) {
 	api := http.NewServeMux()
-	api.Handle(mastopoofconnect.NewMastopoofHandler(s))
+	server := connect.NewServer()
+	mastopoofconnect.RegisterMastopoofHandler(server, s)
+	connecthttp.Mount(api, server)
 	mux.Handle("/_rpc/", s.sessionManager.LoadAndSave(http.StripPrefix("/_rpc", api)))
 	mux.Handle(redirectPath, s.sessionManager.LoadAndSave(http.HandlerFunc(s.RedirectHandler)))
 	mux.Handle("/_config", s.sessionManager.LoadAndSave(http.HandlerFunc(s.ConfigHandler)))

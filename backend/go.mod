@@ -1,6 +1,6 @@
 module github.com/Palats/mastopoof/backend
 
-go 1.23
+go 1.26.0
 
 require (
 	connectrpc.com/connect v1.16.2
@@ -11,17 +11,18 @@ require (
 	github.com/c-bata/go-prompt v0.2.6
 	github.com/davecgh/go-spew v1.1.1
 	github.com/golang/glog v1.2.1
-	github.com/google/go-cmp v0.6.0
+	github.com/google/go-cmp v0.7.0
 	github.com/mattn/go-mastodon v0.0.8
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/prometheus/client_golang v1.20.5
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5
 	golang.org/x/net v0.30.0
-	google.golang.org/protobuf v1.34.2
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
+	connectrpc.com/connect/v2 v2.0.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
